@@ -40,20 +40,33 @@ const KNOWN_CODES: ReadonlySet<string> = new Set([
   'invalid_response',
 ]);
 
+/** Garde-fou client : le proxy a son propre timeout, mais si Vercel/le reseau
+ * traine, on ne veut pas d'attente infinie cote UI. */
+const REQUEST_TIMEOUT_MS = 15_000;
+
 export async function callXtream<T>(
   credentials: XtreamCredentials,
   action?: string,
   params?: Record<string, string | number>,
 ): Promise<T> {
   let response: Response;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
     response = await fetch('/api/xtream', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ ...credentials, action, params }),
+      signal: controller.signal,
     });
-  } catch {
-    throw new XtreamApiError('unreachable', 'Impossible de joindre le proxy API.');
+  } catch (error) {
+    const timedOut = error instanceof DOMException && error.name === 'AbortError';
+    throw new XtreamApiError(
+      timedOut ? 'timeout' : 'unreachable',
+      timedOut ? 'Le serveur met trop de temps a repondre.' : 'Impossible de joindre le proxy API.',
+    );
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   let payload: ProxyEnvelope | null = null;

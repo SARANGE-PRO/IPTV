@@ -30,9 +30,14 @@ export function NowPlaying({
     if (credentials === null) return;
     let active = true;
     setProgrammes(null);
-    void getChannelEpg(credentials, streamId).then((p) => {
-      if (active) setProgrammes(p);
-    });
+    void getChannelEpg(credentials, streamId)
+      .then((p) => {
+        if (active) setProgrammes(p);
+      })
+      .catch(() => {
+        // Filet defensif : jamais de skeleton infini si l'appel echoue un jour.
+        if (active) setProgrammes([]);
+      });
     return () => {
       active = false;
     };

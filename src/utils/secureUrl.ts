@@ -14,8 +14,19 @@ const MEDIA_GATEWAY_URL = process.env.NEXT_PUBLIC_MEDIA_GATEWAY_URL?.trim().repl
  * null et l'UI affiche un fallback monogramme (voir PosterImage/ChannelLogo).
  */
 
-/** Flux video : HTTP -> passerelle HTTPS ; HTTPS/relatif inchange. */
-export function secureMediaUrl(value: string | null | undefined): string | null {
+/**
+ * Flux video : HTTP -> passerelle HTTPS ; HTTPS/relatif inchange.
+ *
+ * `options.gateway` (defaut true) : quand false, on FORCE le direct (upgrade
+ * TLS best-effort) sans router par la passerelle. Utile pour le contenu deja
+ * lisible nativement (MP4/HLS) : il ne doit pas casser si la passerelle est
+ * eteinte, et le telephone (IP residentielle/mobile) atteint le CDN sans elle.
+ */
+export function secureMediaUrl(
+  value: string | null | undefined,
+  options: { gateway?: boolean } = {},
+): string | null {
+  const { gateway = true } = options;
   if (value === null || value === undefined) return null;
   const url = value.trim();
   if (url === '') return null;
@@ -28,9 +39,9 @@ export function secureMediaUrl(value: string | null | undefined): string | null 
   const onHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
   if (!onHttpsPage) return url;
 
-  // Page HTTPS : mixed-content -> passerelle si configuree, sinon upgrade TLS
-  // best-effort (echoue proprement si le serveur n'a pas de vrai HTTPS).
-  if (MEDIA_GATEWAY_URL !== '') {
+  // Page HTTPS : mixed-content -> passerelle si demandee ET configuree, sinon
+  // upgrade TLS best-effort (echoue proprement si le serveur n'a pas de HTTPS).
+  if (gateway && MEDIA_GATEWAY_URL !== '') {
     return `${MEDIA_GATEWAY_URL}/_fetch?url=${encodeURIComponent(url)}`;
   }
   return url.replace(/^http:\/\//i, 'https://');

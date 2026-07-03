@@ -17,6 +17,7 @@ import * as playbackRepository from '@/db/repositories/playbackRepository';
 import { getSeriesDetailsCached } from '@/services/xtream/seriesDetailsService';
 import { tmdbPoster } from '@/services/tmdb/tmdbImage';
 import { buildSeriesEpisodeUrl } from '@/services/xtream/xtreamUrls';
+import { usePlaybackPlan } from '@/hooks/usePlaybackPlan';
 import { useTmdbMetadata } from '@/hooks/useTmdbMetadata';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
@@ -129,6 +130,9 @@ export default function SeriesDetailPage() {
       ? buildSeriesEpisodeUrl(credentials, playingEp.id, playingEp.containerExtension)
       : null;
 
+  // Plan de lecture adaptatif selon le conteneur de l'episode courant.
+  const plan = usePlaybackPlan(playingEp?.containerExtension ?? null);
+
   if (series === null) {
     return (
       <main className="mx-auto w-full max-w-4xl px-4 py-6 md:px-8">
@@ -155,35 +159,59 @@ export default function SeriesDetailPage() {
 
       {playingEp !== null && src !== null ? (
         <div className="mb-6 space-y-4">
-          {(showVlcButton || failed) && (
-            <ExternalPlayer
-              streamUrl={src}
-              label={
-                failed
-                  ? 'Ça ne marche pas ici ? Ouvrir dans VLC'
-                  : `Lire S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`
-              }
-            />
+          {plan === 'vlc-only' ? (
+            <div className="rounded-2xl bg-ink-800 p-6 text-center">
+              <p className="text-sm text-fg">
+                Cet épisode est en {playingEp.containerExtension?.toUpperCase() ?? 'un format non lisible'} — un
+                iPhone ou iPad ne le décode pas dans le navigateur.
+              </p>
+              <p className="mt-1.5 text-xs text-fg-muted">
+                Allume la passerelle pour le lire ici, ou ouvre-le dans VLC (lecture native).
+              </p>
+              <ExternalPlayer
+                className="mt-4"
+                streamUrl={src}
+                label={`Ouvrir S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`}
+              />
+            </div>
+          ) : plan === 'checking' ? (
+            <div className="flex aspect-video items-center justify-center rounded-2xl bg-black">
+              <span className="h-8 w-8 animate-spin rounded-full border-2 border-ink-500 border-t-accent" />
+            </div>
+          ) : (
+            <>
+              {(showVlcButton || failed) && (
+                <ExternalPlayer
+                  streamUrl={src}
+                  label={
+                    failed
+                      ? 'Ça ne marche pas ici ? Ouvrir dans VLC'
+                      : `Lire S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`
+                  }
+                />
+              )}
+              <VideoPlayer
+                src={src}
+                transcode={plan === 'gateway'}
+                startAt={startAt}
+                duration={playingEp.durationSecs}
+                poster={posterUrl}
+                onProgress={(pos, dur) =>
+                  saveProgress({
+                    type: 'episode',
+                    itemId: playingEp.id,
+                    seriesId,
+                    positionSec: pos,
+                    durationSec: dur,
+                    label: `${series?.name ?? 'Série'} · S${playingEp.seasonNumber}E${playingEp.episodeNumber}`,
+                    posterUrl,
+                  })
+                }
+                onEnded={() => void markFinished('episode', playingEp.id)}
+                onError={() => setFailed(true)}
+              />
+            </>
           )}
-          <VideoPlayer
-            src={src}
-            startAt={startAt}
-            duration={playingEp.durationSecs}
-            poster={posterUrl}
-            onProgress={(pos, dur) =>
-              saveProgress({
-                type: 'episode',
-                itemId: playingEp.id,
-                seriesId,
-                positionSec: pos,
-                durationSec: dur,
-                label: `${series?.name ?? 'Série'} · S${playingEp.seasonNumber}E${playingEp.episodeNumber}`,
-                posterUrl,
-              })
-            }
-            onEnded={() => void markFinished('episode', playingEp.id)}
-            onError={() => setFailed(true)}
-          />
           <p className="mt-2 text-sm text-fg-muted">
             S{playingEp.seasonNumber}E{playingEp.episodeNumber} · {playingEp.title}
           </p>

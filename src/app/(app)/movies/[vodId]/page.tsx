@@ -16,6 +16,7 @@ import { progressRatio, shouldOfferResume } from '@/services/player/resumePlayba
 import { tmdbBackdrop, tmdbPoster } from '@/services/tmdb/tmdbImage';
 import * as xtreamApi from '@/services/xtream/xtreamApi';
 import { buildVodStreamUrl } from '@/services/xtream/xtreamUrls';
+import { usePlaybackPlan } from '@/hooks/usePlaybackPlan';
 import { useTmdbMetadata } from '@/hooks/useTmdbMetadata';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
@@ -95,6 +96,10 @@ export default function MovieDetailPage() {
     [credentials, movie],
   );
 
+  // Plan de lecture adaptatif : MP4 -> direct ; MKV -> passerelle si joignable,
+  // sinon VLC. Sonde la passerelle une seule fois (cache), aucune connexion Xtream.
+  const plan = usePlaybackPlan(movie?.containerExtension ?? null);
+
   // Duree de repli (Xtream puis TMDB) quand le player n'expose pas de duree fiable.
   const fallbackDuration = resolveDuration({
     xtreamSeconds: xtreamDurationSecs,
@@ -137,29 +142,49 @@ export default function MovieDetailPage() {
 
       {playing && src !== null && movie !== undefined ? (
         <div className="space-y-3">
-          <VideoPlayer
-            src={src}
-            startAt={startAt}
-            duration={fallbackDuration}
-            poster={backdropUrl ?? posterUrl}
-            onProgress={(pos, dur) =>
-              saveProgress({
-                type: 'vod',
-                itemId: vodId,
-                positionSec: pos,
-                durationSec: dur,
-                label: movie.name,
-                posterUrl,
-              })
-            }
-            onEnded={() => void markFinished('vod', vodId)}
-            onError={() => setFailed(true)}
-          />
-          {(showVlcButton || failed) && (
-            <ExternalPlayer
-              streamUrl={src}
-              label={failed ? 'Ça ne marche pas ici ? Ouvrir dans VLC' : 'Lire dans VLC'}
-            />
+          {plan === 'vlc-only' ? (
+            <div className="rounded-2xl bg-ink-800 p-6 text-center">
+              <p className="text-sm text-fg">
+                Ce film est en {movie.containerExtension?.toUpperCase() ?? 'un format non lisible'} — un iPhone
+                ou iPad ne le décode pas dans le navigateur.
+              </p>
+              <p className="mt-1.5 text-xs text-fg-muted">
+                Allume la passerelle pour le lire ici, ou ouvre-le dans VLC (lecture native).
+              </p>
+              <ExternalPlayer className="mt-4" streamUrl={src} label="Ouvrir dans VLC" />
+            </div>
+          ) : plan === 'checking' ? (
+            <div className="flex aspect-video items-center justify-center rounded-2xl bg-black">
+              <span className="h-8 w-8 animate-spin rounded-full border-2 border-ink-500 border-t-accent" />
+            </div>
+          ) : (
+            <>
+              <VideoPlayer
+                src={src}
+                transcode={plan === 'gateway'}
+                startAt={startAt}
+                duration={fallbackDuration}
+                poster={backdropUrl ?? posterUrl}
+                onProgress={(pos, dur) =>
+                  saveProgress({
+                    type: 'vod',
+                    itemId: vodId,
+                    positionSec: pos,
+                    durationSec: dur,
+                    label: movie.name,
+                    posterUrl,
+                  })
+                }
+                onEnded={() => void markFinished('vod', vodId)}
+                onError={() => setFailed(true)}
+              />
+              {(showVlcButton || failed) && (
+                <ExternalPlayer
+                  streamUrl={src}
+                  label={failed ? 'Ça ne marche pas ici ? Ouvrir dans VLC' : 'Lire dans VLC'}
+                />
+              )}
+            </>
           )}
         </div>
       ) : (

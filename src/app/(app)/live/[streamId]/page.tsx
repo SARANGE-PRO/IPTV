@@ -110,7 +110,7 @@ export default function LiveWatchPage() {
       ) : (
         src !== null && (
           <div className="space-y-4">
-            <VideoPlayer src={src} live onError={() => setFailed(true)} />
+            <VideoPlayer src={src} live transcode={liveExt === 'ts'} onError={() => setFailed(true)} />
             <NowPlaying credentials={credentials} streamId={streamId} />
             {versions.length > 1 && (
               <div>

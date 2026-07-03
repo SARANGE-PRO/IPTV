@@ -25,15 +25,18 @@ export interface VideoPlayerProps {
   onEnded?: () => void;
   /** Appele quand la lecture echoue (permet de proposer un repli VLC). */
   onError?: () => void;
+  /**
+   * Route le flux via la passerelle (transcodage) et autorise les conteneurs
+   * non-natifs (MKV/AVI). Decide par la page appelante selon la sante de la
+   * passerelle. Defaut false = lecture directe (MP4/HLS natif Safari).
+   */
+  transcode?: boolean;
   className?: string;
 }
 
 type PlayerStatus = 'loading' | 'ready' | 'error';
 
 const PROGRESS_INTERVAL_MS = 4000;
-
-/** Si la passerelle transcode (proxy maison + ffmpeg), on ne bloque plus les MKV. */
-const TRANSCODE_GATEWAY = process.env.NEXT_PUBLIC_MEDIA_GATEWAY_TRANSCODE === '1';
 
 /** Conteneurs qu'aucun navigateur ne decode nativement (transcodage requis). */
 const UNSUPPORTED_CONTAINER = /^(mkv|avi|wmv|flv|mpg|mpeg|vob|divx|m2ts|ts)$/i;
@@ -54,6 +57,7 @@ export function VideoPlayer({
   onProgress,
   onEnded,
   onError,
+  transcode = false,
   className,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -63,7 +67,9 @@ export function VideoPlayer({
   const [attempt, setAttempt] = useState(0);
   const [limitedSeek, setLimitedSeek] = useState(false);
   const [pipSupported, setPipSupported] = useState(false);
-  const streamUrl = secureMediaUrl(src);
+  // Transcodage -> passerelle (elle rend le MKV lisible) ; sinon direct (le MP4
+  // et le HLS natif ne doivent pas dependre d'une passerelle eventuellement morte).
+  const streamUrl = secureMediaUrl(src, { gateway: transcode });
   const posterUrl = secureImageSrc(poster);
 
   const onProgressRef = useRef(onProgress);
@@ -87,13 +93,23 @@ export function VideoPlayer({
     let cancelled = false;
     let networkRecoveries = 0;
     let mediaRecoveries = 0;
+    let loadTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     setStatus('loading');
     setMessage(null);
     setLimitedSeek(false);
     resumedRef.current = false;
 
+    const clearLoadTimer = () => {
+      if (loadTimer !== null) {
+        clearTimeout(loadTimer);
+        loadTimer = null;
+      }
+    };
+
     const fail = (msg: string) => {
+      clearLoadTimer();
       if (!cancelled) {
         setStatus('error');
         setMessage(msg);
@@ -109,7 +125,7 @@ export function VideoPlayer({
     // Garde conteneur : inutile de tenter la lecture d'un format que le
     // navigateur ne decode pas — message clair immediat (pas un faux "erreur reseau").
     const badContainer = unsupportedContainer(src);
-    if (badContainer !== null && !live && !TRANSCODE_GATEWAY) {
+    if (badContainer !== null && !live && !transcode) {
       fail(
         `Format ${badContainer} non lisible dans un navigateur (transcodage requis). ` +
           'Les films .mp4 et le Live se lisent normalement.',
@@ -148,6 +164,7 @@ export function VideoPlayer({
     const handleLoadedMetadata = () => evaluateSeek();
     const handleReady = () => {
       if (cancelled) return;
+      clearLoadTimer();
       setStatus('ready');
       evaluateSeek();
     };
@@ -209,13 +226,21 @@ export function VideoPlayer({
             if (!data.fatal) return;
             if (data.type === HlsCtor.ErrorTypes.NETWORK_ERROR && networkRecoveries < 2) {
               networkRecoveries += 1;
-              hls.startLoad();
+              // Recharge espacee : un pic reseau temporaire ne doit pas boucler
+              // en rafale (backoff simple, annule au cleanup).
+              retryTimer = setTimeout(() => {
+                if (!cancelled) hls.startLoad();
+              }, 600 * networkRecoveries);
               return;
             }
             if (data.type === HlsCtor.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 1) {
               mediaRecoveries += 1;
               hls.recoverMediaError();
               return;
+            }
+            // Log diagnostic sans URL (jamais exposer le flux).
+            if (typeof console !== 'undefined') {
+              console.warn('[VideoPlayer] HLS fatal', { type: data.type, details: data.details });
             }
             fail('Erreur HLS fatale. Verifiez HTTPS, CORS et la disponibilite du flux.');
           });
@@ -230,10 +255,23 @@ export function VideoPlayer({
         // Autoplay bloque : l'utilisateur lancera la lecture manuellement.
       });
     };
+
+    // Filet de securite : un flux mort peut n'emettre ni 'canplay' ni 'error'
+    // et laisser le spinner tourner indefiniment. On borne l'attente.
+    loadTimer = setTimeout(() => {
+      loadTimer = null;
+      fail(
+        liveRef.current
+          ? 'Le flux Live ne demarre pas (serveur lent, hors service ou limite de connexions). Reessaie ou ouvre dans VLC.'
+          : 'La lecture ne demarre pas (serveur lent ou flux indisponible). Reessaie ou ouvre dans VLC.',
+      );
+    }, liveRef.current ? 22_000 : 40_000);
     void setup();
 
     return () => {
       cancelled = true;
+      clearLoadTimer();
+      if (retryTimer !== null) clearTimeout(retryTimer);
       sendProgress(true); // flush du timestamp a la sortie
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       video.removeEventListener('canplay', handleReady);
