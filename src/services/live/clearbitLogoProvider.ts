@@ -1,9 +1,16 @@
 /**
  * Fallback logo Clearbit — CIBLE et maintenable : uniquement pour les grandes
- * chaines FR dont le domaine est connu. Aucune recherche automatique hasardeuse.
- * C'est une simple URL d'image ; si Clearbit est indisponible, le <img> tombe
- * en erreur et le monogramme prend le relais (l'app n'en depend jamais).
+ * chaines FR dont le domaine est connu.
+ *
+ * DESACTIVE PAR DEFAUT : `logo.clearbit.com` est massivement bloque par les
+ * bloqueurs de pub/traqueurs (uBlock, Brave, DNS filtrant...) -> les requetes
+ * echouent en `ERR_BLOCKED_BY_CLIENT`, ce qui pollue la console et gaspille des
+ * requetes pour rien. Le monogramme premium reste le fallback fiable. La carte
+ * de domaines est conservee pour un rebranchement futur (mettre CLEARBIT_ENABLED
+ * a true) ou une reutilisation par une autre source.
  */
+
+const CLEARBIT_ENABLED = false;
 
 // Cle canonique (voir channelNormalizer.canonicalChannelKey) -> domaine fiable.
 const DOMAINS: Record<string, string> = {
@@ -46,8 +53,9 @@ function baseKey(key: string): string {
   return key.replace(/\s+\d+$/, '').trim();
 }
 
-/** URL de logo Clearbit si le domaine de la chaine est connu, sinon null. */
+/** URL de logo Clearbit si active ET domaine connu, sinon null (defaut : null). */
 export function clearbitLogo(canonicalKey: string): string | null {
+  if (!CLEARBIT_ENABLED) return null;
   const domain = DOMAINS[canonicalKey] ?? DOMAINS[baseKey(canonicalKey)];
   return domain !== undefined ? `https://logo.clearbit.com/${domain}` : null;
 }
