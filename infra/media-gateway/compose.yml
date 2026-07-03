@@ -1,3 +1,9 @@
+# Passerelle media auto-hebergee (maison) : proxy + transcodage, exposee en
+# HTTPS par un Cloudflare Tunnel (aucun port a ouvrir sur ta box).
+#
+#   1. cp .env.example .env  puis renseigne UPSTREAM_ORIGIN et TUNNEL_TOKEN
+#   2. docker compose up -d --build
+#
 services:
   gateway:
     build: .
@@ -5,27 +11,21 @@ services:
     environment:
       UPSTREAM_ORIGIN: ${UPSTREAM_ORIGIN}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
-      PUBLIC_ORIGIN: https://${MEDIA_DOMAIN}
+      TRANSCODE: ${TRANSCODE:-1}
+      VIDEO_CODEC: ${VIDEO_CODEC:-copy}
+      UPSTREAM_USER_AGENT: ${UPSTREAM_USER_AGENT:-}
     networks: [media]
 
-  caddy:
-    image: caddy:2-alpine
+  # Tunnel Cloudflare : route ton hostname public -> http://gateway:8080.
+  # Cree le tunnel dans le dashboard Cloudflare (Zero Trust > Networks >
+  # Tunnels), colle le token dans .env. Le service sortant utilise l'IP de
+  # cette machine (residentielle) -> le CDN renvoie 206 au lieu de 456.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
     restart: unless-stopped
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
     depends_on: [gateway]
-    environment:
-      MEDIA_DOMAIN: ${MEDIA_DOMAIN}
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
     networks: [media]
 
 networks:
   media:
-
-volumes:
-  caddy_data:
-  caddy_config:

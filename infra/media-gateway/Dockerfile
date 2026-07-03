@@ -1,5 +1,8 @@
 FROM node:22-alpine
 
+# ffmpeg pour le remux/transcodage a la volee (MKV/AVI/HEVC -> fMP4 lisible).
+RUN apk add --no-cache ffmpeg
+
 WORKDIR /app
 COPY server.mjs ./server.mjs
 

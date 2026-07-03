@@ -26,6 +26,9 @@ type PlayerStatus = 'loading' | 'ready' | 'error';
 
 const PROGRESS_INTERVAL_MS = 4000;
 
+/** Si la passerelle transcode (proxy maison + ffmpeg), on ne bloque plus les MKV. */
+const TRANSCODE_GATEWAY = process.env.NEXT_PUBLIC_MEDIA_GATEWAY_TRANSCODE === '1';
+
 /** Conteneurs qu'aucun navigateur ne decode nativement (transcodage requis). */
 const UNSUPPORTED_CONTAINER = /^(mkv|avi|wmv|flv|mpg|mpeg|vob|divx|m2ts|ts)$/i;
 
@@ -88,7 +91,7 @@ export function VideoPlayer({
     // Garde conteneur : inutile de tenter la lecture d'un format que le
     // navigateur ne decode pas — message clair immediat (pas un faux "erreur reseau").
     const badContainer = unsupportedContainer(src);
-    if (badContainer !== null && !live) {
+    if (badContainer !== null && !live && !TRANSCODE_GATEWAY) {
       fail(
         `Format ${badContainer} non lisible dans un navigateur (transcodage requis). ` +
           'Les films .mp4 et le Live se lisent normalement.',
