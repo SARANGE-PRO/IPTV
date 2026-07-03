@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Monogram } from '@/components/shared/Monogram';
 import { cn } from '@/lib/cn';
-import { secureUrl } from '@/utils/secureUrl';
+import { secureImageSrc } from '@/utils/secureUrl';
 
 /**
  * Image lazy avec fallback premium (monogramme). Les posters IPTV/TMDB sont
@@ -19,7 +19,7 @@ export function PosterImage({
   alt: string;
   className?: string;
 }) {
-  const safeSrc = secureUrl(src);
+  const safeSrc = secureImageSrc(src);
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const show = safeSrc !== null && safeSrc !== failedSrc;
 

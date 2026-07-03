@@ -5,7 +5,7 @@ import { Monogram } from '@/components/shared/Monogram';
 import { resolveChannelLogo } from '@/services/logos/channelLogoProvider';
 import { cn } from '@/lib/cn';
 import type { LiveChannel } from '@/types/models';
-import { secureUrl } from '@/utils/secureUrl';
+import { secureImageSrc } from '@/utils/secureUrl';
 
 /** Logo de chaine : source Xtream si dispo, sinon monogramme premium. */
 export function ChannelLogo({
@@ -16,7 +16,7 @@ export function ChannelLogo({
   className?: string;
 }) {
   const { url } = resolveChannelLogo(channel);
-  const safeUrl = secureUrl(url);
+  const safeUrl = secureImageSrc(url);
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const show = safeUrl !== null && safeUrl !== failedUrl;
 

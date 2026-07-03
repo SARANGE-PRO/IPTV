@@ -4,7 +4,7 @@ import type Hls from 'hls.js';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/cn';
-import { secureUrl } from '@/utils/secureUrl';
+import { secureImageSrc, secureMediaUrl } from '@/utils/secureUrl';
 
 /**
  * Lecteur video isole. HLS natif (Safari iOS/iPadOS) prioritaire ; hls.js
@@ -40,8 +40,8 @@ export function VideoPlayer({
   const [status, setStatus] = useState<PlayerStatus>('loading');
   const [message, setMessage] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const streamUrl = secureUrl(src);
-  const posterUrl = secureUrl(poster);
+  const streamUrl = secureMediaUrl(src);
+  const posterUrl = secureImageSrc(poster);
 
   const onProgressRef = useRef(onProgress);
   onProgressRef.current = onProgress;
