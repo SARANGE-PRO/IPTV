@@ -16,6 +16,10 @@ REM     Mets libx264 si tu veux la compat Chrome/Firefox sur du HEVC (CPU +). -
 set "VIDEO_CODEC=copy"
 set "TRANSCODE=1"
 
+REM Chemin ffmpeg installe via winget (Gyan.FFmpeg). Si tu mets a jour ffmpeg,
+REM ajuste le numero de version dans le chemin, ou laisse vide si ffmpeg est sur le PATH.
+set "FFMPEG_PATH=C:\Users\anged\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.2-full_build\bin\ffmpeg.exe"
+
 cd /d "%~dp0"
 echo.
 echo  Passerelle sur http://localhost:%PORT%   (Ctrl+C pour arreter)
