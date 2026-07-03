@@ -277,20 +277,22 @@ export default function LivePage() {
         }
         return;
       }
-      // Favoris : depuis le store (petit ensemble).
+      // Favoris : depuis le store (petit ensemble). PAS de filtre blacklist —
+      // un favori explicite prime sur le masquage de categorie (regle unifiee
+      // avec la page Favoris et les rails d'accueil qui ne filtrent pas non plus).
       if (filter === 'favorites') {
-        const res = orderChannels((await catalogRepository.getLiveChannelsByIds([...favLiveIds])).filter(notHidden));
+        const res = orderChannels(await catalogRepository.getLiveChannelsByIds([...favLiveIds]));
         if (active) {
           setPool(res);
           setCount(res.length);
         }
         return;
       }
-      // Recents : ordre de visionnage conserve.
+      // Recents : ordre de visionnage conserve (idem, pas de filtre blacklist).
       if (filter === 'recent') {
         const ids = recentChannels.map((e) => e.itemId);
         const byId = new Map((await catalogRepository.getLiveChannelsByIds(ids)).map((c) => [c.id, c]));
-        const res = ids.map((id) => byId.get(id)).filter((c): c is LiveChannel => c !== undefined).filter(notHidden);
+        const res = ids.map((id) => byId.get(id)).filter((c): c is LiveChannel => c !== undefined);
         if (active) {
           setPool(res);
           setCount(res.length);
@@ -409,7 +411,7 @@ export default function LivePage() {
 
       {/* Filtres rapides — entree principale, faciles a toucher sur iPhone.
           Colles en haut (sticky) en verre depoli au scroll. */}
-      <HScroll className="glass sticky top-0 z-30 -mx-4 mt-3 flex gap-2 px-4 py-2 [scrollbar-width:none] md:-mx-8 md:px-8">
+      <HScroll className="glass sticky top-safe z-30 -mx-4 mt-3 flex gap-2 px-4 py-2 [scrollbar-width:none] md:-mx-8 md:px-8">
         {FILTERS.map((f) => (
           <button
             key={f.id}

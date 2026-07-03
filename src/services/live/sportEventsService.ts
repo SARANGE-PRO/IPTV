@@ -1,6 +1,7 @@
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import * as settingsRepository from '@/db/repositories/settingsRepository';
 import { getChannelEpg } from '@/services/epg/epgService';
+import type { EpgProgramme } from '@/types/epg';
 import type { XtreamCredentials } from '@/types/xtream';
 
 /**
@@ -39,6 +40,13 @@ const SPORT_CHANNEL_HINTS = [
   'l equipe', 'lequipe', 'ligue 1', 'dazn', 'football', 'foot', 'ares', 'ufc',
   'combat', 'fight', 'sport',
 ];
+// Chaines de tete pour l'accueil : elles diffusent le plus de vrais matchs FR.
+// On les scanne EN PRIORITE avant le plafond MAX_CHANNELS (sinon des chaines
+// sport secondaires pouvaient rafler les 8 places et vider le rail).
+const STRONG_CHANNEL_HINTS = [
+  'bein', 'rmc sport', 'canal+ sport', 'canal plus sport', 'canal sport', 'dazn',
+  'l equipe', 'lequipe', 'ligue 1',
+];
 
 // Competitions foot explicites (signal fort d'un VRAI match). Volontairement
 // SANS 'foot'/'football' seuls : trop faibles (matchent les plateaux/talk-shows
@@ -64,6 +72,8 @@ const MMA_KEYWORDS = [
 const GENERIC_SPORT_KEYWORDS = [
   'tennis', 'roland garros', 'wimbledon', 'formule 1', 'grand prix', 'nba',
   'rugby', 'top 14', 'boxe', 'basket', 'handball', 'jeux olympiques',
+  'cyclisme', 'tour de france', 'athletisme', 'natation', 'ski', 'motogp',
+  'moto gp', 'nfl', 'baseball', 'hockey', 'olympique', 'volley',
 ];
 const PRIORITY_KEYWORDS = ['france', 'psg', 'paris sg', 'paris saint', 'ufc'];
 const MAJOR_KEYWORDS = [
@@ -99,7 +109,10 @@ interface CacheShape {
 }
 
 export async function findUpcomingSportEvents(credentials: XtreamCredentials): Promise<SportEvent[]> {
-  const cached = await settingsRepository.getSetting<CacheShape>(CACHE_KEY);
+  // Cle liee au compte : sinon un changement de serveur/utilisateur afficherait
+  // jusqu'a 30 min les evenements de l'ancien compte.
+  const cacheKey = `${CACHE_KEY}:${credentials.serverUrl}|${credentials.username}`;
+  const cached = await settingsRepository.getSetting<CacheShape>(cacheKey);
   if (cached !== undefined && Date.now() - cached.at < CACHE_TTL_MS) {
     // Re-filtre a la lecture : un evenement deja commence ne doit plus etre
     // affiche comme "a venir" (le cache vit jusqu'a 30 min).
@@ -113,15 +126,26 @@ export async function findUpcomingSportEvents(credentials: XtreamCredentials): P
       const n = norm(c.name);
       return SPORT_CHANNEL_HINTS.some((h) => n.includes(h));
     })
-    .slice(0, MAX_CHANNELS);
+    // Chaines fortes d'abord (tri stable) avant le plafond MAX_CHANNELS.
+    .map((c) => ({ c, strong: STRONG_CHANNEL_HINTS.some((h) => norm(c.name).includes(h)) }))
+    .sort((a, b) => Number(b.strong) - Number(a.strong))
+    .slice(0, MAX_CHANNELS)
+    .map((x) => x.c);
 
   const now = Date.now();
   const seen = new Set<string>();
   const events: SportEvent[] = [];
 
-  for (const channel of candidates) {
-    const programmes = await getChannelEpg(credentials, channel.id, EPG_LIMIT).catch(() => null);
-    if (programmes === null) continue;
+  // EPG des chaines candidates en PARALLELE (au lieu de 8 aller-retours en serie).
+  const epgByChannel = await Promise.all(
+    candidates.map((channel) =>
+      getChannelEpg(credentials, channel.id, EPG_LIMIT)
+        .catch(() => [] as EpgProgramme[])
+        .then((programmes) => ({ channel, programmes })),
+    ),
+  );
+
+  for (const { channel, programmes } of epgByChannel) {
     for (const p of programmes) {
       if (p.start < now || p.start > now + HORIZON_MS) continue;
       const meta = classify(p.title);
@@ -142,6 +166,6 @@ export async function findUpcomingSportEvents(credentials: XtreamCredentials): P
 
   events.sort((a, b) => a.start - b.start);
   const result = events.slice(0, MAX_EVENTS);
-  await settingsRepository.setSetting<CacheShape>(CACHE_KEY, { at: Date.now(), events: result });
+  await settingsRepository.setSetting<CacheShape>(cacheKey, { at: Date.now(), events: result });
   return result;
 }

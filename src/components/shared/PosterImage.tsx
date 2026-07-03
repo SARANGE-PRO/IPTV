@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Monogram } from '@/components/shared/Monogram';
 import { isImageBroken, markImageBroken } from '@/services/media/brokenImageMemory';
 import { cn } from '@/lib/cn';
@@ -28,12 +28,17 @@ export function PosterImage({
     .filter((value) => !isImageBroken(value));
   const [failed, setFailed] = useState<Set<string>>(() => new Set());
   const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement | null>(null);
   const safeSrc = candidates.find((candidate) => !failed.has(candidate)) ?? null;
   const show = safeSrc !== null;
 
-  // Nouvelle source -> on repart en fondu.
+  // Nouvelle source -> on repart en fondu. MAIS si l'image est deja en cache,
+  // `onLoad` peut ne jamais se declencher (complete avant l'attache du listener,
+  // ex. retour arriere / re-render) -> le poster resterait fige en opacity-0.
+  // On verifie donc `complete` a la main.
   useEffect(() => {
-    setLoaded(false);
+    const img = imgRef.current;
+    setLoaded(img !== null && img.complete && img.naturalWidth > 0);
   }, [safeSrc]);
 
   if (!show) return <Monogram name={alt} className={cn('text-lg', className)} />;
@@ -41,6 +46,7 @@ export function PosterImage({
     <div className={cn('overflow-hidden bg-ink-800', className)}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
+        ref={imgRef}
         src={safeSrc ?? undefined}
         alt={alt}
         loading="lazy"

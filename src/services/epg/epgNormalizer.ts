@@ -8,11 +8,21 @@ const BASE64 = /^[A-Za-z0-9+/\r\n]+={0,2}$/;
 /** Decode un champ base64 UTF-8 ; renvoie l'entree telle quelle si ce n'en est pas. */
 function decodeField(input: string | undefined): string {
   if (input === undefined || input === '') return '';
-  if (!BASE64.test(input.trim())) return input;
+  const trimmed = input.trim();
+  // Le base64 a une longueur multiple de 4 (une fois les espaces retires) : ce
+  // pre-filtre ecarte deja beaucoup de faux positifs.
+  const compact = trimmed.replace(/\s/g, '');
+  if (!BASE64.test(trimmed) || compact.length % 4 !== 0) return input;
   try {
-    const binary = atob(input.replace(/\s/g, ''));
+    const binary = atob(compact);
     const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
-    return new TextDecoder('utf-8').decode(bytes).trim();
+    const decoded = new TextDecoder('utf-8').decode(bytes).trim();
+    // Un titre plain court (News/Foot/Golf/Judo) est alphanumerique et parfois
+    // multiple de 4 -> il passe le test base64 par hasard. Si le decodage produit
+    // un caractere de remplacement (octets non-UTF-8) ou du vide, ce n'etait PAS
+    // du base64 : on garde le titre original.
+    if (decoded === '' || decoded.includes('�')) return input;
+    return decoded;
   } catch {
     return input;
   }

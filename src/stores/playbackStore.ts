@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import * as playbackRepository from '@/db/repositories/playbackRepository';
+import { FINISHED_RATIO } from '@/services/player/resumePlaybackService';
 import type { MediaType, PlaybackEntry } from '@/types/models';
 
 /**
@@ -8,7 +9,8 @@ import type { MediaType, PlaybackEntry } from '@/types/models';
  */
 
 const WRITE_INTERVAL_MS = 4000;
-const FINISH_RATIO = 0.92;
+/** Borne la Map de throttle sur une longue session (1 entree par item lu). */
+const MAX_THROTTLE_KEYS = 500;
 const lastWriteByKey = new Map<string, number>();
 
 export interface SaveProgressInput {
@@ -49,11 +51,12 @@ export const usePlaybackStore = create<PlaybackState>()((set, get) => ({
     const now = Date.now();
     const last = lastWriteByKey.get(key) ?? 0;
     if (!(opts?.force ?? false) && now - last < WRITE_INTERVAL_MS) return;
+    if (lastWriteByKey.size > MAX_THROTTLE_KEYS) lastWriteByKey.clear();
     lastWriteByKey.set(key, now);
     const finished =
       input.durationSec !== null &&
       input.durationSec > 0 &&
-      input.positionSec / input.durationSec >= FINISH_RATIO;
+      input.positionSec / input.durationSec >= FINISHED_RATIO;
     void playbackRepository.upsertProgress({
       type: input.type,
       itemId: input.itemId,

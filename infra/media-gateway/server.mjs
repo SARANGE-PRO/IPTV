@@ -330,6 +330,12 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'HEAD' || response.body === null) return void res.writeHead(response.status).end();
 
     if (isPlaylist) {
+      // Pre-check du header AVANT de bufferiser : un upstream mentant/omettant
+      // content-length ne pourra pas nous faire lire une playlist non bornee.
+      const declaredLen = Number(response.headers.get('content-length'));
+      if (Number.isFinite(declaredLen) && declaredLen > MAX_PLAYLIST_BYTES) {
+        throw new Error('Playlist trop volumineuse.');
+      }
       const body = await response.text();
       if (Buffer.byteLength(body) > MAX_PLAYLIST_BYTES) throw new Error('Playlist trop volumineuse.');
       res.removeHeader('content-length');

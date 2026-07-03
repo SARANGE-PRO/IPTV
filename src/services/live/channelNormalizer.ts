@@ -49,11 +49,17 @@ export function detectQuality(rawName: string): DetectedQuality {
 }
 
 // Tags a retirer du nom d'affichage (whole-word, insensible casse).
+// NB : 'multi'/'audio' retires — ce sont de vrais mots qui amputaient des noms
+// legitimes ("... Audio", "... Multi").
 const STRIP_WORDS =
-  /\b(4k|uhd|fhd|hd|sd|hevc|h\.?265|h\.?264|x265|x264|raw|vip|backup|bk|1080p?|720p?|2160p?|3840p?|60fps|multi|dolby|audio)\b/gi;
+  /\b(4k|uhd|fhd|hd|sd|hevc|h\.?265|h\.?264|x265|x264|raw|vip|backup|bk|1080p?|720p?|2160p?|3840p?|60fps|dolby)\b/gi;
 
-// Prefixe pays/categorie : "FR| ", "FR - ", "FHD| ", "4K| ", "US:" ...
-const PREFIX = /^\s*[A-Za-z0-9]{2,5}\s*[|:\-–]\s*/;
+// Prefixe pays/langue/qualite UNIQUEMENT (allowlist) : "FR| ", "FR - ", "US:",
+// "FHD| ", "4K| "... Un `[A-Za-z0-9]{2,5}` generique amputait de vraies marques
+// ("beIN - Sports" -> "Sports", "M6 - Music" -> "Music") et collait des cles de
+// regroupement distinctes -> chaines fusionnees a tort.
+const PREFIX =
+  /^\s*\|?\s*(?:fr|be|ch|ca|lu|qc|uk|us|usa|en|es|it|de|at|pt|br|nl|pl|ar|ara|ma|tn|dz|eg|sa|qa|ae|tr|ru|af|afr|eu|int|multi|vf|vo|vost|hd|fhd|uhd|4k|sd|hevc|h265|raw|vip)\s*[|:\-–]\s*/i;
 
 /** Nom d'affichage propre d'une chaine (garde la casse, retire tags/prefixe). */
 export function cleanChannelDisplay(rawName: string): string {

@@ -57,6 +57,11 @@
   .pb-safe {
     padding-bottom: env(safe-area-inset-bottom);
   }
+  /* Element `sticky` colle SOUS l'encoche/barre de statut (mode black-translucent
+     + viewport-fit=cover) : sinon le bord haut passe sous l'horloge une fois scrolle. */
+  .top-safe {
+    top: env(safe-area-inset-top);
+  }
 }
 
 /* --- Splash d'intro ZiBTV (une fois par session, ~3s) --- */

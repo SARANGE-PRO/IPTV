@@ -30,24 +30,30 @@ async function replaceAll<T>(table: Table<T, string>, rows: T[]): Promise<void> 
 const REPLACE_CHUNK = 2000;
 
 /**
- * Remplace une table en NORMALISANT par lots : on ne materialise jamais tout le
- * tableau normalise en plus du JSON brut (le pic memoire ~double sinon, risque
- * d'OOM sur iOS avec 30-50k items). Reste atomique (clear + bulkPut dans une
- * seule transaction). Retourne le nombre de lignes ecrites.
- * NB : `source` (JSON brut) reste en memoire pendant l'operation — reduire
- * davantage necessiterait un fetch par categorie (`category_id`), differe.
+ * Remplace une SECTION entiere (categories + items) de facon ATOMIQUE et par
+ * LOTS, dans une seule transaction couvrant les deux tables :
+ *  - atomicite : jamais de nouvelles categories avec d'anciens/zero items (ou
+ *    l'inverse) si l'onglet ferme en cours de sync (invariant de coherence) ;
+ *  - memoire bornee : on ne materialise jamais tout le tableau d'items normalise
+ *    en plus du JSON brut (pic ~double sinon -> risque d'OOM iOS sur 30-50k items).
+ * Retourne le nombre d'items ecrits. `source` (JSON brut) reste en memoire le
+ * temps de l'operation — reduire davantage exigerait un fetch par categorie, differe.
  */
-async function replaceAllMapped<TIn, TOut>(
-  table: Table<TOut, string>,
+async function replaceCatalogTx<TIn, TOut>(
+  catTable: Table<Category, string>,
+  categories: Category[],
+  itemTable: Table<TOut, string>,
   source: TIn[],
   map: (row: TIn) => TOut,
 ): Promise<number> {
   let count = 0;
-  await db.transaction('rw', table, async () => {
-    await table.clear();
+  await db.transaction('rw', catTable, itemTable, async () => {
+    await catTable.clear();
+    await catTable.bulkPut(categories);
+    await itemTable.clear();
     for (let i = 0; i < source.length; i += REPLACE_CHUNK) {
       const chunk = source.slice(i, i + REPLACE_CHUNK).map(map);
-      await table.bulkPut(chunk);
+      await itemTable.bulkPut(chunk);
       count += chunk.length;
     }
   });
@@ -78,9 +84,13 @@ export function replaceLiveChannels(channels: LiveChannel[]): Promise<void> {
   return replaceAll(db.xtream_live_streams, channels);
 }
 
-/** Remplacement mappe par lots (memoire bornee) — voir `replaceAllMapped`. */
-export function replaceLiveChannelsFrom<R>(rows: R[], map: (row: R) => LiveChannel): Promise<number> {
-  return replaceAllMapped(db.xtream_live_streams, rows, map);
+/** Remplace atomiquement categories + chaines Live (memoire bornee). */
+export function replaceLiveCatalog<R>(
+  categories: Category[],
+  rows: R[],
+  map: (row: R) => LiveChannel,
+): Promise<number> {
+  return replaceCatalogTx(categoryTables.live, categories, db.xtream_live_streams, rows, map);
 }
 
 /** Chaines d'une categorie, triees par ordre fournisseur (sortOrder). */
@@ -156,9 +166,13 @@ export function replaceMovies(movies: Movie[]): Promise<void> {
   return replaceAll(db.xtream_vod_streams, movies);
 }
 
-/** Remplacement mappe par lots (memoire bornee) — voir `replaceAllMapped`. */
-export function replaceMoviesFrom<R>(rows: R[], map: (row: R) => Movie): Promise<number> {
-  return replaceAllMapped(db.xtream_vod_streams, rows, map);
+/** Remplace atomiquement categories + films (memoire bornee). */
+export function replaceVodCatalog<R>(
+  categories: Category[],
+  rows: R[],
+  map: (row: R) => Movie,
+): Promise<number> {
+  return replaceCatalogTx(categoryTables.vod, categories, db.xtream_vod_streams, rows, map);
 }
 
 export function getMoviesByCategory(categoryId: string): Promise<Movie[]> {
@@ -199,9 +213,13 @@ export function replaceSeries(series: Series[]): Promise<void> {
   return replaceAll(db.xtream_series, series);
 }
 
-/** Remplacement mappe par lots (memoire bornee) — voir `replaceAllMapped`. */
-export function replaceSeriesFrom<R>(rows: R[], map: (row: R) => Series): Promise<number> {
-  return replaceAllMapped(db.xtream_series, rows, map);
+/** Remplace atomiquement categories + series (memoire bornee). */
+export function replaceSeriesCatalog<R>(
+  categories: Category[],
+  rows: R[],
+  map: (row: R) => Series,
+): Promise<number> {
+  return replaceCatalogTx(categoryTables.series, categories, db.xtream_series, rows, map);
 }
 
 export function getSeriesByCategory(categoryId: string): Promise<Series[]> {

@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
-import * as searchIndexRepository from '@/db/repositories/searchIndexRepository';
 import * as syncMetadataRepository from '@/db/repositories/syncMetadataRepository';
 import * as tmdbRepository from '@/db/repositories/tmdbRepository';
 import * as secureSessionService from '@/services/session/secureSessionService';
@@ -82,7 +81,6 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
         catalogRepository.clearCatalog(),
         syncMetadataRepository.clearSyncMetadata(),
         tmdbRepository.clearTmdbCache(),
-        searchIndexRepository.clearSearchIndex(),
       ]);
       useCatalogStore.getState().reset();
     }
@@ -100,7 +98,6 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       catalogRepository.clearCatalog(),
       tmdbRepository.clearTmdbCache(),
       syncMetadataRepository.clearSyncMetadata(),
-      searchIndexRepository.clearSearchIndex(),
     ]);
     useCatalogStore.getState().reset();
     set({ status: 'unauthenticated', credentials: null, error: null });

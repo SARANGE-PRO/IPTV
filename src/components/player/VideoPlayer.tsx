@@ -44,6 +44,30 @@ export interface VideoPlayerProps {
 
 type PlayerStatus = 'loading' | 'ready' | 'error';
 
+/** Safari (iOS surtout) n'expose PAS `pictureInPictureEnabled` : il utilise
+ * l'API webkit `webkitSetPresentationMode` (hors typings standard). */
+type WebkitVideo = HTMLVideoElement & {
+  webkitSupportsPresentationMode?: (mode: string) => boolean;
+  webkitSetPresentationMode?: (mode: 'inline' | 'picture-in-picture' | 'fullscreen') => void;
+  webkitPresentationMode?: string;
+};
+
+/** Ferme un eventuel PiP pointant sur cette video (standard ou webkit). */
+function exitPipFor(video: HTMLVideoElement): void {
+  const v = video as WebkitVideo;
+  if (typeof v.webkitSetPresentationMode === 'function' && v.webkitPresentationMode === 'picture-in-picture') {
+    try {
+      v.webkitSetPresentationMode('inline');
+    } catch {
+      // PiP webkit indisponible : rien a faire.
+    }
+    return;
+  }
+  if (typeof document !== 'undefined' && document.pictureInPictureElement === video) {
+    void document.exitPictureInPicture().catch(() => {});
+  }
+}
+
 const PROGRESS_INTERVAL_MS = 4000;
 
 /** Conteneurs qu'aucun navigateur ne decode nativement (transcodage requis). */
@@ -320,19 +344,33 @@ export function VideoPlayer({
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+      // Un zapping/changement de flux ne doit pas laisser une fenetre PiP
+      // orpheline pointant sur une <video> qu'on detruit.
+      exitPipFor(video);
       video.removeAttribute('src');
       video.load();
     };
   }, [streamUrl, attempt]);
 
   useEffect(() => {
-    setPipSupported(typeof document !== 'undefined' && document.pictureInPictureEnabled === true);
+    const v = videoRef.current as WebkitVideo | null;
+    const standard = typeof document !== 'undefined' && document.pictureInPictureEnabled === true;
+    // iOS Safari : PiP via l'API webkit (le bouton n'apparaissait jamais sur iPhone).
+    const webkit = v?.webkitSupportsPresentationMode?.('picture-in-picture') === true;
+    setPipSupported(standard || webkit);
   }, []);
 
   const togglePip = async () => {
-    const video = videoRef.current;
+    const video = videoRef.current as WebkitVideo | null;
     if (video === null) return;
     try {
+      // iOS Safari d'abord (pas d'API standard) : bascule inline <-> PiP.
+      if (typeof video.webkitSetPresentationMode === 'function' && document.pictureInPictureEnabled !== true) {
+        video.webkitSetPresentationMode(
+          video.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture',
+        );
+        return;
+      }
       if (document.pictureInPictureElement !== null) await document.exitPictureInPicture();
       else await video.requestPictureInPicture();
     } catch {

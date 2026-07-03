@@ -21,7 +21,7 @@ export function PlaybackErrorInfo({
 }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copyState, setCopyState] = useState<'idle' | 'ok' | 'manual'>('idle');
 
   const toggle = async () => {
     if (open) {
@@ -35,15 +35,43 @@ export function PlaybackErrorInfo({
     }
   };
 
+  const flashOk = () => {
+    setCopyState('ok');
+    setTimeout(() => setCopyState('idle'), 1800);
+  };
+
   const copy = async () => {
     if (text === null) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      // Clipboard indispo : le bloc reste selectionnable manuellement.
+    // 1) API moderne (HTTPS + geste utilisateur).
+    if (navigator.clipboard?.writeText !== undefined) {
+      try {
+        await navigator.clipboard.writeText(text);
+        flashOk();
+        return;
+      } catch {
+        // indispo (contexte non securise / permission) -> fallback
+      }
     }
+    // 2) Fallback legacy execCommand (vieux WebView, page http://LAN).
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (ok) {
+        flashOk();
+        return;
+      }
+    } catch {
+      // ignore -> invite a copier manuellement
+    }
+    // 3) Echec total : le bloc reste selectionnable, on l'indique.
+    setCopyState('manual');
+    setTimeout(() => setCopyState('idle'), 4000);
   };
 
   return (
@@ -74,8 +102,13 @@ export function PlaybackErrorInfo({
             disabled={text === null}
             className="mt-2 rounded-lg bg-ink-700 px-3 py-1.5 text-xs font-medium text-fg transition-colors hover:bg-ink-600 disabled:opacity-40"
           >
-            {copied ? 'Copié ✓' : 'Copier le diagnostic'}
+            {copyState === 'ok' ? 'Copié ✓' : 'Copier le diagnostic'}
           </button>
+          {copyState === 'manual' && (
+            <p className="mt-1.5 text-[11px] text-fg-faint">
+              Copie automatique indisponible — sélectionne le texte ci-dessus et copie-le manuellement.
+            </p>
+          )}
         </div>
       )}
     </div>

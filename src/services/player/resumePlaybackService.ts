@@ -5,7 +5,9 @@
  */
 
 const MIN_RESUME_SECONDS = 30;
-const FINISHED_RATIO = 0.95;
+/** Seuil unique "termine" (source de verite, reutilise par playbackStore) : au
+ *  dela, on marque termine et on ne propose plus la reprise. */
+export const FINISHED_RATIO = 0.92;
 
 /** Proposer "Reprendre" si la position est significative et pas quasi finie. */
 export function shouldOfferResume(positionSec: number, durationSec: number | null): boolean {
@@ -14,7 +16,7 @@ export function shouldOfferResume(positionSec: number, durationSec: number | nul
   return true;
 }
 
-/** Considere comme termine au-dela de 95 % (quand la duree est connue). */
+/** Considere comme termine au-dela du seuil (quand la duree est connue). */
 export function isFinishedByRatio(positionSec: number, durationSec: number | null): boolean {
   return durationSec !== null && durationSec > 0 && positionSec / durationSec >= FINISHED_RATIO;
 }

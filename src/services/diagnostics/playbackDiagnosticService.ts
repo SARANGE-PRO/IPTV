@@ -22,6 +22,33 @@ function detectStandalone(): boolean {
   return mm || iosStandalone;
 }
 
+/** Resume l'User-Agent en OS + navigateur (rapport "anonymise" : on evite le
+ *  fingerprint UA complet). Best-effort, suffit au diagnostic. */
+function summarizeUa(ua: string): string {
+  const os = /iphone|ipad|ipod/i.test(ua)
+    ? 'iOS'
+    : /android/i.test(ua)
+      ? 'Android'
+      : /mac os x|macintosh/i.test(ua)
+        ? 'macOS'
+        : /windows/i.test(ua)
+          ? 'Windows'
+          : /linux/i.test(ua)
+            ? 'Linux'
+            : 'inconnu';
+  const engine = /edg/i.test(ua)
+    ? 'Edge'
+    : /crios|chrome|chromium/i.test(ua)
+      ? 'Chrome'
+      : /fxios|firefox/i.test(ua)
+        ? 'Firefox'
+        : /safari/i.test(ua)
+          ? 'Safari'
+          : 'inconnu';
+  const iosMajor = ua.match(/OS (\d+)_/)?.[1];
+  return `${os}${iosMajor !== undefined ? ` ${iosMajor}` : ''} · ${engine}`;
+}
+
 function detectConnection(): string | null {
   if (typeof navigator === 'undefined') return null;
   const conn = (navigator as Navigator & { connection?: { effectiveType?: string } }).connection;
@@ -53,7 +80,7 @@ export async function buildPlaybackDiagnostic(
     content: { type: context.type, container: context.container, via: via(context) },
     failure,
     env: {
-      userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'inconnu',
+      userAgent: typeof navigator !== 'undefined' ? summarizeUa(navigator.userAgent) : 'inconnu',
       standalone: detectStandalone(),
       online: typeof navigator !== 'undefined' ? navigator.onLine : true,
       connection: detectConnection(),

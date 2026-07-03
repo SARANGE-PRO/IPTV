@@ -61,7 +61,10 @@ function pickBest(
       best = r;
     }
   }
-  return bestScore >= 30 ? best : (results[0] ?? null);
+  // Sous le seuil de confiance : AUCUN candidat credible -> null (etat degrade
+  // propre cote UI). Renvoyer results[0] affichait une affiche/synopsis sans
+  // rapport pour les titres de niche absents de TMDB.
+  return bestScore >= 30 ? best : null;
 }
 
 function mapDetail(raw: TmdbDetailRaw): TmdbMetadata {

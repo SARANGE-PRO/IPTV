@@ -125,27 +125,10 @@ export default function LiveWatchPage() {
                   {channel != null ? displayChannelName(channel.name) : 'Chaîne'}
                 </span>
               </div>
-              {/* Zapping prec/suiv en overlay (immersif). */}
-              {neighbors.previous !== null && (
-                <button
-                  type="button"
-                  aria-label="Chaîne précédente"
-                  onClick={() => neighbors.previous && router.push(`/live/${neighbors.previous.id}`)}
-                  className="glass absolute left-2 top-1/2 z-10 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full text-fg/90 transition-transform active:scale-90"
-                >
-                  <IconArrowLeft className="h-5 w-5" />
-                </button>
-              )}
-              {neighbors.next !== null && (
-                <button
-                  type="button"
-                  aria-label="Chaîne suivante"
-                  onClick={() => neighbors.next && router.push(`/live/${neighbors.next.id}`)}
-                  className="glass absolute right-2 top-1/2 z-10 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full text-fg/90 transition-transform active:scale-90"
-                >
-                  <IconArrowLeft className="h-5 w-5 rotate-180" />
-                </button>
-              )}
+              {/* NB : les fleches de zapping en overlay (top-1/2 sur les bords)
+                  ont ete retirees — elles captaient le tap "reveler les controles"
+                  du lecteur natif (zapping involontaire). Le zapping reste dispo
+                  via les boutons labellises Precedente/Suivante sous le lecteur. */}
             </div>
             <NowPlaying credentials={credentials} streamId={streamId} />
             {versions.length > 1 && (

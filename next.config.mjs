@@ -3,14 +3,23 @@ const nextConfig = {
   reactStrictMode: true,
 
   async headers() {
+    // Durcissement SANS risque fonctionnel : anti-clickjacking (frame-ancestors +
+    // X-Frame-Options), anti-sniffing, referrer minimal. On garde
+    // `upgrade-insecure-requests` (mixed-content). On n'ajoute PAS de `script-src`/
+    // `connect-src`/`media-src` restrictif : mal calibre il casserait hls.js et la
+    // passerelle media, pour un gain XSS faible (React echappe, aucun
+    // dangerouslySetInnerHTML/eval dans le code).
     return [
       {
         source: '/(.*)',
         headers: [
           {
             key: 'Content-Security-Policy',
-            value: 'upgrade-insecure-requests',
+            value: "frame-ancestors 'none'; upgrade-insecure-requests",
           },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Referrer-Policy', value: 'no-referrer' },
         ],
       },
     ];

@@ -5,23 +5,17 @@ import * as settingsRepository from '@/db/repositories/settingsRepository';
 import type { Section } from '@/types/models';
 
 /**
- * Recherche + filtres. Deux leviers distincts : le pays (temporaire,
- * priorisation) et la blacklist (masquage durable, reactivable).
- * Les defauts pays/langue sont persistes dans la table settings.
+ * Filtres : le pays (temporaire, priorisation) et la blacklist (masquage
+ * durable, reactivable). Les defauts pays/langue sont persistes dans settings.
+ * NB : la recherche a son propre debounce local (hook useDebounce par page) —
+ * l'ancien query/debouncedQuery de ce store etait mort, il a ete retire.
  */
 
-const DEBOUNCE_MS = 250;
-let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-
 interface FilterState {
-  query: string;
-  debouncedQuery: string;
   country: string;
   language: string | null;
   hidden: Record<Section, Set<string>>;
   hiddenHydrated: boolean;
-  setQuery: (q: string) => void;
-  clearQuery: () => void;
   setCountry: (country: string) => void;
   setLanguage: (language: string | null) => void;
   resetToFrance: () => void;
@@ -32,27 +26,13 @@ interface FilterState {
   hideCategory: (section: Section, categoryId: string, label: string) => Promise<void>;
   unhideCategory: (section: Section, categoryId: string) => Promise<void>;
   isHidden: (section: Section, categoryId: string) => boolean;
-  resetFilters: () => void;
 }
 
 export const useFilterStore = create<FilterState>()((set, get) => ({
-  query: '',
-  debouncedQuery: '',
   country: DEFAULT_COUNTRY,
   language: DEFAULT_LANGUAGE,
   hidden: { live: new Set<string>(), vod: new Set<string>(), series: new Set<string>() },
   hiddenHydrated: false,
-
-  setQuery: (query) => {
-    set({ query });
-    if (debounceTimer !== undefined) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => set({ debouncedQuery: query.trim() }), DEBOUNCE_MS);
-  },
-
-  clearQuery: () => {
-    if (debounceTimer !== undefined) clearTimeout(debounceTimer);
-    set({ query: '', debouncedQuery: '' });
-  },
 
   setCountry: (country) => set({ country }),
   setLanguage: (language) => set({ language }),
@@ -109,9 +89,4 @@ export const useFilterStore = create<FilterState>()((set, get) => ({
   },
 
   isHidden: (section, categoryId) => get().hidden[section].has(categoryId),
-
-  resetFilters: () => {
-    get().clearQuery();
-    set({ country: DEFAULT_COUNTRY, language: DEFAULT_LANGUAGE });
-  },
 }));

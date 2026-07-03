@@ -1,6 +1,14 @@
 # Passerelle gratuite Cloudflare
 
-## Déploiement actif (Pages Functions)
+> ⚠️ **DÉPRÉCIÉ — NON utilisé en production.** La passerelle de prod est
+> `server.mjs` (dossier `infra/media-gateway`), exposée via **Tailscale Funnel**
+> (`NEXT_PUBLIC_MEDIA_GATEWAY_URL=https://zibtv-pc…ts.net`). Ce Worker Cloudflare
+> **ne transcode pas** (pas de ffmpeg) et ses IP sont bloquées par certains CDN
+> (456) : il ne peut donc PAS lire les MKV/HEVC ni contourner le blocage d'IP. Ne
+> pas pointer `NEXT_PUBLIC_MEDIA_GATEWAY_URL` dessus. Conservé à titre de référence
+> (relais HTTPS simple pour un catalogue déjà en MP4/HLS uniquement).
+
+## Déploiement (référence historique — Pages Functions)
 
 La passerelle de ce projet est publiée sur :
 

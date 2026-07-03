@@ -44,7 +44,10 @@ export function cleanTitle(raw: string): CleanedTitle {
     const norm = normalizeToken(token);
     if (norm === '') continue;
     if (TAG_SET.has(norm)) continue;
-    if (year === null && /^(?:19|20)\d{2}$/.test(norm)) {
+    // Annee "nue" extraite SEULEMENT si ce n'est pas le 1er mot du titre : sinon
+    // "2001 : l'odyssee de l'espace" perdrait son titre et prendrait une fausse
+    // annee (le film est de 1968). Une vraie annee de sortie suit le titre.
+    if (year === null && kept.length > 0 && /^(?:19|20)\d{2}$/.test(norm)) {
       year = Number(norm);
       continue;
     }

@@ -14,6 +14,25 @@ export interface ParsedM3uCredentials {
   password: string;
 }
 
+/**
+ * Lit un parametre de query sur la chaine BRUTE (pas via URLSearchParams, qui
+ * decode `+` en espace facon x-www-form-urlencoded : un mot de passe `ab+cd`
+ * deviendrait `ab cd`). `decodeURIComponent` gere `%40`->`@` sans toucher aux `+`.
+ */
+function rawQueryParam(search: string, ...names: string[]): string | null {
+  for (const name of names) {
+    const m = search.match(new RegExp(`[?&]${name}=([^&#]*)`, 'i'));
+    if (m?.[1] !== undefined && m[1] !== '') {
+      try {
+        return decodeURIComponent(m[1]);
+      } catch {
+        return m[1];
+      }
+    }
+  }
+  return null;
+}
+
 export function parseM3uCredentials(input: string): ParsedM3uCredentials | null {
   const trimmed = input.trim();
   if (trimmed === '') return null;
@@ -29,10 +48,13 @@ export function parseM3uCredentials(input: string): ParsedM3uCredentials | null 
   }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
 
-  const username = url.searchParams.get('username');
-  const password = url.searchParams.get('password');
-  if (username === null || username === '' || password === null || password === '') return null;
+  const username = rawQueryParam(url.search, 'username', 'user');
+  const password = rawQueryParam(url.search, 'password', 'pass');
+  if (username === null || password === null) return null;
 
-  // Origine = schema + host + port eventuel, sans chemin ni query.
-  return { serverUrl: `${url.protocol}//${url.host}`, username, password };
+  // Conserve le prefixe de chemin (ex. "/xtream") en retirant seulement le
+  // point d'entree get.php/player_api.php — coherent avec la saisie manuelle
+  // (normalizeServerUrl est reapplique par authStore.login).
+  const path = url.pathname.replace(/\/(?:get\.php|player_api\.php)\/?$/i, '');
+  return { serverUrl: `${url.origin}${path}`, username, password };
 }
