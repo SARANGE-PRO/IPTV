@@ -10,6 +10,7 @@ import { cn } from '@/lib/cn';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import type { LiveChannel, Movie, Series } from '@/types/models';
+import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
 
 type Tab = 'live' | 'vod' | 'series';
 
@@ -93,7 +94,7 @@ export default function FavoritesPage() {
                 className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-ink-800"
               >
                 <ChannelLogo channel={c} className="h-10 w-10 shrink-0" />
-                <span className="min-w-0 flex-1 truncate text-sm text-fg">{c.name}</span>
+                <span className="min-w-0 flex-1 truncate text-sm text-fg">{displayChannelName(c.name)}</span>
                 <FavoriteButton type="live" itemId={c.id} />
               </Link>
             ))}
@@ -105,9 +106,9 @@ export default function FavoritesPage() {
                   <MediaCard
                     key={m.id}
                     href={`/movies/${m.id}`}
-                    title={m.name}
+                    title={displayTitle(m.name)}
                     posterUrl={m.posterUrl}
-                    subtitle={m.year !== null ? String(m.year) : null}
+                    subtitle={displayYear(m.name, m.year)?.toString() ?? null}
                     favorite={{ type: 'vod', itemId: m.id }}
                   />
                 ))
@@ -115,7 +116,7 @@ export default function FavoritesPage() {
                   <MediaCard
                     key={s.id}
                     href={`/series/${s.id}`}
-                    title={s.name}
+                    title={displayTitle(s.name)}
                     posterUrl={s.posterUrl}
                     subtitle={s.releaseDate?.slice(0, 4) ?? null}
                     favorite={{ type: 'series', itemId: s.id }}

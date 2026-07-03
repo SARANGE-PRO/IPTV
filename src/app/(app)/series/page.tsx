@@ -6,15 +6,19 @@ import * as catalogRepository from '@/db/repositories/catalogRepository';
 import * as playbackRepository from '@/db/repositories/playbackRepository';
 import { getSeriesTop10 } from '@/services/ranking/smartRankingService';
 import type { Series } from '@/types/models';
+import { displayYear } from '@/utils/displayTitle';
 
 const fetchPage = (categoryId: string, offset: number, limit: number, sort: catalogRepository.CatalogSort) =>
   catalogRepository.getSeriesPage(categoryId, offset, limit, sort);
 const searchItems = (query: string, limit: number) => catalogRepository.searchSeries(query, limit);
 const hrefFor = (s: Series) => `/series/${s.id}`;
-const subtitleFor = (s: Series) =>
-  [s.releaseDate?.slice(0, 4) ?? null, s.rating !== null ? `★ ${s.rating.toFixed(1)}` : null]
+const subtitleFor = (s: Series) => {
+  const fallback = s.releaseDate != null ? Number.parseInt(s.releaseDate.slice(0, 4), 10) : null;
+  const year = displayYear(s.name, Number.isFinite(fallback) ? fallback : null);
+  return [year !== null ? String(year) : null, s.rating !== null ? `★ ${s.rating.toFixed(1)}` : null]
     .filter((value): value is string => value !== null)
     .join(' · ');
+};
 
 const QUICK_FILTERS: QuickFilterDefinition[] = [
   { id: 'fr', label: 'FR' },

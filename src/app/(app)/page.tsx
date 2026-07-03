@@ -19,6 +19,7 @@ import * as catalogRepository from '@/db/repositories/catalogRepository';
 import * as playbackRepository from '@/db/repositories/playbackRepository';
 import { getMovieTop10 } from '@/services/ranking/smartRankingService';
 import type { LiveChannel, Movie, PlaybackEntry, Series } from '@/types/models';
+import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
 import { formatCount } from '@/utils/format';
 
 function hrefForEntry(entry: PlaybackEntry): string {
@@ -191,7 +192,7 @@ export default function HomePage() {
                 alt={entry.label ?? 'Chaîne'}
                 className="h-9 w-9 shrink-0 rounded-lg"
               />
-              <span className="min-w-0 truncate text-xs text-fg">{entry.label ?? 'Chaîne'}</span>
+              <span className="min-w-0 truncate text-xs text-fg">{displayChannelName(entry.label ?? 'Chaîne')}</span>
             </Link>
           ))}
         </Rail>
@@ -204,9 +205,9 @@ export default function HomePage() {
               key={movie.id}
               className="w-32 shrink-0"
               href={`/movies/${movie.id}`}
-              title={movie.name}
+              title={displayTitle(movie.name)}
               posterUrl={movie.posterUrl}
-              subtitle={movie.rating !== null ? `★ ${movie.rating.toFixed(1)}` : movie.year?.toString()}
+              subtitle={movie.rating !== null ? `★ ${movie.rating.toFixed(1)}` : displayYear(movie.name, movie.year)?.toString()}
               badge={`#${index + 1}`}
             />
           ))}
@@ -216,7 +217,7 @@ export default function HomePage() {
       {discovery.frenchMovies.length > 0 && (
         <Rail title="Films FR à découvrir">
           {discovery.frenchMovies.map((movie) => (
-            <MediaCard key={movie.id} className="w-32 shrink-0" href={`/movies/${movie.id}`} title={movie.name} posterUrl={movie.posterUrl} subtitle={movie.year?.toString()} />
+            <MediaCard key={movie.id} className="w-32 shrink-0" href={`/movies/${movie.id}`} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} subtitle={displayYear(movie.name, movie.year)?.toString()} />
           ))}
         </Rail>
       )}
@@ -224,7 +225,7 @@ export default function HomePage() {
       {discovery.recentMovies.length > 0 && (
         <Rail title="Films récemment ajoutés">
           {discovery.recentMovies.map((movie) => (
-            <MediaCard key={movie.id} className="w-32 shrink-0" href={`/movies/${movie.id}`} title={movie.name} posterUrl={movie.posterUrl} subtitle={movie.rating !== null ? `★ ${movie.rating.toFixed(1)}` : null} />
+            <MediaCard key={movie.id} className="w-32 shrink-0" href={`/movies/${movie.id}`} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} subtitle={movie.rating !== null ? `★ ${movie.rating.toFixed(1)}` : null} />
           ))}
         </Rail>
       )}
@@ -232,7 +233,7 @@ export default function HomePage() {
       {discovery.resumeSeries.length > 0 && (
         <Rail title="Séries à reprendre" action={<Link href="/series" className="text-xs text-fg-faint hover:text-fg">Voir les séries</Link>}>
           {discovery.resumeSeries.map((series) => (
-            <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={series.name} posterUrl={series.posterUrl} subtitle={series.releaseDate?.slice(0, 4)} />
+            <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={displayTitle(series.name)} posterUrl={series.posterUrl} subtitle={series.releaseDate?.slice(0, 4)} />
           ))}
         </Rail>
       )}
@@ -240,7 +241,7 @@ export default function HomePage() {
       {discovery.frenchSeries.length > 0 && (
         <Rail title="Séries FR">
           {discovery.frenchSeries.map((series) => (
-            <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={series.name} posterUrl={series.posterUrl} subtitle={series.rating !== null ? `★ ${series.rating.toFixed(1)}` : series.releaseDate?.slice(0, 4)} />
+            <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={displayTitle(series.name)} posterUrl={series.posterUrl} subtitle={series.rating !== null ? `★ ${series.rating.toFixed(1)}` : series.releaseDate?.slice(0, 4)} />
           ))}
         </Rail>
       )}
@@ -248,7 +249,7 @@ export default function HomePage() {
       {discovery.recentSeries.length > 0 && (
         <Rail title="Séries récemment ajoutées">
           {discovery.recentSeries.map((series) => (
-            <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={series.name} posterUrl={series.posterUrl} subtitle={series.releaseDate?.slice(0, 4)} />
+            <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={displayTitle(series.name)} posterUrl={series.posterUrl} subtitle={series.releaseDate?.slice(0, 4)} />
           ))}
         </Rail>
       )}
@@ -258,7 +259,7 @@ export default function HomePage() {
           {discovery.liveSports.map((channel) => (
             <Link key={channel.id} href={`/live/${channel.id}`} className="w-36 shrink-0 rounded-xl bg-ink-800 p-3 transition-colors hover:bg-ink-700">
               <ChannelLogo channel={channel} className="mx-auto h-16 w-16" />
-              <span className="mt-2 block truncate text-center text-xs text-fg">{channel.name}</span>
+              <span className="mt-2 block truncate text-center text-xs text-fg">{displayChannelName(channel.name)}</span>
             </Link>
           ))}
         </Rail>

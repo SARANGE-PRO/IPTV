@@ -19,6 +19,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { Movie, PlaybackEntry } from '@/types/models';
+import { displayTitle, displayYear } from '@/utils/displayTitle';
 import { formatClock } from '@/utils/format';
 
 export default function MovieDetailPage() {
@@ -116,7 +117,9 @@ export default function MovieDetailPage() {
         >
           <IconArrowLeft className="h-5 w-5" />
         </button>
-        <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg">{movie?.name ?? ''}</h1>
+        <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg">
+          {movie != null ? displayTitle(movie.name) : ''}
+        </h1>
         <FavoriteButton type="vod" itemId={vodId} />
       </div>
 
@@ -158,7 +161,9 @@ export default function MovieDetailPage() {
             <div className="min-w-0 flex-1">
               <p className="text-xs text-fg-faint">
                 {[
-                  movie.year !== null ? String(movie.year) : (tmdb?.releaseDate?.slice(0, 4) ?? null),
+                  movie.year !== null
+                    ? String(movie.year)
+                    : (tmdb?.releaseDate?.slice(0, 4) ?? displayYear(movie.name, null)?.toString() ?? null),
                   rating !== null ? `★ ${rating.toFixed(1)}` : null,
                   tmdb?.runtimeMinutes != null ? `${tmdb.runtimeMinutes} min` : null,
                   movie.containerExtension?.toUpperCase() ?? null,

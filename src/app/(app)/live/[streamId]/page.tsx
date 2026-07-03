@@ -13,6 +13,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { LiveChannel } from '@/types/models';
+import { displayChannelName } from '@/utils/displayTitle';
 
 export default function LiveWatchPage() {
   const { streamId } = useParams<{ streamId: string }>();
@@ -66,7 +67,7 @@ export default function LiveWatchPage() {
           <IconArrowLeft className="h-5 w-5" />
         </button>
         <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg">
-          {channel?.name ?? 'Chaîne'}
+          {channel != null ? displayChannelName(channel.name) : 'Chaîne'}
         </h1>
         <FavoriteButton type="live" itemId={streamId} />
       </div>
@@ -90,7 +91,9 @@ export default function LiveWatchPage() {
                 className="min-w-0 rounded-xl bg-ink-800 px-4 py-3 text-left text-xs text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg disabled:opacity-35"
               >
                 <span className="block text-[10px] uppercase tracking-wider text-fg-faint">Precedente</span>
-                <span className="mt-1 block truncate">{neighbors.previous?.name ?? 'Indisponible'}</span>
+                <span className="mt-1 block truncate">
+                  {neighbors.previous != null ? displayChannelName(neighbors.previous.name) : 'Indisponible'}
+                </span>
               </button>
               <button
                 type="button"
@@ -101,7 +104,9 @@ export default function LiveWatchPage() {
                 className="min-w-0 rounded-xl bg-ink-800 px-4 py-3 text-right text-xs text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg disabled:opacity-35"
               >
                 <span className="block text-[10px] uppercase tracking-wider text-fg-faint">Suivante</span>
-                <span className="mt-1 block truncate">{neighbors.next?.name ?? 'Indisponible'}</span>
+                <span className="mt-1 block truncate">
+                  {neighbors.next != null ? displayChannelName(neighbors.next.name) : 'Indisponible'}
+                </span>
               </button>
             </div>
             {showVlcButton && <ExternalPlayer streamUrl={src} label="Regarder dans VLC" />}

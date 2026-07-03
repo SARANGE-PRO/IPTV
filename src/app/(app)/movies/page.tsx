@@ -5,15 +5,18 @@ import type { QuickFilterDefinition, SortOption } from '@/components/shared/Medi
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import { getMovieTop10 } from '@/services/ranking/smartRankingService';
 import type { Movie } from '@/types/models';
+import { displayYear } from '@/utils/displayTitle';
 
 const fetchPage = (categoryId: string, offset: number, limit: number, sort: catalogRepository.CatalogSort) =>
   catalogRepository.getMoviesPage(categoryId, offset, limit, sort);
 const searchItems = (query: string, limit: number) => catalogRepository.searchMovies(query, limit);
 const hrefFor = (m: Movie) => `/movies/${m.id}`;
-const subtitleFor = (m: Movie) =>
-  [m.year !== null ? String(m.year) : null, m.rating !== null ? `★ ${m.rating.toFixed(1)}` : null]
+const subtitleFor = (m: Movie) => {
+  const year = displayYear(m.name, m.year);
+  return [year !== null ? String(year) : null, m.rating !== null ? `★ ${m.rating.toFixed(1)}` : null]
     .filter((value): value is string => value !== null)
     .join(' · ');
+};
 
 const QUICK_FILTERS: QuickFilterDefinition[] = [
   { id: 'fr', label: 'FR' },

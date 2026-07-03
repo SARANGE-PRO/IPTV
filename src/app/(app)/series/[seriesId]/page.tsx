@@ -21,6 +21,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { Episode, PlaybackEntry, Series, SeriesDetails } from '@/types/models';
+import { displayTitle } from '@/utils/displayTitle';
 import { formatClock } from '@/utils/format';
 
 function episodeStatus(prog: PlaybackEntry | undefined): { label: string; className: string } | null {
@@ -143,7 +144,9 @@ export default function SeriesDetailPage() {
         >
           <IconArrowLeft className="h-5 w-5" />
         </button>
-        <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg">{series?.name ?? ''}</h1>
+        <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg">
+          {series != null ? displayTitle(series.name) : ''}
+        </h1>
         <FavoriteButton type="series" itemId={seriesId} />
       </div>
 

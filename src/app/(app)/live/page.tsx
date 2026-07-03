@@ -20,6 +20,7 @@ import { usePlaybackStore } from '@/stores/playbackStore';
 import type { LiveChannel } from '@/types/models';
 import type { ChannelTheme } from '@/utils/channelTheme';
 import { compareLiveChannels, isFootballChannel, isMainFrenchChannel } from '@/utils/channelPriority';
+import { displayChannelName } from '@/utils/displayTitle';
 import { formatCount } from '@/utils/format';
 
 /**
@@ -95,7 +96,7 @@ function ChannelRow({ channel, onHide }: { channel: LiveChannel; onHide: () => v
     <div className="group flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-ink-800">
       <Link href={`/live/${channel.id}`} className="flex min-w-0 flex-1 items-center gap-3">
         <ChannelLogo channel={channel} className="h-11 w-11 shrink-0" />
-        <span className="min-w-0 flex-1 truncate text-sm text-fg">{channel.name}</span>
+        <span className="min-w-0 flex-1 truncate text-sm text-fg">{displayChannelName(channel.name)}</span>
         {channel.isFrench === 1 && (
           <span className="rounded bg-accent/15 px-1 py-0.5 text-[10px] font-semibold text-accent">FR</span>
         )}

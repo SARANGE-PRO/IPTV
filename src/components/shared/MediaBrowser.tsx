@@ -16,6 +16,7 @@ import { useCatalogStore } from '@/stores/catalogStore';
 import { useFilterStore } from '@/stores/filterStore';
 import type { BoolNum, MediaType, Section } from '@/types/models';
 import { prioritizeCategories } from '@/utils/categoryPriority';
+import { displayTitle } from '@/utils/displayTitle';
 import { formatCount } from '@/utils/format';
 
 export interface BrowserItem {
@@ -345,7 +346,7 @@ export function MediaBrowser<T extends BrowserItem>({
               <MediaCard
                 key={item.id}
                 href={hrefFor(item)}
-                title={item.name}
+                title={displayTitle(item.name)}
                 posterUrl={item.posterUrl}
                 subtitle={subtitleFor?.(item) ?? undefined}
                 favorite={{ type: favoriteType, itemId: item.id }}
