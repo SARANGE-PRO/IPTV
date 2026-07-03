@@ -6,6 +6,7 @@ import { CountrySelect } from '@/components/shared/CountrySelect';
 import { Button } from '@/components/ui/Button';
 import { IconDownload, IconRefresh, IconTrash } from '@/components/ui/icons';
 import * as hiddenCategoriesRepository from '@/db/repositories/hiddenCategoriesRepository';
+import { generateAdvancedDiagnostic } from '@/services/diagnostics/advancedPlaylistDiagnosticService';
 import { generateDiagnosticReport } from '@/services/diagnostics/catalogDiagnosticService';
 import { useAuthStore } from '@/stores/authStore';
 import { useCatalogStore } from '@/stores/catalogStore';
@@ -54,6 +55,8 @@ export default function SettingsPage() {
   const [hiddenList, setHiddenList] = useState<HiddenCategoryEntry[]>([]);
   const [diagRunning, setDiagRunning] = useState(false);
   const [diagMessage, setDiagMessage] = useState<string | null>(null);
+  const [advRunning, setAdvRunning] = useState(false);
+  const [advMessage, setAdvMessage] = useState<string | null>(null);
   const [historyCleared, setHistoryCleared] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
 
@@ -98,6 +101,29 @@ export default function SettingsPage() {
       setDiagMessage(err instanceof Error ? err.message : 'Erreur pendant le diagnostic.');
     } finally {
       setDiagRunning(false);
+    }
+  };
+
+  const handleAdvancedDiagnostic = async () => {
+    if (advRunning) return;
+    setAdvRunning(true);
+    setAdvMessage(null);
+    try {
+      const report = await generateAdvancedDiagnostic(credentials ?? undefined);
+      const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `diagnostic-avance-zibtv-${report.generatedAtLabel}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setAdvMessage(
+        `Rapport avancé téléchargé — ${report.duplicates.length} grappes de doublons, ${report.groupSuggestions.length} regroupements suggérés.`,
+      );
+    } catch (err) {
+      setAdvMessage(err instanceof Error ? err.message : 'Erreur pendant le diagnostic avancé.');
+    } finally {
+      setAdvRunning(false);
     }
   };
 
@@ -218,13 +244,18 @@ export default function SettingsPage() {
           Génère un rapport JSON sans aucune donnée sensible (ni identifiants, ni URLs, ni liens de
           flux) — export bloqué si une fuite est détectée.
         </p>
-        <div className="mt-4">
+        <div className="mt-4 flex flex-wrap gap-2">
           <Button variant="secondary" onClick={() => void handleDiagnostic()} disabled={diagRunning}>
             <IconDownload className="mr-2 h-4 w-4" />
-            {diagRunning ? 'Analyse…' : 'Générer et télécharger'}
+            {diagRunning ? 'Analyse…' : 'Diagnostic rapide'}
+          </Button>
+          <Button variant="secondary" onClick={() => void handleAdvancedDiagnostic()} disabled={advRunning}>
+            <IconDownload className="mr-2 h-4 w-4" />
+            {advRunning ? 'Analyse approfondie…' : 'Diagnostic avancé playlist'}
           </Button>
         </div>
         {diagMessage !== null && <p className="mt-3 text-xs text-fg-muted">{diagMessage}</p>}
+        {advMessage !== null && <p className="mt-1 text-xs text-fg-muted">{advMessage}</p>}
       </Card>
 
       <Card title="Historique">

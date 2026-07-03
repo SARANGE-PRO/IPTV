@@ -29,3 +29,8 @@ export function purgeTmdbOlderThan(cutoff: number): Promise<number> {
 export async function clearTmdbCache(): Promise<void> {
   await db.tmdb_cache.clear();
 }
+
+/** Nombre d'entrees TMDB reellement trouvees (proxy "TMDB operationnel"). */
+export function countTmdbFound(): Promise<number> {
+  return db.tmdb_cache.filter((e) => e.status === 'found').count();
+}

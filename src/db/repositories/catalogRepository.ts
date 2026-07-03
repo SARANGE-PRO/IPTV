@@ -202,6 +202,37 @@ export function getSeriesSample(limit: number): Promise<Series[]> {
   return db.xtream_series.limit(limit).toArray();
 }
 
+/**
+ * Parcours CURSEUR borne (memoire legere) : traite chaque ligne au fil de
+ * l'eau sans jamais materialiser tout le catalogue. Renvoie le nombre scanne.
+ */
+export async function scanMovies(cap: number, onRow: (m: Movie) => void): Promise<number> {
+  let n = 0;
+  await db.xtream_vod_streams.limit(cap).each((m) => {
+    onRow(m);
+    n += 1;
+  });
+  return n;
+}
+
+export async function scanSeries(cap: number, onRow: (s: Series) => void): Promise<number> {
+  let n = 0;
+  await db.xtream_series.limit(cap).each((s) => {
+    onRow(s);
+    n += 1;
+  });
+  return n;
+}
+
+export async function scanLiveChannels(cap: number, onRow: (c: LiveChannel) => void): Promise<number> {
+  let n = 0;
+  await db.xtream_live_streams.limit(cap).each((c) => {
+    onRow(c);
+    n += 1;
+  });
+  return n;
+}
+
 /** Nombre d'items par categorie, via un scan de l'index (sans charger les objets). */
 export async function getCategoryItemCounts(section: Section): Promise<Map<string, number>> {
   const keys =
