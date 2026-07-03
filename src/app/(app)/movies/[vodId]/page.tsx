@@ -10,8 +10,10 @@ import { Button } from '@/components/ui/Button';
 import { IconArrowLeft, IconPlay } from '@/components/ui/icons';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import * as playbackRepository from '@/db/repositories/playbackRepository';
+import { tmdbBackdrop, tmdbPoster } from '@/services/tmdb/tmdbImage';
 import * as xtreamApi from '@/services/xtream/xtreamApi';
 import { buildVodStreamUrl } from '@/services/xtream/xtreamUrls';
+import { useTmdbMetadata } from '@/hooks/useTmdbMetadata';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import type { Movie, PlaybackEntry } from '@/types/models';
@@ -60,6 +62,12 @@ export default function MovieDetailPage() {
     };
   }, [credentials, vodId]);
 
+  const tmdb = useTmdbMetadata('movie', movie?.name ?? null, movie?.year ?? null);
+  const posterUrl = tmdbPoster(tmdb?.posterPath ?? null) ?? movie?.posterUrl ?? null;
+  const backdropUrl = tmdbBackdrop(tmdb?.backdropPath ?? null);
+  const overview = tmdb?.overview ?? plot;
+  const rating = tmdb?.voteAverage ?? movie?.rating ?? null;
+
   const src = useMemo(
     () =>
       credentials !== null && movie !== null && movie !== undefined
@@ -105,7 +113,7 @@ export default function MovieDetailPage() {
         <VideoPlayer
           src={src}
           startAt={startAt}
-          poster={movie.posterUrl}
+          poster={backdropUrl ?? posterUrl}
           onProgress={(pos, dur) =>
             saveProgress({
               type: 'vod',
@@ -123,7 +131,7 @@ export default function MovieDetailPage() {
           <div className="flex animate-fade-in flex-col gap-6 sm:flex-row">
             <div className="w-40 shrink-0 sm:w-52">
               <div className="relative">
-                <PosterImage src={movie.posterUrl} alt={movie.name} className="aspect-[2/3] w-full rounded-2xl" />
+                <PosterImage src={posterUrl} alt={movie.name} className="aspect-[2/3] w-full rounded-2xl" />
                 {ratio !== null && ratio > 0 && (
                   <div className="absolute inset-x-0 bottom-0 h-1 rounded-b-2xl bg-black/50">
                     <div className="h-full bg-accent" style={{ width: `${Math.min(ratio * 100, 100)}%` }} />
@@ -134,14 +142,24 @@ export default function MovieDetailPage() {
             <div className="min-w-0 flex-1">
               <p className="text-xs text-fg-faint">
                 {[
-                  movie.year !== null ? String(movie.year) : null,
-                  movie.rating !== null ? `★ ${movie.rating.toFixed(1)}` : null,
+                  movie.year !== null ? String(movie.year) : (tmdb?.releaseDate?.slice(0, 4) ?? null),
+                  rating !== null ? `★ ${rating.toFixed(1)}` : null,
+                  tmdb?.runtimeMinutes != null ? `${tmdb.runtimeMinutes} min` : null,
                   movie.containerExtension?.toUpperCase() ?? null,
                 ]
                   .filter((v): v is string => v !== null)
                   .join(' · ')}
               </p>
-              {plot !== null && <p className="mt-3 text-sm leading-relaxed text-fg-muted">{plot}</p>}
+              {tmdb !== null && tmdb.genres.length > 0 && (
+                <p className="mt-1 text-xs text-fg-faint">{tmdb.genres.join(' · ')}</p>
+              )}
+              {overview !== null && <p className="mt-3 text-sm leading-relaxed text-fg-muted">{overview}</p>}
+              {tmdb !== null && tmdb.cast.length > 0 && (
+                <p className="mt-3 text-xs text-fg-faint">
+                  <span className="text-fg-muted">Avec </span>
+                  {tmdb.cast.slice(0, 5).map((c) => c.name).join(', ')}
+                </p>
+              )}
               <div className="mt-6 flex flex-wrap gap-3">
                 {canResume && progress !== null && (
                   <Button size="lg" onClick={() => play(progress.positionSec)}>

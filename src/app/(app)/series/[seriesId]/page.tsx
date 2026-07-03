@@ -12,7 +12,9 @@ import { cn } from '@/lib/cn';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import * as playbackRepository from '@/db/repositories/playbackRepository';
 import { getSeriesDetailsCached } from '@/services/xtream/seriesDetailsService';
+import { tmdbPoster } from '@/services/tmdb/tmdbImage';
 import { buildSeriesEpisodeUrl } from '@/services/xtream/xtreamUrls';
+import { useTmdbMetadata } from '@/hooks/useTmdbMetadata';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import type { Episode, PlaybackEntry, Series, SeriesDetails } from '@/types/models';
@@ -78,6 +80,13 @@ export default function SeriesDetailPage() {
   useEffect(() => {
     void refreshProgress();
   }, [refreshProgress, playingEp]);
+
+  const seriesYear = series?.releaseDate != null ? Number.parseInt(series.releaseDate.slice(0, 4), 10) : null;
+  const tmdb = useTmdbMetadata('series', series?.name ?? null, Number.isFinite(seriesYear) ? seriesYear : null);
+  const posterUrl = tmdbPoster(tmdb?.posterPath ?? null) ?? series?.posterUrl ?? null;
+  const overview = tmdb?.overview ?? series?.plot ?? null;
+  const rating = tmdb?.voteAverage ?? series?.rating ?? null;
+  const genres = tmdb !== null && tmdb.genres.length > 0 ? tmdb.genres.join(' · ') : (series?.genre ?? null);
 
   const episodes = useMemo(
     () =>
@@ -147,22 +156,28 @@ export default function SeriesDetailPage() {
         series !== undefined && (
           <div className="mb-6 flex animate-fade-in gap-5">
             <PosterImage
-              src={series.posterUrl}
+              src={posterUrl}
               alt={series.name}
               className="aspect-[2/3] w-28 shrink-0 rounded-2xl sm:w-36"
             />
             <div className="min-w-0 flex-1">
               <p className="text-xs text-fg-faint">
                 {[
-                  series.releaseDate?.slice(0, 4) ?? null,
-                  series.genre,
-                  series.rating !== null ? `★ ${series.rating.toFixed(1)}` : null,
+                  series.releaseDate?.slice(0, 4) ?? (tmdb?.releaseDate?.slice(0, 4) ?? null),
+                  genres,
+                  rating !== null ? `★ ${rating.toFixed(1)}` : null,
                 ]
                   .filter((v): v is string => v !== null)
                   .join(' · ')}
               </p>
-              {series.plot !== null && (
-                <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-fg-muted">{series.plot}</p>
+              {overview !== null && (
+                <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-fg-muted">{overview}</p>
+              )}
+              {tmdb !== null && tmdb.cast.length > 0 && (
+                <p className="mt-2 text-xs text-fg-faint">
+                  <span className="text-fg-muted">Avec </span>
+                  {tmdb.cast.slice(0, 5).map((c) => c.name).join(', ')}
+                </p>
               )}
             </div>
           </div>
