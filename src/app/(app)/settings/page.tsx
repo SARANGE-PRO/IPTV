@@ -14,6 +14,7 @@ import { generateDeepDiagnostic } from '@/services/diagnostics/deepPlaylistDiagn
 import { clearEpgCache } from '@/services/epg/epgService';
 import { buildFrenchChannelListing } from '@/services/live/frenchChannelCatalog';
 import { clearSmartRankingCache } from '@/services/ranking/smartRankingService';
+import { isStoragePersisted, requestPersistentStorage } from '@/lib/persistStorage';
 import { useAuthStore } from '@/stores/authStore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useFilterStore } from '@/stores/filterStore';
@@ -76,6 +77,7 @@ export default function SettingsPage() {
   const [loggingOut, setLoggingOut] = useState(false);
   const [cacheMessage, setCacheMessage] = useState<string | null>(null);
   const [storageLabel, setStorageLabel] = useState<string | null>(null);
+  const [persisted, setPersisted] = useState<boolean | null>(null);
 
   const countries = useMemo(
     () =>
@@ -102,6 +104,20 @@ export default function SettingsPage() {
       );
     });
   }, []);
+
+  useEffect(() => {
+    void isStoragePersisted().then(setPersisted);
+  }, []);
+
+  const handlePersist = async () => {
+    const ok = await requestPersistentStorage();
+    setPersisted(ok);
+    setCacheMessage(
+      ok
+        ? 'Stockage rendu persistant : moins de purges, moins de resynchronisations.'
+        : "Le navigateur n'a pas accordé le stockage persistant (iOS le fait souvent après usage régulier).",
+    );
+  };
 
   const handleUnhide = async (entry: HiddenCategoryEntry) => {
     await unhideCategory(entry.section, entry.categoryId);
@@ -406,6 +422,21 @@ export default function SettingsPage() {
           Sur iPhone et iPad, iOS peut purger le stockage d'une PWA rarement utilisee. Une resynchronisation
           reconstruit le catalogue sans toucher au compte fournisseur.
         </p>
+        {persisted !== null && (
+          <p className="mt-2 text-xs text-fg-muted">
+            Stockage persistant :{' '}
+            <span className={persisted ? 'font-medium text-emerald-400' : 'font-medium text-fg'}>
+              {persisted ? 'activé' : 'non activé'}
+            </span>
+          </p>
+        )}
+        {persisted === false && (
+          <div className="mt-3">
+            <Button variant="secondary" onClick={() => void handlePersist()}>
+              Rendre le stockage persistant
+            </Button>
+          </div>
+        )}
         <div className="mt-4 flex flex-wrap gap-2">
           <Button
             variant="secondary"

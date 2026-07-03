@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
 import { BrandLogo } from '@/components/shared/BrandLogo';
+import { SyncProgress } from '@/components/layout/SyncProgress';
 import {
   IconFilm,
   IconHeart,
@@ -13,6 +14,7 @@ import {
   IconTv,
 } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
+import { requestPersistentStorage } from '@/lib/persistStorage';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import { useFilterStore } from '@/stores/filterStore';
@@ -45,6 +47,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     void hydrateHidden();
     void hydrateDefaults();
     void hydrateUiSettings();
+    // Reduit les purges de stockage iOS (moins de re-syncs surprises).
+    void requestPersistentStorage();
   }, [hydrateCatalog, hydrateFavorites, hydrateRails, hydrateHidden, hydrateDefaults, hydrateUiSettings]);
 
   const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
@@ -71,6 +75,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="pb-24 pt-safe md:pb-8">{children}</div>
+
+      <SyncProgress />
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-700 bg-ink-900/95 pb-safe backdrop-blur md:hidden">
         <div className="flex items-stretch justify-around">

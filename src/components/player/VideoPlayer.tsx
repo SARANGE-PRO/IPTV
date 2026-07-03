@@ -60,6 +60,7 @@ export function VideoPlayer({
   const [message, setMessage] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [limitedSeek, setLimitedSeek] = useState(false);
+  const [pipSupported, setPipSupported] = useState(false);
   const streamUrl = secureMediaUrl(src);
   const posterUrl = secureImageSrc(poster);
 
@@ -252,6 +253,21 @@ export function VideoPlayer({
     };
   }, [streamUrl, attempt]);
 
+  useEffect(() => {
+    setPipSupported(typeof document !== 'undefined' && document.pictureInPictureEnabled === true);
+  }, []);
+
+  const togglePip = async () => {
+    const video = videoRef.current;
+    if (video === null) return;
+    try {
+      if (document.pictureInPictureElement !== null) await document.exitPictureInPicture();
+      else await video.requestPictureInPicture();
+    } catch {
+      // Picture-in-Picture indisponible sur ce media/navigateur.
+    }
+  };
+
   return (
     <div>
       <div className={cn('relative overflow-hidden rounded-2xl bg-black', className)}>
@@ -263,6 +279,20 @@ export function VideoPlayer({
           poster={posterUrl ?? undefined}
           className="aspect-video w-full bg-black"
         />
+        {pipSupported && status === 'ready' && (
+          <button
+            type="button"
+            onClick={() => void togglePip()}
+            aria-label="Picture-in-Picture"
+            title="Picture-in-Picture"
+            className="absolute right-2 top-2 rounded-lg bg-black/60 p-2 text-white/90 transition-colors hover:bg-black/80"
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
+              <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
+              <rect x="12" y="11" width="7" height="5" rx="1" fill="currentColor" />
+            </svg>
+          </button>
+        )}
         {status === 'loading' && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
             <span className="h-8 w-8 animate-spin rounded-full border-2 border-ink-500 border-t-accent" />

@@ -29,9 +29,20 @@ const emptySection = (): CatalogSectionState => ({
   error: null,
 });
 
+/** Etat de progression d'une section pendant la synchronisation. */
+export type SyncSectionState = 'pending' | 'loading' | 'done' | 'skipped' | 'error';
+
+const idleProgress = (): Record<Section, SyncSectionState> => ({
+  live: 'pending',
+  vod: 'pending',
+  series: 'pending',
+});
+
 interface CatalogState {
   sections: Record<Section, CatalogSectionState>;
   syncing: boolean;
+  syncProgress: Record<Section, SyncSectionState>;
+  syncCounts: Record<Section, number>;
   hydrated: boolean;
   hydrateSection: (section: Section) => Promise<void>;
   hydrate: () => Promise<void>;
@@ -42,6 +53,8 @@ interface CatalogState {
 export const useCatalogStore = create<CatalogState>()((set, get) => ({
   sections: { live: emptySection(), vod: emptySection(), series: emptySection() },
   syncing: false,
+  syncProgress: idleProgress(),
+  syncCounts: { live: 0, vod: 0, series: 0 },
   hydrated: false,
 
   hydrateSection: async (section) => {
@@ -80,6 +93,8 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
     if (get().syncing) return false;
     set((state) => ({
       syncing: true,
+      syncProgress: idleProgress(),
+      syncCounts: { live: 0, vod: 0, series: 0 },
       sections: {
         live: { ...state.sections.live, status: 'loading', error: null },
         vod: { ...state.sections.vod, status: 'loading', error: null },
@@ -89,7 +104,17 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
 
     const outcomes = await catalogSyncService.syncAllSections(creds, {
       force: opts?.force ?? false,
+      onSectionStart: (section) => {
+        set((state) => ({ syncProgress: { ...state.syncProgress, [section]: 'loading' } }));
+      },
       onSectionDone: (outcome) => {
+        set((state) => ({
+          syncProgress: {
+            ...state.syncProgress,
+            [outcome.section]: outcome.ok ? (outcome.skipped ? 'skipped' : 'done') : 'error',
+          },
+          syncCounts: { ...state.syncCounts, [outcome.section]: outcome.itemCount },
+        }));
         void get().hydrateSection(outcome.section);
       },
     });

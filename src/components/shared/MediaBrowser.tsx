@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import type { CatalogSort } from '@/db/repositories/catalogRepository';
+import * as settingsRepository from '@/db/repositories/settingsRepository';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useLoadMore } from '@/hooks/useLoadMore';
 import { useCatalogStore } from '@/stores/catalogStore';
@@ -134,6 +135,19 @@ export function MediaBrowser<T extends BrowserItem>({
     () => categories.find((c) => c.id === selectedId) ?? null,
     [categories, selectedId],
   );
+
+  // Restaure le dernier tri choisi pour cette section (confort au retour).
+  useEffect(() => {
+    let active = true;
+    void settingsRepository.getSetting<CatalogSort>(`catalogSort:${section}`).then((saved) => {
+      if (active && saved !== undefined && sortOptions.some((option) => option.id === saved)) {
+        setSort(saved);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [section, sortOptions]);
 
   // Selection automatique + retombee si la categorie courante est masquee.
   useEffect(() => {
@@ -293,7 +307,11 @@ export function MediaBrowser<T extends BrowserItem>({
           <select
             aria-label="Trier les contenus"
             value={sort}
-            onChange={(event) => setSort(event.target.value as CatalogSort)}
+            onChange={(event) => {
+              const next = event.target.value as CatalogSort;
+              setSort(next);
+              void settingsRepository.setSetting(`catalogSort:${section}`, next);
+            }}
             className="h-10 min-w-0 flex-1 rounded-xl border border-ink-600 bg-ink-800 px-3 text-xs text-fg outline-none sm:max-w-44 sm:flex-none"
           >
             {sortOptions.map((option) => (
