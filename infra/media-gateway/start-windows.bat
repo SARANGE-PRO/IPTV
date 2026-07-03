@@ -23,22 +23,37 @@ if not defined PORT set "PORT=3000"
 if not defined VIDEO_CODEC set "VIDEO_CODEC=copy"
 if not defined TRANSCODE set "TRANSCODE=1"
 
+REM Le tunnel est relance automatiquement s'il n'est pas deja actif.
+tasklist /FI "IMAGENAME eq cloudflared.exe" 2>nul | find /I "cloudflared.exe" >nul
+if errorlevel 1 if exist "tunnel-token.txt" start "ZiBTV Tunnel" /min "%~dp0start-tunnel-windows.bat"
+
+REM Un double-clic ne doit pas echouer si la passerelle tourne deja.
+set "GATEWAY_HEALTH="
+for /f "delims=" %%H in ('curl.exe --silent --fail "http://127.0.0.1:%PORT%/_health" 2^>nul') do set "GATEWAY_HEALTH=%%H"
+if /I "%GATEWAY_HEALTH%"=="ok" (
+  echo.
+  echo  ================================================================
+  echo   ZiBTV est DEJA ACTIF sur le port %PORT%.
+  echo   Le tunnel est lance. Tu peux fermer CETTE nouvelle fenetre.
+  echo   Ne mets pas le PC en veille pendant une lecture distante.
+  echo  ================================================================
+  echo.
+  pause
+  exit /b 0
+)
+
 REM Trouve ffmpeg automatiquement : PATH, puis installation Winget.
 if not defined FFMPEG_PATH (
   where ffmpeg.exe >nul 2>nul && set "FFMPEG_PATH=ffmpeg.exe"
 )
 if not defined FFMPEG_PATH (
-  for /f "delims=" %%F in ('where /r "%LOCALAPPDATA%\Microsoft\WinGet\Packages" ffmpeg.exe 2^>nul') do if not defined FFMPEG_PATH set "FFMPEG_PATH=%%F"
+  if exist "%LOCALAPPDATA%\Microsoft\WinGet\Links\ffmpeg.exe" set "FFMPEG_PATH=%LOCALAPPDATA%\Microsoft\WinGet\Links\ffmpeg.exe"
 )
 if not defined FFMPEG_PATH (
   echo [ERREUR] ffmpeg est introuvable. Installe-le avec : winget install Gyan.FFmpeg
   pause
   exit /b 1
 )
-
-REM Le tunnel est relance automatiquement s'il n'est pas deja actif.
-tasklist /FI "IMAGENAME eq cloudflared.exe" 2>nul | find /I "cloudflared.exe" >nul
-if errorlevel 1 if exist "tunnel-token.txt" start "ZiBTV Tunnel" /min "%~dp0start-tunnel-windows.bat"
 
 echo.
 echo  ================================================================
