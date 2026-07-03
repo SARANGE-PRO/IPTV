@@ -18,7 +18,9 @@ export function isGatewayConfigured(): boolean {
 }
 
 const HEALTH_TTL_MS = 30_000;
-const HEALTH_TIMEOUT_MS = 4_000;
+// Genereux : le tunnel (Tailscale/Cloudflare) peut etre lent au 1er contact
+// depuis un reseau mobile. Trop court -> faux "passerelle absente" -> VLC a tort.
+const HEALTH_TIMEOUT_MS = 8_000;
 
 let cache: { at: number; ok: boolean } | null = null;
 let inflight: Promise<boolean> | null = null;
@@ -35,15 +37,21 @@ export async function isGatewayHealthy(): Promise<boolean> {
 
   inflight = (async () => {
     let ok = false;
+    // AbortController + setTimeout (et NON AbortSignal.timeout, absent de Safari
+    // iOS < 16) : sinon l'appel plante et la passerelle parait toujours absente.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), HEALTH_TIMEOUT_MS);
     try {
       const res = await fetch(`${MEDIA_GATEWAY_URL}/_health`, {
         method: 'GET',
         cache: 'no-store',
-        signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+        signal: controller.signal,
       });
       ok = res.ok;
     } catch {
       ok = false;
+    } finally {
+      clearTimeout(timer);
     }
     cache = { at: Date.now(), ok };
     inflight = null;
