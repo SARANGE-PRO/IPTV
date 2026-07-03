@@ -27,6 +27,10 @@ const ALLOWED_PARAMS = new Set(['category_id', 'series_id', 'vod_id', 'stream_id
 
 const TIMEOUT_MS = 20_000;
 
+/** Defense en profondeur (invariant #2) : aucune reponse metadonnee ne doit
+ * etre mise en cache par un CDN, un proxy ou le navigateur. */
+const NO_STORE = { 'Cache-Control': 'no-store' } as const;
+
 interface ProxyRequest {
   serverUrl: string;
   username: string;
@@ -82,7 +86,7 @@ function buildApiUrl(req: ProxyRequest): URL | null {
 }
 
 function fail(status: number, code: string, message: string): NextResponse {
-  return NextResponse.json({ ok: false, error: { code, message } }, { status });
+  return NextResponse.json({ ok: false, error: { code, message } }, { status, headers: NO_STORE });
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -119,5 +123,5 @@ export async function POST(request: Request): Promise<NextResponse> {
     return fail(502, 'invalid_response', 'Reponse Xtream illisible (JSON attendu).');
   }
 
-  return NextResponse.json({ ok: true, data });
+  return NextResponse.json({ ok: true, data }, { headers: NO_STORE });
 }

@@ -15,6 +15,10 @@ export const maxDuration = 20;
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const TIMEOUT_MS = 12_000;
 
+/** Reponses non mises en cache CDN/navigateur : le client a sa propre couche
+ * de cache (Dexie), et on evite toute retention cote infra. */
+const NO_STORE = { 'Cache-Control': 'no-store' } as const;
+
 type Action = 'search_movie' | 'search_tv' | 'movie_detail' | 'tv_detail';
 const ALLOWED_ACTIONS = new Set<Action>(['search_movie', 'search_tv', 'movie_detail', 'tv_detail']);
 
@@ -65,7 +69,7 @@ function buildUrl(req: TmdbProxyRequest): string {
 }
 
 function fail(status: number, code: string, message: string): NextResponse {
-  return NextResponse.json({ ok: false, error: { code, message } }, { status });
+  return NextResponse.json({ ok: false, error: { code, message } }, { status, headers: NO_STORE });
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
@@ -99,7 +103,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     return fail(502, 'unreachable', 'TMDB injoignable.');
   }
 
-  if (upstream.status === 404) return NextResponse.json({ ok: true, data: null });
+  if (upstream.status === 404) return NextResponse.json({ ok: true, data: null }, { headers: NO_STORE });
   if (!upstream.ok) return fail(502, 'upstream', `Erreur TMDB (HTTP ${upstream.status}).`);
 
   let data: unknown;
@@ -108,5 +112,5 @@ export async function POST(request: Request): Promise<NextResponse> {
   } catch {
     return fail(502, 'invalid_response', 'Réponse TMDB illisible.');
   }
-  return NextResponse.json({ ok: true, data });
+  return NextResponse.json({ ok: true, data }, { headers: NO_STORE });
 }
