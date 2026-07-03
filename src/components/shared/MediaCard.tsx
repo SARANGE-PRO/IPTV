@@ -20,9 +20,21 @@ interface MediaCardProps {
 
 export function MediaCard({ href, title, posterUrl, subtitle, badge, tag, progress, favorite, className }: MediaCardProps) {
   return (
-    <Link href={href} className={cn('group block', className)}>
-      <div className="relative">
-        <PosterImage src={posterUrl} alt={title} className="aspect-[2/3] w-full rounded-xl" />
+    <Link
+      href={href}
+      className={cn(
+        'group block transition-transform duration-200 will-change-transform active:scale-[0.97]',
+        className,
+      )}
+    >
+      <div className="relative overflow-hidden rounded-xl border border-white/[0.06] shadow-lg shadow-black/40 transition-colors group-hover:border-white/15">
+        <PosterImage
+          src={posterUrl}
+          alt={title}
+          className="aspect-[2/3] w-full transition-transform duration-500 group-hover:scale-105"
+        />
+        {/* Scrim bas : lisibilite des pastilles/badge. */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/45 via-transparent to-transparent" />
         {badge !== undefined && (
           <span className="absolute left-1.5 top-1.5 rounded-md bg-black/80 px-2 py-1 text-[10px] font-bold text-white shadow-lg">
             {badge}

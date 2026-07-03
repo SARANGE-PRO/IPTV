@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Monogram } from '@/components/shared/Monogram';
 import { isImageBroken, markImageBroken } from '@/services/media/brokenImageMemory';
 import { cn } from '@/lib/cn';
@@ -27,8 +27,14 @@ export function PosterImage({
     .filter((value, index, all) => all.indexOf(value) === index)
     .filter((value) => !isImageBroken(value));
   const [failed, setFailed] = useState<Set<string>>(() => new Set());
+  const [loaded, setLoaded] = useState(false);
   const safeSrc = candidates.find((candidate) => !failed.has(candidate)) ?? null;
   const show = safeSrc !== null;
+
+  // Nouvelle source -> on repart en fondu.
+  useEffect(() => {
+    setLoaded(false);
+  }, [safeSrc]);
 
   if (!show) return <Monogram name={alt} className={cn('text-lg', className)} />;
   return (
@@ -40,13 +46,17 @@ export function PosterImage({
         loading="lazy"
         decoding="async"
         referrerPolicy="no-referrer"
+        onLoad={() => setLoaded(true)}
         onError={() => {
           if (safeSrc !== null) {
             markImageBroken(safeSrc);
             setFailed((previous) => new Set(previous).add(safeSrc));
           }
         }}
-        className="h-full w-full object-cover"
+        className={cn(
+          'h-full w-full object-cover transition-opacity duration-500',
+          loaded ? 'opacity-100' : 'opacity-0',
+        )}
       />
     </div>
   );

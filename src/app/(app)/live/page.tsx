@@ -406,8 +406,9 @@ export default function LivePage() {
         </div>
       </div>
 
-      {/* Filtres rapides — entree principale, faciles a toucher sur iPhone. */}
-      <HScroll className="mt-3 flex gap-2 pb-1 [scrollbar-width:none]">
+      {/* Filtres rapides — entree principale, faciles a toucher sur iPhone.
+          Colles en haut (sticky) en verre depoli au scroll. */}
+      <HScroll className="glass sticky top-0 z-30 -mx-4 mt-3 flex gap-2 px-4 py-2 [scrollbar-width:none] md:-mx-8 md:px-8">
         {FILTERS.map((f) => (
           <button
             key={f.id}

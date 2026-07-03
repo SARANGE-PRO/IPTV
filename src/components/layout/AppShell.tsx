@@ -55,7 +55,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-dvh md:pl-60">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-ink-700 bg-ink-900/60 px-4 py-8 md:flex">
+      <aside className="glass fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-white/5 px-4 py-8 md:flex">
         <BrandLogo className="mb-8 px-2" markClassName="h-8 w-8" textClassName="text-lg" />
         <nav className="flex flex-col gap-1">
           {NAV.map(({ href, label, icon: Icon }) => (
@@ -78,7 +78,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <SyncProgress />
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-700 bg-ink-900/95 pb-safe backdrop-blur md:hidden">
+      <nav className="glass fixed inset-x-0 bottom-0 z-40 border-t border-white/5 pb-safe md:hidden">
         <div className="flex items-stretch justify-around">
           {NAV.map(({ href, label, icon: Icon }) => {
             const active = isActive(href);
@@ -94,8 +94,8 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <span
                   className={cn(
-                    'flex h-8 w-12 items-center justify-center rounded-full transition-colors',
-                    active && 'bg-accent/15',
+                    'flex h-8 w-12 items-center justify-center rounded-full transition-all',
+                    active && 'glow-accent bg-accent/15',
                   )}
                 >
                   <Icon className="h-5 w-5" />
