@@ -39,6 +39,12 @@
   .zib-splash {
     position: fixed;
     inset: 0;
+    /* Hauteur STABLE des la 1re frame : en PWA iOS le viewport se "cale" apres
+       le lancement (la barre du bas apparait apres coup) -> avec inset:0 seul,
+       la boite est d'abord trop courte et le logo se recentre (bande en bas).
+       100lvh fige la pleine hauteur -> plus de bande ni de recentrage. */
+    height: 100vh;
+    height: 100lvh;
     z-index: 9999;
     display: flex;
     align-items: center;
@@ -46,7 +52,7 @@
     /* overflow: hidden -> le zoom final (scale 46x) ne cree jamais de scrollbar
        ni de "scroll jump" au lancement, notamment sur iPhone. */
     overflow: hidden;
-    background: #000;
+    background: #08080A;
     perspective: 1000px;
     animation: zibHide 0.6s ease-in-out forwards 2.9s;
   }
