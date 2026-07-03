@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { CategoryPanel } from '@/components/shared/CategoryPanel';
 import { CountrySelect } from '@/components/shared/CountrySelect';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { HScroll } from '@/components/shared/HScroll';
 import { MediaCard } from '@/components/shared/MediaCard';
 import { IconChevronDown } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
@@ -303,7 +304,7 @@ export function MediaBrowser<T extends BrowserItem>({
       </div>
 
       {visibleQuickFilters.length > 0 && (
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+        <HScroll className="mt-3 flex gap-2 pb-1 [scrollbar-width:none]">
           {visibleQuickFilters.map((quick) => (
             <button
               key={quick.id}
@@ -317,7 +318,7 @@ export function MediaBrowser<T extends BrowserItem>({
               {quick.label}
             </button>
           ))}
-        </div>
+        </HScroll>
       )}
 
       {results === null && activeQuick === null && count !== null && (

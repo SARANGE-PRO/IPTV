@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
+import { HScroll } from '@/components/shared/HScroll';
 
-/** Rangee horizontale scrollable (accueil). */
+/** Rangee horizontale scrollable (accueil) — molette horizontale sur PC. */
 export function Rail({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
   return (
     <section className="mt-8">
@@ -8,9 +9,9 @@ export function Rail({ title, children, action }: { title: string; children: Rea
         <h2 className="text-sm font-semibold tracking-tight text-fg">{title}</h2>
         {action}
       </div>
-      <div className="flex gap-3 overflow-x-auto pb-2 [-webkit-overflow-scrolling:touch] [scrollbar-width:none]">
+      <HScroll className="flex gap-3 pb-2 [-webkit-overflow-scrolling:touch] [scrollbar-width:none]">
         {children}
-      </div>
+      </HScroll>
     </section>
   );
 }

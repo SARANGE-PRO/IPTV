@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
+import { HScroll } from '@/components/shared/HScroll';
 import { PosterImage } from '@/components/shared/PosterImage';
 import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
@@ -236,7 +237,7 @@ export default function SeriesDetailPage() {
 
       {details !== null && details !== undefined && (
         <>
-          <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+          <HScroll className="mb-3 flex gap-2 pb-1">
             {details.seasons.map((s) => (
               <button
                 key={s.seasonNumber}
@@ -251,7 +252,7 @@ export default function SeriesDetailPage() {
                 Saison {s.seasonNumber}
               </button>
             ))}
-          </div>
+          </HScroll>
 
           <div className="flex flex-col gap-1">
             {episodes.map((ep) => {

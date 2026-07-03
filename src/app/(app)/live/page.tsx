@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
+import { HScroll } from '@/components/shared/HScroll';
 import { IconChevronDown, IconEyeOff, IconSearch } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -351,7 +352,7 @@ export default function LivePage() {
       </div>
 
       {/* Filtres rapides — entree principale, faciles a toucher sur iPhone. */}
-      <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+      <HScroll className="mt-3 flex gap-2 pb-1 [scrollbar-width:none]">
         {FILTERS.map((f) => (
           <button
             key={f.id}
@@ -370,7 +371,7 @@ export default function LivePage() {
             {f.label}
           </button>
         ))}
-      </div>
+      </HScroll>
 
       {count !== null && (
         <p className="mt-3 text-xs text-fg-faint">
