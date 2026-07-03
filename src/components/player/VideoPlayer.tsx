@@ -26,6 +26,16 @@ type PlayerStatus = 'loading' | 'ready' | 'error';
 
 const PROGRESS_INTERVAL_MS = 4000;
 
+/** Conteneurs qu'aucun navigateur ne decode nativement (transcodage requis). */
+const UNSUPPORTED_CONTAINER = /^(mkv|avi|wmv|flv|mpg|mpeg|vob|divx|m2ts|ts)$/i;
+
+/** Renvoie l'extension en MAJ si le conteneur est illisible en navigateur, sinon null. */
+function unsupportedContainer(rawSrc: string): string | null {
+  const path = rawSrc.split(/[?#]/)[0] ?? '';
+  const ext = path.match(/\.([a-z0-9]{2,5})$/i)?.[1];
+  return ext !== undefined && UNSUPPORTED_CONTAINER.test(ext) ? ext.toUpperCase() : null;
+}
+
 export function VideoPlayer({
   src,
   poster,
@@ -75,6 +85,17 @@ export function VideoPlayer({
       return;
     }
 
+    // Garde conteneur : inutile de tenter la lecture d'un format que le
+    // navigateur ne decode pas — message clair immediat (pas un faux "erreur reseau").
+    const badContainer = unsupportedContainer(src);
+    if (badContainer !== null && !live) {
+      fail(
+        `Format ${badContainer} non lisible dans un navigateur (transcodage requis). ` +
+          'Les films .mp4 et le Live se lisent normalement.',
+      );
+      return;
+    }
+
     const sendProgress = (force: boolean) => {
       if (liveRef.current) return;
       const now = Date.now();
@@ -99,10 +120,10 @@ export function VideoPlayer({
       onEndedRef.current?.();
     };
     const handleError = () => {
-      const mkvHint = /\.mkv(?:$|[?#])/i.test(streamUrl ?? '')
-        ? ' Le conteneur MKV ou ses codecs doivent etre transcodes en HLS/MP4 pour ce navigateur.'
-        : '';
-      fail(`Flux illisible ou indisponible. Verifiez le HTTPS du serveur et les codecs.${mkvHint}`);
+      fail(
+        'Flux indisponible : connexion refusée par le serveur (CDN anti-datacenter ou limite de connexions) ' +
+          'ou flux hors service. Réessaie, ou teste un autre flux.',
+      );
     };
 
     video.addEventListener('loadedmetadata', handleLoadedMetadata);

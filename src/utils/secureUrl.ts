@@ -22,11 +22,17 @@ export function secureMediaUrl(value: string | null | undefined): string | null 
   if (url.startsWith('//')) return `https:${url}`;
   if (!/^http:\/\//i.test(url)) return url;
 
+  // Page HTTP (localhost/dev) : aucune contrainte mixed-content -> lecture
+  // DIRECTE depuis l'IP du client. C'est le seul chemin fiable pour les
+  // providers dont le CDN bloque les IP datacenter (passerelle -> 456).
+  const onHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
+  if (!onHttpsPage) return url;
+
+  // Page HTTPS : mixed-content -> passerelle si configuree, sinon upgrade TLS
+  // best-effort (echoue proprement si le serveur n'a pas de vrai HTTPS).
   if (MEDIA_GATEWAY_URL !== '') {
     return `${MEDIA_GATEWAY_URL}/_fetch?url=${encodeURIComponent(url)}`;
   }
-  // Sans passerelle configuree : tentative d'upgrade TLS (echoue proprement si
-  // le serveur n'a pas de HTTPS -> le player affiche une erreur claire).
   return url.replace(/^http:\/\//i, 'https://');
 }
 
