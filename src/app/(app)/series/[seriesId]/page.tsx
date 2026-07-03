@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { PosterImage } from '@/components/shared/PosterImage';
+import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { IconArrowLeft, IconPlay } from '@/components/ui/icons';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -130,7 +131,11 @@ export default function SeriesDetailPage() {
       </div>
 
       {playingEp !== null && src !== null ? (
-        <div className="mb-6">
+        <div className="mb-6 space-y-4">
+          <ExternalPlayer
+            streamUrl={src}
+            label={`Lire S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`}
+          />
           <VideoPlayer
             src={src}
             startAt={startAt}

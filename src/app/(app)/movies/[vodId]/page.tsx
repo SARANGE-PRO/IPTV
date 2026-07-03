@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { PosterImage } from '@/components/shared/PosterImage';
+import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { Button } from '@/components/ui/Button';
 import { IconArrowLeft, IconPlay } from '@/components/ui/icons';
@@ -160,16 +161,11 @@ export default function MovieDetailPage() {
                   {tmdb.cast.slice(0, 5).map((c) => c.name).join(', ')}
                 </p>
               )}
-              <div className="mt-6 flex flex-wrap gap-3">
-                {canResume && progress !== null && (
-                  <Button size="lg" onClick={() => play(progress.positionSec)}>
-                    <IconPlay className="mr-2 h-4 w-4" />
-                    Reprendre à {formatClock(progress.positionSec)}
-                  </Button>
-                )}
-                <Button size="lg" variant={canResume ? 'secondary' : 'primary'} onClick={() => play(0)}>
+              <div className="mt-6 flex flex-wrap items-start gap-3">
+                {src !== null && <ExternalPlayer streamUrl={src} label="Lire dans VLC" />}
+                <Button size="lg" variant="secondary" onClick={() => play(canResume && progress !== null ? progress.positionSec : 0)}>
                   <IconPlay className="mr-2 h-4 w-4" />
-                  {canResume ? 'Reprendre du début' : 'Lire'}
+                  {canResume && progress !== null ? `Lecteur intégré (${formatClock(progress.positionSec)})` : 'Lecteur intégré'}
                 </Button>
               </div>
             </div>

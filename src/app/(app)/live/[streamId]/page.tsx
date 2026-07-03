@@ -4,6 +4,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
+import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { IconArrowLeft } from '@/components/ui/icons';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
@@ -59,7 +60,16 @@ export default function LiveWatchPage() {
           hint="Elle a peut-être disparu du catalogue après une synchronisation."
         />
       ) : (
-        src !== null && <VideoPlayer src={src} live />
+        src !== null && (
+          <div className="space-y-4">
+            <ExternalPlayer streamUrl={src} label="Regarder dans VLC" />
+            <p className="text-xs leading-relaxed text-fg-faint">
+              Lecture native recommandée (tous codecs, depuis l’IP de ton appareil). Le lecteur
+              intégré ci-dessous ne marche que pour les flux compatibles navigateur.
+            </p>
+            <VideoPlayer src={src} live />
+          </div>
+        )
       )}
     </main>
   );
