@@ -5,6 +5,7 @@ import type {
   XtreamLiveStream,
   XtreamSeries,
   XtreamSeriesInfo,
+  XtreamShortEpg,
   XtreamVodInfo,
   XtreamVodStream,
 } from '@/types/xtream';
@@ -58,4 +59,13 @@ export function getSeriesInfo(creds: XtreamCredentials, seriesId: string): Promi
 
 export function getVodInfo(creds: XtreamCredentials, vodId: string): Promise<XtreamVodInfo> {
   return callXtream<XtreamVodInfo>(creds, 'get_vod_info', { vod_id: vodId });
+}
+
+/** EPG court d'une chaine (programme actuel + suivants). Metadonnees uniquement. */
+export function getShortEpg(
+  creds: XtreamCredentials,
+  streamId: string,
+  limit = 6,
+): Promise<XtreamShortEpg> {
+  return callXtream<XtreamShortEpg>(creds, 'get_short_epg', { stream_id: streamId, limit });
 }

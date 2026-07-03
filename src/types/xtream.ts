@@ -202,3 +202,25 @@ export interface XtreamSeriesInfo {
   info?: Partial<XtreamSeries>;
   episodes?: Record<string, XtreamEpisode[]> | XtreamEpisode[][];
 }
+
+// --- EPG (get_short_epg) --------------------------------------------------------
+
+/** Un programme EPG brut. `title`/`description` sont encodes en base64. */
+export interface XtreamEpgListing {
+  id?: NumLike;
+  epg_id?: NumLike;
+  title?: string;
+  lang?: string;
+  start?: string;
+  end?: string;
+  description?: string;
+  channel_id?: string;
+  start_timestamp?: NumLike;
+  stop_timestamp?: NumLike;
+  now_playing?: NumLike;
+  has_archive?: NumLike;
+}
+
+export interface XtreamShortEpg {
+  epg_listings?: XtreamEpgListing[];
+}

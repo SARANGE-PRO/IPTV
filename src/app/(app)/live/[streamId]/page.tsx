@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
+import { NowPlaying } from '@/components/live/NowPlaying';
 import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { IconArrowLeft } from '@/components/ui/icons';
@@ -102,6 +103,7 @@ export default function LiveWatchPage() {
         src !== null && (
           <div className="space-y-4">
             <VideoPlayer src={src} live />
+            <NowPlaying credentials={credentials} streamId={streamId} />
             {versions.length > 1 && (
               <div>
                 <p className="mb-2 text-xs font-medium text-fg-muted">Autres versions</p>

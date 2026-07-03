@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { CategoryPanel } from '@/components/shared/CategoryPanel';
 import { CountrySelect } from '@/components/shared/CountrySelect';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -15,6 +15,7 @@ import { useLoadMore } from '@/hooks/useLoadMore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useFilterStore } from '@/stores/filterStore';
 import type { BoolNum, MediaType, Section } from '@/types/models';
+import { detectFrenchVariant } from '@/services/media/languageDetectionService';
 import { prioritizeCategories } from '@/utils/categoryPriority';
 import { displayTitle } from '@/utils/displayTitle';
 import { formatCount } from '@/utils/format';
@@ -56,6 +57,8 @@ interface MediaBrowserProps<T extends BrowserItem> {
   fetchQuickFilter?: (filterId: string, limit: number) => Promise<T[]>;
   sortOptions?: SortOption[];
   subtitleFor?: (item: T) => string | null;
+  /** Hero editorial optionnel (rendu en tete, avant la barre de recherche). */
+  hero?: ReactNode;
 }
 
 const PAGE_SIZE = 60;
@@ -93,6 +96,7 @@ export function MediaBrowser<T extends BrowserItem>({
   fetchQuickFilter,
   sortOptions = DEFAULT_SORT_OPTIONS,
   subtitleFor,
+  hero,
 }: MediaBrowserProps<T>) {
   const slice = useCatalogStore((s) => s.sections[section]);
   const country = useFilterStore((s) => s.country);
@@ -262,6 +266,8 @@ export function MediaBrowser<T extends BrowserItem>({
     <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
       <h1 className="text-2xl font-semibold tracking-tight text-fg">{title}</h1>
 
+      {hero}
+
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="flex-1">
           <Input
@@ -349,6 +355,7 @@ export function MediaBrowser<T extends BrowserItem>({
                 title={displayTitle(item.name)}
                 posterUrl={item.posterUrl}
                 subtitle={subtitleFor?.(item) ?? undefined}
+                tag={detectFrenchVariant(item.name)}
                 favorite={{ type: favoriteType, itemId: item.id }}
               />
             ))}

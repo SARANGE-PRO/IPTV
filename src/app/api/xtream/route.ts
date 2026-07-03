@@ -19,9 +19,11 @@ const ALLOWED_ACTIONS = new Set([
   'get_series',
   'get_series_info',
   'get_vod_info',
+  // EPG (programme TV) — metadonnees uniquement, jamais de flux.
+  'get_short_epg',
 ]);
 
-const ALLOWED_PARAMS = new Set(['category_id', 'series_id', 'vod_id']);
+const ALLOWED_PARAMS = new Set(['category_id', 'series_id', 'vod_id', 'stream_id', 'limit']);
 
 const TIMEOUT_MS = 20_000;
 

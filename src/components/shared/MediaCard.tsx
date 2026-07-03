@@ -10,13 +10,15 @@ interface MediaCardProps {
   posterUrl: string | null;
   subtitle?: string | null;
   badge?: string;
+  /** Pastille langue/variante (VF/VOSTFR/MULTI) en bas a gauche du poster. */
+  tag?: string | null;
   /** Ratio 0..1 — barre de progression rouge sous le poster. */
   progress?: number | null;
   favorite?: { type: MediaType; itemId: string };
   className?: string;
 }
 
-export function MediaCard({ href, title, posterUrl, subtitle, badge, progress, favorite, className }: MediaCardProps) {
+export function MediaCard({ href, title, posterUrl, subtitle, badge, tag, progress, favorite, className }: MediaCardProps) {
   return (
     <Link href={href} className={cn('group block', className)}>
       <div className="relative">
@@ -30,6 +32,11 @@ export function MediaCard({ href, title, posterUrl, subtitle, badge, progress, f
           <div className="absolute right-1.5 top-1.5">
             <FavoriteButton type={favorite.type} itemId={favorite.itemId} />
           </div>
+        )}
+        {tag !== undefined && tag !== null && (
+          <span className="absolute bottom-1.5 left-1.5 rounded bg-black/75 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+            {tag}
+          </span>
         )}
         {typeof progress === 'number' && progress > 0 && (
           <div className="absolute inset-x-0 bottom-0 h-1 overflow-hidden rounded-b-xl bg-black/50">

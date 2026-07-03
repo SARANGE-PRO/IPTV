@@ -10,6 +10,8 @@ import * as hiddenCategoriesRepository from '@/db/repositories/hiddenCategoriesR
 import * as tmdbRepository from '@/db/repositories/tmdbRepository';
 import { generateAdvancedDiagnostic } from '@/services/diagnostics/advancedPlaylistDiagnosticService';
 import { generateDiagnosticReport } from '@/services/diagnostics/catalogDiagnosticService';
+import { generateDeepDiagnostic } from '@/services/diagnostics/deepPlaylistDiagnosticService';
+import { clearEpgCache } from '@/services/epg/epgService';
 import { buildFrenchChannelListing } from '@/services/live/frenchChannelCatalog';
 import { clearSmartRankingCache } from '@/services/ranking/smartRankingService';
 import { useAuthStore } from '@/stores/authStore';
@@ -57,6 +59,8 @@ export default function SettingsPage() {
   const clearHistory = usePlaybackStore((s) => s.clearHistory);
   const showVlcButton = useUiSettingsStore((s) => s.showVlcButton);
   const setShowVlcButton = useUiSettingsStore((s) => s.setShowVlcButton);
+  const preferredLanguage = useUiSettingsStore((s) => s.preferredLanguage);
+  const setPreferredLanguage = useUiSettingsStore((s) => s.setPreferredLanguage);
   const router = useRouter();
 
   const [hiddenList, setHiddenList] = useState<HiddenCategoryEntry[]>([]);
@@ -64,6 +68,8 @@ export default function SettingsPage() {
   const [diagMessage, setDiagMessage] = useState<string | null>(null);
   const [advRunning, setAdvRunning] = useState(false);
   const [advMessage, setAdvMessage] = useState<string | null>(null);
+  const [deepRunning, setDeepRunning] = useState(false);
+  const [deepMessage, setDeepMessage] = useState<string | null>(null);
   const [historyCleared, setHistoryCleared] = useState(false);
   const [frRunning, setFrRunning] = useState(false);
   const [frMessage, setFrMessage] = useState<string | null>(null);
@@ -145,6 +151,30 @@ export default function SettingsPage() {
       setAdvMessage(err instanceof Error ? err.message : 'Erreur pendant le diagnostic avancé.');
     } finally {
       setAdvRunning(false);
+    }
+  };
+
+  const handleDeepDiagnostic = async () => {
+    if (deepRunning) return;
+    setDeepRunning(true);
+    setDeepMessage(null);
+    try {
+      const label = new Date().toISOString().slice(0, 10);
+      const report = await generateDeepDiagnostic(credentials ?? undefined, label);
+      const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `diagnostic-complet-zibtv-${label}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setDeepMessage(
+        `Live FR : ${report.live.logicalChannels} chaînes (${report.live.multiVersionChannels} multi-versions) · EPG ${report.live.epgAvailable ? 'disponible' : 'indisponible'} · Films VF ${report.movies.languages.VF + report.movies.languages.MULTI}.`,
+      );
+    } catch {
+      setDeepMessage('Impossible de générer le diagnostic. Resynchronise le catalogue.');
+    } finally {
+      setDeepRunning(false);
     }
   };
 
@@ -252,6 +282,26 @@ export default function SettingsPage() {
               ))}
             </select>
           </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-fg-muted">Langue / audio préféré</span>
+            <select
+              value={preferredLanguage}
+              onChange={(e) => void setPreferredLanguage(e.target.value as typeof preferredLanguage)}
+              className="h-10 w-full rounded-xl border border-ink-600 bg-ink-800 px-3 text-sm text-fg outline-none focus:border-accent/70"
+            >
+              <option value="VF">VF (français) — par défaut</option>
+              <option value="VOSTFR">VOSTFR</option>
+              <option value="MULTI">MULTI</option>
+              <option value="EN">Anglais (EN/US/UK)</option>
+              <option value="ES">Espagnol</option>
+              <option value="DE">Allemand</option>
+              <option value="IT">Italien</option>
+              <option value="PT">Portugais</option>
+            </select>
+            <span className="text-[11px] text-fg-faint">
+              Priorise cette version quand un film/série existe en plusieurs langues.
+            </span>
+          </label>
           <label className="flex items-center justify-between gap-3 pt-1">
             <span className="text-xs font-medium text-fg-muted">
               Afficher le bouton « Lire dans VLC »
@@ -325,7 +375,12 @@ export default function SettingsPage() {
             <IconDownload className="mr-2 h-4 w-4" />
             {advRunning ? 'Analyse approfondie…' : 'Diagnostic avancé playlist'}
           </Button>
+          <Button variant="secondary" onClick={() => void handleDeepDiagnostic()} disabled={deepRunning}>
+            <IconDownload className="mr-2 h-4 w-4" />
+            {deepRunning ? 'Analyse complète…' : 'Diagnostic complet IPTV'}
+          </Button>
         </div>
+        {deepMessage !== null && <p className="mt-3 text-xs text-fg-muted">{deepMessage}</p>}
         {diagMessage !== null && <p className="mt-3 text-xs text-fg-muted">{diagMessage}</p>}
         {advMessage !== null && <p className="mt-1 text-xs text-fg-muted">{advMessage}</p>}
       </Card>
@@ -379,6 +434,14 @@ export default function SettingsPage() {
             }}
           >
             Recalculer le Top 10
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              void clearEpgCache().then(() => setCacheMessage('Cache EPG (programme TV) vidé.'));
+            }}
+          >
+            Vider le cache EPG
           </Button>
         </div>
         {cacheMessage !== null && <p className="mt-3 text-xs text-fg-muted">{cacheMessage}</p>}

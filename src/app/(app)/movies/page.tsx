@@ -1,5 +1,6 @@
 'use client';
 
+import { CatalogHero } from '@/components/media/CatalogHero';
 import { MediaBrowser } from '@/components/shared/MediaBrowser';
 import type { QuickFilterDefinition, SortOption } from '@/components/shared/MediaBrowser';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
@@ -67,6 +68,7 @@ export default function MoviesPage() {
       fetchQuickFilter={fetchQuickFilter}
       sortOptions={SORT_OPTIONS}
       subtitleFor={subtitleFor}
+      hero={<CatalogHero section="vod" />}
     />
   );
 }

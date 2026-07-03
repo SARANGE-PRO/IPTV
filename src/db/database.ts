@@ -1,4 +1,5 @@
 import Dexie, { type Table } from 'dexie';
+import type { EpgEntry } from '@/types/epg';
 import type {
   Category,
   FavoriteEntry,
@@ -49,6 +50,7 @@ export class IptvDatabase extends Dexie {
   settings!: Table<SettingEntry, string>;
   sync_metadata!: Table<SyncMetadataEntry, Section>;
   search_index!: Table<SearchIndexEntry, string>;
+  epg_cache!: Table<EpgEntry, string>;
 
   constructor() {
     super('iptv-pwa');
@@ -95,6 +97,11 @@ export class IptvDatabase extends Dexie {
         'id, categoryId, name, addedAt, rating, year, isFrench, [categoryId+normalizedName], [categoryId+addedAt], [categoryId+rating], [categoryId+year], [isFrench+addedAt], [isFrench+rating], *searchTokens',
       xtream_series:
         'id, categoryId, name, lastModifiedAt, rating, isFrench, [categoryId+normalizedName], [categoryId+lastModifiedAt], [categoryId+rating], [isFrench+lastModifiedAt], [isFrench+rating], *searchTokens',
+    });
+
+    // v5 : cache EPG (programme TV) par chaine — TTL court, jamais de flux.
+    this.version(5).stores({
+      epg_cache: 'id, fetchedAt',
     });
   }
 }
