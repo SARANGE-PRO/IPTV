@@ -21,9 +21,35 @@ import { useFilterStore } from '@/stores/filterStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { HiddenCategoryEntry, Section } from '@/types/models';
+import type { XtreamCredentials } from '@/types/xtream';
 import { formatCount } from '@/utils/format';
+import { redactText } from '@/utils/redaction';
+import { assertReportSafe, type CredentialHints } from '@/utils/sensitiveDataGuards';
 
 const SECTION_LABELS: Record<Section, string> = { live: 'Live TV', vod: 'Films', series: 'Séries' };
+
+/**
+ * Export JSON SUR : redaction systematique + verification finale (invariant #4)
+ * avant tout telechargement. Jette si une donnee sensible subsiste -> l'appelant
+ * affiche l'erreur au lieu d'exporter un rapport fuitant.
+ */
+function credentialHints(creds: XtreamCredentials | null): CredentialHints {
+  return creds === null
+    ? {}
+    : { serverUrl: creds.serverUrl, username: creds.username, password: creds.password };
+}
+
+function downloadSafeJsonReport(report: unknown, filename: string, hints: CredentialHints): void {
+  const safe = redactText(JSON.stringify(report, null, 2));
+  assertReportSafe(safe, hints);
+  const blob = new Blob([safe], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
 
 const LANGUAGES: { value: string; label: string }[] = [
   { value: '', label: 'Toutes' },
@@ -177,13 +203,7 @@ export default function SettingsPage() {
     try {
       const label = new Date().toISOString().slice(0, 10);
       const report = await generateDeepDiagnostic(credentials ?? undefined, label);
-      const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `diagnostic-complet-zibtv-${label}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadSafeJsonReport(report, `diagnostic-complet-zibtv-${label}.json`, credentialHints(credentials));
       setDeepMessage(
         `Live FR : ${report.live.logicalChannels} chaînes (${report.live.mainChannelsDetected} principales, ${report.live.multiVersionChannels} multi-versions, ${report.live.separatorsOrEvents} séparateurs/events) · EPG ${report.live.epgAvailable ? 'disponible' : 'indisponible'} · Films VF ${report.movies.languages.VF + report.movies.languages.MULTI}, Séries VF ${report.series.languages.VF} · MP4 ${report.playback.movieFormats.mp4}, MKV ${report.playback.movieFormats.mkv}, TS ${report.playback.movieFormats.ts}.`,
       );
@@ -200,13 +220,7 @@ export default function SettingsPage() {
     setFrMessage(null);
     try {
       const listing = await buildFrenchChannelListing();
-      const blob = new Blob([JSON.stringify(listing, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'chaines-fr-zibtv.json';
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadSafeJsonReport(listing, 'chaines-fr-zibtv.json', credentialHints(credentials));
       setFrMessage(
         `${listing.logicalChannels} chaînes FR logiques · ${listing.multiVersionChannels} avec plusieurs versions · ${listing.channelsWithoutLogo} sans logo.`,
       );

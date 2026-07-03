@@ -43,6 +43,10 @@ const KNOWN_CODES: ReadonlySet<string> = new Set([
 /** Garde-fou client : le proxy a son propre timeout, mais si Vercel/le reseau
  * traine, on ne veut pas d'attente infinie cote UI. */
 const REQUEST_TIMEOUT_MS = 15_000;
+/** Appels de liste (tout un catalogue, plusieurs Mo) : plus long que le proxy
+ * (LIST_TIMEOUT_MS=50s) pour ne pas couper une grosse sync sur reseau mobile. */
+const LIST_REQUEST_TIMEOUT_MS = 58_000;
+const LIST_ACTIONS: ReadonlySet<string> = new Set(['get_live_streams', 'get_vod_streams', 'get_series']);
 
 export async function callXtream<T>(
   credentials: XtreamCredentials,
@@ -51,7 +55,9 @@ export async function callXtream<T>(
 ): Promise<T> {
   let response: Response;
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutMs =
+    action !== undefined && LIST_ACTIONS.has(action) ? LIST_REQUEST_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     response = await fetch('/api/xtream', {
       method: 'POST',

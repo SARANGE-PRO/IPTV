@@ -23,7 +23,10 @@ export interface VideoPlayerProps {
   startAt?: number;
   /** Duree totale de repli (Xtream/TMDB) quand le player n'expose pas de duree. */
   duration?: number | null;
-  onProgress?: (positionSec: number, durationSec: number | null) => void;
+  /** `force` = flush garanti (pause/fin/pagehide/demontage) : la page doit le
+   * relayer a saveProgress pour contourner le throttle, sinon la derniere
+   * position est perdue quand iOS gele la PWA en arriere-plan. */
+  onProgress?: (positionSec: number, durationSec: number | null, force: boolean) => void;
   onEnded?: () => void;
   /** Appele quand la lecture echoue (permet de proposer un repli VLC). */
   onError?: () => void;
@@ -158,7 +161,7 @@ export function VideoPlayer({
       lastSentRef.current = now;
       // Duree effective : native fiable sinon repli Xtream/TMDB (jamais Infinity/NaN/0).
       const effectiveDuration = nativeDurationSeconds(video.duration) ?? durationRef.current ?? null;
-      onProgressRef.current?.(video.currentTime, effectiveDuration);
+      onProgressRef.current?.(video.currentTime, effectiveDuration, force);
     };
 
     // Evalue la seekability (lazy) et applique la reprise UNE fois si possible.

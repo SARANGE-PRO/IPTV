@@ -54,7 +54,7 @@ interface MediaBrowserProps<T extends BrowserItem> {
   itemNoun: string;
   hrefFor: (item: T) => string;
   fetchPage: (categoryId: string, offset: number, limit: number, sort: CatalogSort) => Promise<T[]>;
-  searchItems: (query: string, limit: number) => Promise<T[]>;
+  searchItems: (query: string, limit: number, hiddenCategoryIds?: ReadonlySet<string>) => Promise<T[]>;
   quickFilters?: QuickFilterDefinition[];
   fetchQuickFilter?: (filterId: string, limit: number) => Promise<T[]>;
   sortOptions?: SortOption[];
@@ -226,9 +226,10 @@ export function MediaBrowser<T extends BrowserItem>({
     }
     let active = true;
     setSearching(true);
-    void searchItems(debouncedQuery, SEARCH_LIMIT).then((r) => {
+    // Exclusion des categories masquees AVANT la limite (cote repository).
+    void searchItems(debouncedQuery, SEARCH_LIMIT, hidden).then((r) => {
       if (active) {
-        setResults(r.filter((item) => !hidden.has(item.categoryId)));
+        setResults(r);
         setSearching(false);
       }
     });

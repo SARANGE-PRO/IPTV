@@ -269,7 +269,8 @@ export default function LivePage() {
     const run = async () => {
       // Recherche : index multiEntry, tous filtres confondus.
       if (searching) {
-        const res = (await catalogRepository.searchLiveChannels(debouncedQuery, 120)).filter(notHidden);
+        // Exclusion des categories masquees AVANT la limite (cote repository).
+        const res = await catalogRepository.searchLiveChannels(debouncedQuery, 120, hidden);
         if (active) {
           setPool(res);
           setCount(res.length);
@@ -325,7 +326,7 @@ export default function LivePage() {
     return () => {
       active = false;
     };
-  }, [filter, searching, debouncedQuery, favLiveIds, recentChannels, notHidden]);
+  }, [filter, searching, debouncedQuery, favLiveIds, recentChannels, notHidden, hidden]);
 
   // Charge plus : fenetre (pool) + pagination Dexie pour les filtres pagines.
   const loadMore = useCallback(() => {

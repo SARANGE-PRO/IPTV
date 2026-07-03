@@ -26,6 +26,34 @@ async function replaceAll<T>(table: Table<T, string>, rows: T[]): Promise<void> 
   });
 }
 
+/** Taille de lot pour l'insertion mappee (borne le pic memoire). */
+const REPLACE_CHUNK = 2000;
+
+/**
+ * Remplace une table en NORMALISANT par lots : on ne materialise jamais tout le
+ * tableau normalise en plus du JSON brut (le pic memoire ~double sinon, risque
+ * d'OOM sur iOS avec 30-50k items). Reste atomique (clear + bulkPut dans une
+ * seule transaction). Retourne le nombre de lignes ecrites.
+ * NB : `source` (JSON brut) reste en memoire pendant l'operation — reduire
+ * davantage necessiterait un fetch par categorie (`category_id`), differe.
+ */
+async function replaceAllMapped<TIn, TOut>(
+  table: Table<TOut, string>,
+  source: TIn[],
+  map: (row: TIn) => TOut,
+): Promise<number> {
+  let count = 0;
+  await db.transaction('rw', table, async () => {
+    await table.clear();
+    for (let i = 0; i < source.length; i += REPLACE_CHUNK) {
+      const chunk = source.slice(i, i + REPLACE_CHUNK).map(map);
+      await table.bulkPut(chunk);
+      count += chunk.length;
+    }
+  });
+  return count;
+}
+
 // --- Categories ---------------------------------------------------------------
 
 export function getCategories(section: Section): Promise<Category[]> {
@@ -48,6 +76,11 @@ export function replaceCategories(section: Section, categories: Category[]): Pro
 
 export function replaceLiveChannels(channels: LiveChannel[]): Promise<void> {
   return replaceAll(db.xtream_live_streams, channels);
+}
+
+/** Remplacement mappe par lots (memoire bornee) — voir `replaceAllMapped`. */
+export function replaceLiveChannelsFrom<R>(rows: R[], map: (row: R) => LiveChannel): Promise<number> {
+  return replaceAllMapped(db.xtream_live_streams, rows, map);
 }
 
 /** Chaines d'une categorie, triees par ordre fournisseur (sortOrder). */
@@ -123,6 +156,11 @@ export function replaceMovies(movies: Movie[]): Promise<void> {
   return replaceAll(db.xtream_vod_streams, movies);
 }
 
+/** Remplacement mappe par lots (memoire bornee) — voir `replaceAllMapped`. */
+export function replaceMoviesFrom<R>(rows: R[], map: (row: R) => Movie): Promise<number> {
+  return replaceAllMapped(db.xtream_vod_streams, rows, map);
+}
+
 export function getMoviesByCategory(categoryId: string): Promise<Movie[]> {
   return db.xtream_vod_streams.where('categoryId').equals(categoryId).sortBy('name');
 }
@@ -159,6 +197,11 @@ export function getFrenchMovies(limit: number, order: 'recent' | 'rating' = 'rec
 
 export function replaceSeries(series: Series[]): Promise<void> {
   return replaceAll(db.xtream_series, series);
+}
+
+/** Remplacement mappe par lots (memoire bornee) — voir `replaceAllMapped`. */
+export function replaceSeriesFrom<R>(rows: R[], map: (row: R) => Series): Promise<number> {
+  return replaceAllMapped(db.xtream_series, rows, map);
 }
 
 export function getSeriesByCategory(categoryId: string): Promise<Series[]> {
@@ -389,6 +432,7 @@ interface Searchable {
   id: string;
   name: string;
   normalizedName: string;
+  categoryId: string;
   isFrench: BoolNum;
   searchTokens: string[];
 }
@@ -397,11 +441,16 @@ interface Searchable {
  * Recherche par prefixe de tokens via l'index multiEntry : le token le plus
  * long passe par l'index, les autres filtrent les candidats. Jamais de scan
  * complet de la table.
+ *
+ * `hiddenCategoryIds` : categories blacklistees exclues DANS le `.filter()`,
+ * donc AVANT `.limit()` — sinon une grosse categorie masquee raflerait les N
+ * premiers resultats et ferait disparaitre des correspondances legitimes.
  */
 async function searchIn<T extends Searchable>(
   table: Table<T, string>,
   query: string,
   limit: number,
+  hiddenCategoryIds?: ReadonlySet<string>,
 ): Promise<T[]> {
   const tokens = tokenizeQuery(query);
   const primary = tokens.reduce<string | null>(
@@ -410,12 +459,17 @@ async function searchIn<T extends Searchable>(
   );
   if (primary === null) return [];
   const rest = tokens.filter((t) => t !== primary);
+  const hidden = hiddenCategoryIds;
 
   const rows = await table
     .where('searchTokens')
     .startsWith(primary)
     .distinct()
-    .filter((item) => rest.every((t) => item.searchTokens.some((tok) => tok.startsWith(t))))
+    .filter(
+      (item) =>
+        (hidden === undefined || !hidden.has(item.categoryId)) &&
+        rest.every((t) => item.searchTokens.some((tok) => tok.startsWith(t))),
+    )
     .limit(limit)
     .toArray();
 
@@ -428,14 +482,26 @@ async function searchIn<T extends Searchable>(
   );
 }
 
-export function searchLiveChannels(query: string, limit = 60): Promise<LiveChannel[]> {
-  return searchIn(db.xtream_live_streams, query, limit);
+export function searchLiveChannels(
+  query: string,
+  limit = 60,
+  hiddenCategoryIds?: ReadonlySet<string>,
+): Promise<LiveChannel[]> {
+  return searchIn(db.xtream_live_streams, query, limit, hiddenCategoryIds);
 }
 
-export function searchMovies(query: string, limit = 60): Promise<Movie[]> {
-  return searchIn(db.xtream_vod_streams, query, limit);
+export function searchMovies(
+  query: string,
+  limit = 60,
+  hiddenCategoryIds?: ReadonlySet<string>,
+): Promise<Movie[]> {
+  return searchIn(db.xtream_vod_streams, query, limit, hiddenCategoryIds);
 }
 
-export function searchSeries(query: string, limit = 60): Promise<Series[]> {
-  return searchIn(db.xtream_series, query, limit);
+export function searchSeries(
+  query: string,
+  limit = 60,
+  hiddenCategoryIds?: ReadonlySet<string>,
+): Promise<Series[]> {
+  return searchIn(db.xtream_series, query, limit, hiddenCategoryIds);
 }

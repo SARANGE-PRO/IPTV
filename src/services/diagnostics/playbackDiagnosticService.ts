@@ -1,5 +1,7 @@
 import { isGatewayConfigured, isGatewayHealthy } from '@/services/player/mediaGatewayService';
 import { supportsNativeHls } from '@/utils/playerSupport';
+import { redactText } from '@/utils/redaction';
+import { assertReportSafe } from '@/utils/sensitiveDataGuards';
 import type {
   PlaybackContext,
   PlaybackDiagnostic,
@@ -115,5 +117,16 @@ export function formatPlaybackDiagnostic(d: PlaybackDiagnostic): string {
   L.push(`PWA installee : ${d.env.standalone ? 'oui' : 'non'} · en ligne : ${d.env.online ? 'oui' : 'NON'}`);
   L.push(`HLS natif : ${d.env.nativeHls ? 'oui' : 'non'} · reseau : ${d.env.connection ?? '?'}`);
   L.push(`UA : ${d.env.userAgent}`);
-  return L.join('\n');
+
+  // Filet anti-fuite (invariant #4) — comme les autres exports de diagnostic :
+  // redaction systematique + verification finale. `detail` ne porte aujourd'hui
+  // que des enums, mais un futur champ texte (ex. detail: error.message avec une
+  // URL ...?username=...&password=...) ne pourra jamais atteindre le presse-papier.
+  const safe = redactText(L.join('\n'));
+  try {
+    assertReportSafe(safe);
+  } catch {
+    return '=== ZiBTV — Diagnostic de lecture ===\n(Rapport masqué : données sensibles détectées.)';
+  }
+  return safe;
 }

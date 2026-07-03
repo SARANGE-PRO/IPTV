@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { IconArrowLeft, IconPlay } from '@/components/ui/icons';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import * as playbackRepository from '@/db/repositories/playbackRepository';
+import { resetGatewayHealthCache } from '@/services/player/mediaGatewayService';
 import { resolveDuration, parseDurationToSeconds } from '@/services/player/mediaDurationService';
 import { progressRatio, shouldOfferResume } from '@/services/player/resumePlaybackService';
 import { tmdbBackdrop, tmdbPoster } from '@/services/tmdb/tmdbImage';
@@ -42,6 +43,8 @@ export default function MovieDetailPage() {
   const [playing, setPlaying] = useState(false);
   const [startAt, setStartAt] = useState(0);
   const [failed, setFailed] = useState(false);
+  // Incremente -> re-sonde la passerelle (echec de lecture ou reveil du PC).
+  const [planRetry, setPlanRetry] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -98,7 +101,7 @@ export default function MovieDetailPage() {
 
   // Plan de lecture adaptatif : MP4 -> direct ; MKV -> passerelle si joignable,
   // sinon VLC. Sonde la passerelle une seule fois (cache), aucune connexion Xtream.
-  const plan = usePlaybackPlan(movie?.containerExtension ?? null);
+  const plan = usePlaybackPlan(movie?.containerExtension ?? null, planRetry);
 
   // Duree de repli (Xtream puis TMDB) quand le player n'expose pas de duree fiable.
   const fallbackDuration = resolveDuration({
@@ -151,7 +154,12 @@ export default function MovieDetailPage() {
               <p className="mt-1.5 text-xs text-fg-muted">
                 Allume la passerelle pour le lire ici, ou ouvre-le dans VLC (lecture native).
               </p>
-              <ExternalPlayer className="mt-4" streamUrl={src} label="Ouvrir dans VLC" />
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+                <Button size="sm" variant="secondary" onClick={() => setPlanRetry((n) => n + 1)}>
+                  Réessayer la passerelle
+                </Button>
+                <ExternalPlayer streamUrl={src} label="Ouvrir dans VLC" />
+              </div>
             </div>
           ) : plan === 'checking' ? (
             <div className="flex aspect-video items-center justify-center rounded-2xl bg-black">
@@ -167,18 +175,26 @@ export default function MovieDetailPage() {
                 startAt={startAt}
                 duration={fallbackDuration}
                 poster={backdropUrl ?? posterUrl}
-                onProgress={(pos, dur) =>
-                  saveProgress({
-                    type: 'vod',
-                    itemId: vodId,
-                    positionSec: pos,
-                    durationSec: dur,
-                    label: movie.name,
-                    posterUrl,
-                  })
+                onProgress={(pos, dur, force) =>
+                  saveProgress(
+                    {
+                      type: 'vod',
+                      itemId: vodId,
+                      positionSec: pos,
+                      durationSec: dur,
+                      label: movie.name,
+                      posterUrl,
+                    },
+                    { force },
+                  )
                 }
                 onEnded={() => void markFinished('vod', vodId)}
-                onError={() => setFailed(true)}
+                onError={() => {
+                  setFailed(true);
+                  // Invalide le cache sante : une eventuelle passerelle morte sera
+                  // re-sondee au prochain essai (bouton, replay), sans boucler ici.
+                  resetGatewayHealthCache();
+                }}
               />
               {(showVlcButton || failed) && (
                 <ExternalPlayer

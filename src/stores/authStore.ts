@@ -71,6 +71,22 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       return false;
     }
 
+    // Bascule de compte (sans logout prealable) : purge le catalogue/metadonnees
+    // de l'ancien compte, sinon le nouveau compte affiche le catalogue du
+    // precedent jusqu'a la 1re resync (et des IDs favoris/historique fantomes).
+    const prev = await secureSessionService.getSession();
+    const accountChanged =
+      prev !== undefined && (prev.serverUrl !== normalized.serverUrl || prev.username !== normalized.username);
+    if (accountChanged) {
+      await Promise.all([
+        catalogRepository.clearCatalog(),
+        syncMetadataRepository.clearSyncMetadata(),
+        tmdbRepository.clearTmdbCache(),
+        searchIndexRepository.clearSearchIndex(),
+      ]);
+      useCatalogStore.getState().reset();
+    }
+
     await secureSessionService.saveSession(normalized, rememberMe);
     set({ status: 'authenticated', credentials: normalized, error: null });
     return true;

@@ -45,29 +45,25 @@ async function fetchAndStoreItems(
 ): Promise<number> {
   const isFrenchCat = (id: string): boolean => categoryById.get(id)?.isFrench === 1;
 
+  // Insertion NORMALISEE PAR LOTS : on ne garde jamais tout le tableau normalise
+  // en plus du JSON brut (pic memoire ~double sinon -> OOM iOS sur gros catalogue).
   if (section === 'live') {
     const raw = await xtreamApi.getLiveStreams(creds);
-    const items = (Array.isArray(raw) ? raw : []).map((r) => {
+    return catalogRepository.replaceLiveChannelsFrom(Array.isArray(raw) ? raw : [], (r) => {
       const cat = categoryById.get(normalizeCategoryId(r.category_id));
       return normalizeLiveChannel(r, cat !== undefined ? { isFrench: cat.isFrench === 1, name: cat.name } : undefined);
     });
-    await catalogRepository.replaceLiveChannels(items);
-    return items.length;
   }
   if (section === 'vod') {
     const raw = await xtreamApi.getVodStreams(creds);
-    const items = (Array.isArray(raw) ? raw : []).map((r) =>
+    return catalogRepository.replaceMoviesFrom(Array.isArray(raw) ? raw : [], (r) =>
       normalizeMovie(r, isFrenchCat(normalizeCategoryId(r.category_id))),
     );
-    await catalogRepository.replaceMovies(items);
-    return items.length;
   }
   const raw = await xtreamApi.getSeries(creds);
-  const items = (Array.isArray(raw) ? raw : []).map((r) =>
+  return catalogRepository.replaceSeriesFrom(Array.isArray(raw) ? raw : [], (r) =>
     normalizeSeries(r, isFrenchCat(normalizeCategoryId(r.category_id))),
   );
-  await catalogRepository.replaceSeries(items);
-  return items.length;
 }
 
 /** Synchronise une section complete (categories + liste d'items). */

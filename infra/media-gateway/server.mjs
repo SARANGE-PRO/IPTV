@@ -80,6 +80,54 @@ function optionalOrigin(name) {
 function isHttp(url) {
   return url.protocol === 'http:' || url.protocol === 'https:';
 }
+
+// Anti-SSRF LAN : la passerelle tourne sur le reseau domestique. Un upstream
+// compromis/hostile pourrait rediriger vers le routeur (192.168.x), le loopback
+// ou les metadonnees cloud (169.254.169.254). On bloque tout hote qui est une IP
+// litterale privee/reservee ou un nom d'hote interne, A CHAQUE saut. Les CDN
+// (redirections legitimes des segments HLS) restent joignables (hotes publics).
+function ipv4ToLong(ip) {
+  const m = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (m === null) return null;
+  const p = m.slice(1).map(Number);
+  if (p.some((n) => n > 255)) return null;
+  return ((p[0] << 24) >>> 0) + (p[1] << 16) + (p[2] << 8) + p[3];
+}
+function isPrivateIpv4(ip) {
+  const long = ipv4ToLong(ip);
+  if (long === null) return false;
+  const inRange = (base, bits) => {
+    const baseLong = ipv4ToLong(base);
+    const mask = bits === 0 ? 0 : (~0 << (32 - bits)) >>> 0;
+    return (long & mask) === (baseLong & mask);
+  };
+  return (
+    inRange('0.0.0.0', 8) ||
+    inRange('10.0.0.0', 8) ||
+    inRange('100.64.0.0', 10) ||
+    inRange('127.0.0.0', 8) ||
+    inRange('169.254.0.0', 16) ||
+    inRange('172.16.0.0', 12) ||
+    inRange('192.168.0.0', 16)
+  );
+}
+function isBlockedHost(hostname) {
+  const h = hostname.toLowerCase().replace(/\.$/, '');
+  if (h === '') return true;
+  if (h === 'localhost' || h.endsWith('.localhost')) return true;
+  if (h.endsWith('.local') || h.endsWith('.internal')) return true;
+  if (h === 'metadata.google.internal') return true;
+  if (isPrivateIpv4(h)) return true;
+  if (h === '::1' || h === '::') return true;
+  const mapped = h.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (mapped !== null) return isPrivateIpv4(mapped[1]);
+  if (h.includes(':')) {
+    const first = h.split(':')[0];
+    if (/^f[cd][0-9a-f]{0,2}$/.test(first)) return true; // fc00::/7
+    if (/^fe[89ab][0-9a-f]?$/.test(first)) return true; // fe80::/10
+  }
+  return false;
+}
 /** Le PREMIER saut doit etre un hote allowliste (anti-SSRF). */
 function isAllowed(url) {
   return isHttp(url) && allowedHosts.has(url.host.toLowerCase());
@@ -146,6 +194,8 @@ async function fetchAllowed(target, init, trusted, maxRedirects = 5) {
   let current = target;
   for (let i = 0; i <= maxRedirects; i += 1) {
     if (i > 0 && !isHttp(current)) throw new Error(`Redirection non http(s): ${current.host}`);
+    // A chaque saut (cible initiale signee comprise) : jamais d'IP interne/LAN.
+    if (isBlockedHost(current.hostname)) throw new Error(`Hote non autorise: ${current.host}`);
     const response = await fetch(current, { ...init, redirect: 'manual' });
     if (![301, 302, 303, 307, 308].includes(response.status)) return { response, finalUrl: current };
     const location = response.headers.get('location');

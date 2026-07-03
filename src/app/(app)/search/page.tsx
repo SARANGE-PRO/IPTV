@@ -47,16 +47,18 @@ export default function SearchPage() {
     let active = true;
     setLoading(true);
     setError(false);
+    // Exclusion des categories masquees passee AU repository (avant .limit()),
+    // sinon une grosse categorie blacklistee viderait la fenetre de resultats.
     void Promise.all([
-      catalogRepository.searchLiveChannels(debounced, 24),
-      catalogRepository.searchMovies(debounced, 24),
-      catalogRepository.searchSeries(debounced, 24),
+      catalogRepository.searchLiveChannels(debounced, 24, hiddenLive),
+      catalogRepository.searchMovies(debounced, 24, hiddenVod),
+      catalogRepository.searchSeries(debounced, 24, hiddenSeries),
     ])
       .then(([liveRows, movieRows, seriesRows]) => {
         if (!active) return;
-        setLive(liveRows.filter((c) => !hiddenLive.has(c.categoryId)));
-        setMovies(movieRows.filter((m) => !hiddenVod.has(m.categoryId)));
-        setSeries(seriesRows.filter((s) => !hiddenSeries.has(s.categoryId)));
+        setLive(liveRows);
+        setMovies(movieRows);
+        setSeries(seriesRows);
       })
       .catch(() => {
         if (!active) return;

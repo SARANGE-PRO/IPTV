@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { cn } from '@/lib/cn';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import * as playbackRepository from '@/db/repositories/playbackRepository';
+import { resetGatewayHealthCache } from '@/services/player/mediaGatewayService';
 import { getSeriesDetailsCached } from '@/services/xtream/seriesDetailsService';
 import { tmdbPoster } from '@/services/tmdb/tmdbImage';
 import { buildSeriesEpisodeUrl } from '@/services/xtream/xtreamUrls';
@@ -50,6 +51,8 @@ export default function SeriesDetailPage() {
   const [playingEp, setPlayingEp] = useState<Episode | null>(null);
   const [startAt, setStartAt] = useState(0);
   const [failed, setFailed] = useState(false);
+  // Incremente -> re-sonde la passerelle (echec de lecture ou reveil du PC).
+  const [planRetry, setPlanRetry] = useState(0);
   const [epProgress, setEpProgress] = useState<Map<string, PlaybackEntry>>(new Map());
 
   useEffect(() => {
@@ -131,7 +134,7 @@ export default function SeriesDetailPage() {
       : null;
 
   // Plan de lecture adaptatif selon le conteneur de l'episode courant.
-  const plan = usePlaybackPlan(playingEp?.containerExtension ?? null);
+  const plan = usePlaybackPlan(playingEp?.containerExtension ?? null, planRetry);
 
   if (series === null) {
     return (
@@ -168,11 +171,15 @@ export default function SeriesDetailPage() {
               <p className="mt-1.5 text-xs text-fg-muted">
                 Allume la passerelle pour le lire ici, ou ouvre-le dans VLC (lecture native).
               </p>
-              <ExternalPlayer
-                className="mt-4"
-                streamUrl={src}
-                label={`Ouvrir S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`}
-              />
+              <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+                <Button size="sm" variant="secondary" onClick={() => setPlanRetry((n) => n + 1)}>
+                  Réessayer la passerelle
+                </Button>
+                <ExternalPlayer
+                  streamUrl={src}
+                  label={`Ouvrir S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`}
+                />
+              </div>
             </div>
           ) : plan === 'checking' ? (
             <div className="flex aspect-video items-center justify-center rounded-2xl bg-black">
@@ -198,19 +205,25 @@ export default function SeriesDetailPage() {
                 startAt={startAt}
                 duration={playingEp.durationSecs}
                 poster={posterUrl}
-                onProgress={(pos, dur) =>
-                  saveProgress({
-                    type: 'episode',
-                    itemId: playingEp.id,
-                    seriesId,
-                    positionSec: pos,
-                    durationSec: dur,
-                    label: `${series?.name ?? 'Série'} · S${playingEp.seasonNumber}E${playingEp.episodeNumber}`,
-                    posterUrl,
-                  })
+                onProgress={(pos, dur, force) =>
+                  saveProgress(
+                    {
+                      type: 'episode',
+                      itemId: playingEp.id,
+                      seriesId,
+                      positionSec: pos,
+                      durationSec: dur,
+                      label: `${series?.name ?? 'Série'} · S${playingEp.seasonNumber}E${playingEp.episodeNumber}`,
+                      posterUrl,
+                    },
+                    { force },
+                  )
                 }
                 onEnded={() => void markFinished('episode', playingEp.id)}
-                onError={() => setFailed(true)}
+                onError={() => {
+                  setFailed(true);
+                  resetGatewayHealthCache(); // re-sonde possible au prochain essai, sans boucler
+                }}
               />
             </>
           )}

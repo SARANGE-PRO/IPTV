@@ -12,17 +12,22 @@ import type { XtreamCredentials } from '@/types/xtream';
 
 const TTL_MS = 20 * 60 * 1000; // 20 min
 
-/** Programmes d'une chaine (cache Dexie stale-while-error). */
+/**
+ * Programmes d'une chaine (cache Dexie stale-while-error). `limit` = nombre de
+ * programmes a venir demandes (defaut 16 : couvre un horizon plus large que 8
+ * pour la detection d'evenements sportifs, sans exploser le poids EPG).
+ */
 export async function getChannelEpg(
   credentials: XtreamCredentials,
   streamId: string,
+  limit = 16,
 ): Promise<EpgProgramme[]> {
   const cached = await db.epg_cache.get(streamId);
   if (cached !== undefined && Date.now() - cached.fetchedAt < TTL_MS) {
     return cached.programmes;
   }
   try {
-    const raw = await xtreamApi.getShortEpg(credentials, streamId, 8);
+    const raw = await xtreamApi.getShortEpg(credentials, streamId, limit);
     const programmes = normalizeShortEpg(raw);
     await db.epg_cache.put({ id: streamId, programmes, fetchedAt: Date.now() });
     return programmes;

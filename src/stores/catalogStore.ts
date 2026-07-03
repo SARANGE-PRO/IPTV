@@ -64,7 +64,11 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
     ]);
     const sorted = sortFrenchFirst(categories);
     let status: LoadState;
-    if (meta.status === 'syncing') status = 'loading';
+    // `meta.status:'syncing'` n'est fiable QUE si une sync tourne vraiment dans
+    // cette session (get().syncing). Sinon c'est un statut orphelin (onglet
+    // ferme pendant une sync) : on l'ignore et on statue sur les donnees reelles,
+    // sinon le spinner reste fige ET le CTA "Synchroniser" est masque a tort.
+    if (meta.status === 'syncing' && get().syncing) status = 'loading';
     else if (sorted.length > 0) status = 'ready';
     else if (meta.status === 'error') status = 'error';
     else if (meta.lastFetchAt !== null) status = 'empty';
