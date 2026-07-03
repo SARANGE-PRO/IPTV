@@ -8,7 +8,7 @@ import { cn } from '@/lib/cn';
 import { nativeDurationSeconds } from '@/services/player/mediaDurationService';
 import { isSeekable } from '@/services/player/playbackCapabilityService';
 import type { PlaybackErrorCode, PlaybackFailure } from '@/types/playbackDiagnostics';
-import { secureImageSrc, secureMediaUrl } from '@/utils/secureUrl';
+import { mediaGatewayStopUrl, secureImageSrc, secureMediaUrl } from '@/utils/secureUrl';
 
 /**
  * Lecteur video isole. HLS natif (Safari iOS/iPadOS) prioritaire ; hls.js
@@ -246,8 +246,29 @@ export function VideoPlayer({
     video.addEventListener('ended', handleEnded);
     video.addEventListener('error', handleError);
 
-    // Flush robuste de la progression : fermeture/retour d'onglet, navigation.
-    const flushProgress = () => sendProgress(true);
+    // ANTI-BAN (compte Xtream a connexion unique) : a la fermeture d'un flux HLS
+    // VOD, on demande a la passerelle de tuer ffmpeg TOUT DE SUITE (sinon la
+    // connexion amont reste ouverte jusqu'a l'idle). sendBeacon survit a la
+    // navigation/fermeture. Envoye une seule fois par montage.
+    let hlsStopped = false;
+    const stopHlsSession = () => {
+      if (hlsStopped || !preferHls) return;
+      const stopUrl = mediaGatewayStopUrl(src);
+      if (stopUrl !== null && typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+        hlsStopped = true;
+        try {
+          navigator.sendBeacon(stopUrl);
+        } catch {
+          // beacon indisponible : l'idle passerelle prendra le relais
+        }
+      }
+    };
+
+    // Flush robuste de la progression + arret HLS : fermeture/retour d'onglet, navigation.
+    const flushProgress = () => {
+      sendProgress(true);
+      stopHlsSession();
+    };
     const handleVisibility = () => {
       if (document.visibilityState === 'hidden') sendProgress(true);
     };
@@ -354,6 +375,8 @@ export function VideoPlayer({
       // Un zapping/changement de flux ne doit pas laisser une fenetre PiP
       // orpheline pointant sur une <video> qu'on detruit.
       exitPipFor(video);
+      // ... ni une session ffmpeg (connexion Xtream) ouverte cote passerelle.
+      stopHlsSession();
       video.removeAttribute('src');
       video.load();
     };

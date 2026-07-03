@@ -57,6 +57,20 @@ export function secureMediaUrl(
 }
 
 /**
+ * URL d'ARRET d'une session HLS VOD sur la passerelle (a appeler en
+ * `navigator.sendBeacon` a la fermeture du lecteur) : tue ffmpeg tout de suite
+ * et libere la connexion Xtream (compte a connexion unique -> anti-ban). `value`
+ * = l'URL de flux D'ORIGINE (http direct), la meme que celle passee a la lecture.
+ * Renvoie null si pas de passerelle configuree ou si l'URL n'est pas concernee.
+ */
+export function mediaGatewayStopUrl(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const url = value.trim();
+  if (!/^http:\/\//i.test(url) || MEDIA_GATEWAY_URL === '') return null;
+  return `${MEDIA_GATEWAY_URL}/_hlsstop?url=${encodeURIComponent(url)}`;
+}
+
+/**
  * Image : jamais la passerelle (elle est reservee a la video). Un logo HTTP est
  * "upgrade" en HTTPS best-effort : sur une page HTTPS, le navigateur bloque
  * l'image HTTP (mixed-content), donc la garder en HTTP = zero logo. La plupart

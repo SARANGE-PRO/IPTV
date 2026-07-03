@@ -280,7 +280,10 @@ function transcodeToFragmentedMp4(sourceStream, res, live = false) {
  * les segments vers `/_hlsseg`. Nettoyage des sessions inactives (>60 s).
  */
 const HLS_READY_TIMEOUT_MS = 30_000;
-const HLS_IDLE_MS = 60_000;
+// Idle COURT : compte Xtream a connexion unique (max_connections:1) -> ffmpeg
+// tient une connexion amont tant qu'il vit. Le client envoie /_hlsstop a la
+// fermeture ; cet idle n'est qu'un filet de securite si le beacon se perd.
+const HLS_IDLE_MS = 15_000;
 const HLS_SEGMENT_RE = /^seg\d+\.ts$/i;
 const hlsSessions = new Map(); // key -> { dir, ff, ready, lastAccess }
 
@@ -381,6 +384,27 @@ async function serveHlsSegment(req, res) {
   }
 }
 
+/** Tue IMMEDIATEMENT la session HLS d'un film (appele en sendBeacon a la
+ *  fermeture du lecteur) -> libere la connexion Xtream sans attendre l'idle.
+ *  Vital pour un compte max_connections:1 (evite la double connexion -> ban). */
+function killHlsSession(key) {
+  const session = hlsSessions.get(key);
+  if (session === undefined) return;
+  try { session.ff.kill('SIGKILL'); } catch {}
+  hlsSessions.delete(key);
+  fs.rm(session.dir, { recursive: true, force: true }).catch(() => {});
+}
+
+function stopHlsSession(req, res) {
+  try {
+    const raw = new URL(req.url ?? '/', 'http://gateway.local').searchParams.get('url');
+    if (raw !== null && raw !== '') killHlsSession(sign(new URL(raw).toString()));
+  } catch {
+    // url invalide : rien a arreter
+  }
+  res.writeHead(204).end();
+}
+
 // Nettoyage des sessions HLS inactives (ffmpeg + dossier temporaire).
 setInterval(() => {
   const now = Date.now();
@@ -397,6 +421,9 @@ const server = http.createServer(async (req, res) => {
   cors(res);
   if (req.method === 'OPTIONS') return void res.writeHead(204).end();
   if (req.url === '/_health') return void res.writeHead(200, { 'content-type': 'text/plain' }).end('ok');
+  // Arret d'une session HLS (beacon POST a la fermeture du lecteur) — AVANT le
+  // filtre de methode : sendBeacon envoie un POST.
+  if ((req.url ?? '').startsWith('/_hlsstop')) return void stopHlsSession(req, res);
   if (req.method !== 'GET' && req.method !== 'HEAD') return void res.writeHead(405, { allow: 'GET, HEAD, OPTIONS' }).end();
   // Segment HLS d'une session VOD (transcode Safari) — sert un fichier local signe.
   if ((req.url ?? '').startsWith('/_hlsseg')) return void serveHlsSegment(req, res);
