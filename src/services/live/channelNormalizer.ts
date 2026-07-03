@@ -71,14 +71,31 @@ function harmonize(key: string): string {
   k = k
     .replace(/\bbfm\s*tv\b/g, 'bfmtv')
     .replace(/\bfrance\s*info\b/g, 'franceinfo')
-    .replace(/\bbein\s*sport\b/g, 'bein sports')
+    .replace(/\bbein\s*spr?ts?\b/g, 'bein sports')
+    .replace(/\beuro\s*sport\b/g, 'eurosport')
+    .replace(/\bc\s*news\b/g, 'cnews')
     .replace(/\bcanal\s*plus\b/g, 'canal plus')
+    .replace(/\bsport\s*360\b/g, 'sport 360')
     .replace(/\bnrj\s*12\b/g, 'nrj12')
     .replace(/\brmc\s*(?=story|decouverte|sport)/g, 'rmc ')
     .replace(/\bnational\s*geo(?:graphic)?\b/g, 'national geographic')
     .replace(/\s{2,}/g, ' ')
     .trim();
   return k;
+}
+
+// Separateurs de menu ("##### FRANCE #####") et chaines evenementielles/PPV
+// ("BE/FR: DAZN LIVE EVENT 3") — a exclure du bouquet principal (gardes en "Tous").
+const SEPARATOR = /#{2,}|={3,}|\*{3,}|_{4,}|\.{4,}|—{2,}/;
+const EVENT = /\b(no event|event stream|live event|ppv event|ppv|no match|coming soon|no stream|no streaming)\b/;
+
+/** Vrai si l'entree est un separateur decoratif ou un flux evenementiel/PPV. */
+export function isSeparatorOrEvent(name: string): boolean {
+  const raw = name.trim();
+  if (raw === '') return true;
+  if (SEPARATOR.test(raw)) return true;
+  if (/^[\s#=*_.\-–—]{4,}$/.test(raw)) return true;
+  return EVENT.test(normalizeText(raw));
 }
 
 /** Cle canonique stable pour regrouper les doublons (TF1 HD / TF1 4K -> "tf1"). */

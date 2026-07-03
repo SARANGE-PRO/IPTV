@@ -356,7 +356,7 @@ export function MediaBrowser<T extends BrowserItem>({
                 title={displayTitle(item.name)}
                 posterUrl={item.posterUrl}
                 subtitle={subtitleFor?.(item) ?? undefined}
-                tag={detectFrenchVariant(item.name)}
+                tag={detectFrenchVariant(item.name) ?? (item.isFrench === 1 ? 'FR' : null)}
                 favorite={{ type: favoriteType, itemId: item.id }}
               />
             ))}

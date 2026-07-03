@@ -169,7 +169,7 @@ export default function SettingsPage() {
       a.click();
       URL.revokeObjectURL(url);
       setDeepMessage(
-        `Live FR : ${report.live.logicalChannels} chaînes (${report.live.multiVersionChannels} multi-versions) · EPG ${report.live.epgAvailable ? 'disponible' : 'indisponible'} · Films VF ${report.movies.languages.VF + report.movies.languages.MULTI} · MP4 ${report.playback.movieFormats.mp4}, MKV ${report.playback.movieFormats.mkv}, TS ${report.playback.movieFormats.ts}.`,
+        `Live FR : ${report.live.logicalChannels} chaînes (${report.live.mainChannelsDetected} principales, ${report.live.multiVersionChannels} multi-versions, ${report.live.separatorsOrEvents} séparateurs/events) · EPG ${report.live.epgAvailable ? 'disponible' : 'indisponible'} · Films VF ${report.movies.languages.VF + report.movies.languages.MULTI}, Séries VF ${report.series.languages.VF} · MP4 ${report.playback.movieFormats.mp4}, MKV ${report.playback.movieFormats.mkv}, TS ${report.playback.movieFormats.ts}.`,
       );
     } catch {
       setDeepMessage('Impossible de générer le diagnostic. Resynchronise le catalogue.');

@@ -31,6 +31,8 @@ export interface DeepLiveStats {
   withLogo: number;
   withoutLogo: number;
   mainChannelsDetected: number;
+  /** Separateurs de menu + flux evenementiels/PPV exclus du bouquet principal. */
+  separatorsOrEvents: number;
   epgAvailable: boolean;
   epgSampleCount: number;
 }

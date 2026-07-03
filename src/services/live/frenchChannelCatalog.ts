@@ -1,5 +1,6 @@
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import { groupChannels } from '@/services/live/channelGroupingService';
+import { isSeparatorOrEvent } from '@/services/live/channelNormalizer';
 
 /**
  * Listing anonymise des chaines FR disponibles (apres groupement des doublons).
@@ -28,7 +29,7 @@ export interface FrenchChannelListing {
 /** Construit le listing depuis un pool FR borne (jamais tout le catalogue). */
 export async function buildFrenchChannelListing(cap = 4000): Promise<FrenchChannelListing> {
   const pool = await catalogRepository.getLiveChannelsPage({ kind: 'french' }, 0, cap);
-  const groups = groupChannels(pool);
+  const groups = groupChannels(pool.filter((c) => !isSeparatorOrEvent(c.name)));
 
   const channels: FrenchChannelEntry[] = groups.map((group) => {
     const categories = new Set(group.versions.map((v) => v.channel.categoryId));

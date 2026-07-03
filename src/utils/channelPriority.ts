@@ -26,8 +26,8 @@ const PRIORITY_PATTERNS: RegExp[] = [
   /^lci(?:\s|$)/,
   /^france\s*info(?:\s|$)/,
   /^rmc(?:\s|$)/,
-  /^bein\s*sport(?:\s|$)/,
-  /^eurosport(?:\s|$)/,
+  /^bein\s*sports?(?:\s|$|\d)/,
+  /^eurosport(?:\s|$|\d)/,
   /^gulli(?:\s|$)/,
   /^disney\s*channel(?:\s|$)/,
   /^nickelodeon(?:\s|$)/,
@@ -36,9 +36,20 @@ const PRIORITY_PATTERNS: RegExp[] = [
   /^planete(?:\s|$)/,
 ];
 
+/**
+ * Retire un prefixe pays/categorie ("fr| ", "fr - ", "be: "…) en tete du nom
+ * normalise, sinon l'ancrage `^tf1` echoue (les patterns ne matchaient jamais —
+ * mainChannelsDetected=0 dans le diagnostic reel). Les sigles avec chiffre
+ * (m6, w9, c8) ne matchent pas `[a-z]{2,3}` et sont donc preserves.
+ */
+function coreName(normalizedName: string): string {
+  return normalizedName.replace(/^[a-z]{2,3}\s*[|:\-–]\s*/, '').replace(/^\|+\s*/, '').trim();
+}
+
 export function mainFrenchChannelScore(channel: Pick<LiveChannel, 'normalizedName' | 'isFrench'>): number {
   if (channel.isFrench !== 1) return 0;
-  const index = PRIORITY_PATTERNS.findIndex((pattern) => pattern.test(channel.normalizedName));
+  const core = coreName(channel.normalizedName);
+  const index = PRIORITY_PATTERNS.findIndex((pattern) => pattern.test(core));
   return index === -1 ? 0 : PRIORITY_PATTERNS.length - index;
 }
 

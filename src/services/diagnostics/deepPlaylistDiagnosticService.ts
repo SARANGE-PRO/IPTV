@@ -2,7 +2,9 @@ import * as catalogRepository from '@/db/repositories/catalogRepository';
 import * as playbackRepository from '@/db/repositories/playbackRepository';
 import { normalizeShortEpg } from '@/services/epg/epgNormalizer';
 import { groupChannels } from '@/services/live/channelGroupingService';
+import { isSeparatorOrEvent } from '@/services/live/channelNormalizer';
 import { detectLanguage } from '@/services/media/languageDetectionService';
+import type { MediaLanguage } from '@/types/mediaLanguage';
 import * as xtreamApi from '@/services/xtream/xtreamApi';
 import type { DeepDiagnostic, DeepMediaStats, LanguageCounts } from '@/types/deepDiagnostics';
 import type { MediaExtension } from '@/types/playbackCapabilities';
@@ -32,6 +34,12 @@ function bucketContainer(ext: string | null): MediaExtension {
   return 'other';
 }
 
+/** Langue avec repli sur le flag FR : corrige la sous-detection (surtout series). */
+function languageWithFrenchHint(name: string, categoryName: string | null, isFrench: number): MediaLanguage {
+  const lang = detectLanguage(name, categoryName);
+  return lang === 'OTHER' && isFrench === 1 ? 'VF' : lang;
+}
+
 export async function generateDeepDiagnostic(
   credentials?: XtreamCredentials,
   generatedAtLabel = 'rapport',
@@ -58,7 +66,7 @@ export async function generateDeepDiagnostic(
     if (m.posterUrl !== null && m.posterUrl !== '') movies.withImage += 1;
     if (m.isFrench === 1) movies.french += 1;
     if (YEAR.test(m.name)) movies.withYearInTitle += 1;
-    movies.languages[detectLanguage(m.name, vodCatName.get(m.categoryId) ?? null)] += 1;
+    movies.languages[languageWithFrenchHint(m.name, vodCatName.get(m.categoryId) ?? null, m.isFrench)] += 1;
     if (m.containerExtension !== null && m.containerExtension !== '') moviesWithContainer += 1;
     movieFormats[bucketContainer(m.containerExtension)] += 1;
   });
@@ -77,13 +85,15 @@ export async function generateDeepDiagnostic(
     if (s.posterUrl !== null && s.posterUrl !== '') series.withImage += 1;
     if (s.isFrench === 1) series.french += 1;
     if (s.releaseDate !== null || YEAR.test(s.name)) series.withYearInTitle += 1;
-    series.languages[detectLanguage(s.name, seriesCatName.get(s.categoryId) ?? null)] += 1;
+    series.languages[languageWithFrenchHint(s.name, seriesCatName.get(s.categoryId) ?? null, s.isFrench)] += 1;
   });
   series.withoutImage = series.total - series.withImage;
 
-  // Live FR : groupement + logos + EPG.
+  // Live FR : groupement (hors separateurs/events) + logos + EPG.
   const frPool = await catalogRepository.getLiveChannelsPage({ kind: 'french' }, 0, 4000);
-  const groups = groupChannels(frPool);
+  const cleanPool = frPool.filter((c) => !isSeparatorOrEvent(c.name));
+  const separatorsOrEvents = frPool.length - cleanPool.length;
+  const groups = groupChannels(cleanPool);
   const withLogo = frPool.filter((c) => c.logoUrl !== null && c.logoUrl !== '').length;
   const mainChannels = groups.filter((g) => mainFrenchChannelScore(g.best) > 0).length;
 
@@ -120,6 +130,7 @@ export async function generateDeepDiagnostic(
       withLogo,
       withoutLogo: frPool.length - withLogo,
       mainChannelsDetected: mainChannels,
+      separatorsOrEvents,
       epgAvailable,
       epgSampleCount,
     },

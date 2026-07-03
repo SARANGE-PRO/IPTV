@@ -13,6 +13,7 @@ import { cn } from '@/lib/cn';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import type { LiveFilter } from '@/db/repositories/catalogRepository';
 import { groupChannels } from '@/services/live/channelGroupingService';
+import { isSeparatorOrEvent } from '@/services/live/channelNormalizer';
 import type { ChannelGroup } from '@/types/liveGrouping';
 import * as settingsRepository from '@/db/repositories/settingsRepository';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -318,7 +319,13 @@ export default function LivePage() {
   const recentIdSet = useMemo(() => new Set(recentChannels.map((e) => e.itemId)), [recentChannels]);
   const grouped = !searching && GROUPED_FILTERS.includes(filter);
   const groups = useMemo(
-    () => (grouped ? groupChannels(pool, { favoriteIds: favLiveIds, recentIds: recentIdSet }) : []),
+    () =>
+      grouped
+        ? groupChannels(pool.filter((c) => !isSeparatorOrEvent(c.name)), {
+            favoriteIds: favLiveIds,
+            recentIds: recentIdSet,
+          })
+        : [],
     [grouped, pool, favLiveIds, recentIdSet],
   );
   const total = grouped ? groups.length : pool.length;

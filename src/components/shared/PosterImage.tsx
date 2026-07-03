@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Monogram } from '@/components/shared/Monogram';
+import { isImageBroken, markImageBroken } from '@/services/media/brokenImageMemory';
 import { cn } from '@/lib/cn';
 import { secureImageSrc } from '@/utils/secureUrl';
 
@@ -23,7 +24,8 @@ export function PosterImage({
 }) {
   const candidates = [secureImageSrc(src), secureImageSrc(fallbackSrc)]
     .filter((value): value is string => value !== null)
-    .filter((value, index, all) => all.indexOf(value) === index);
+    .filter((value, index, all) => all.indexOf(value) === index)
+    .filter((value) => !isImageBroken(value));
   const [failed, setFailed] = useState<Set<string>>(() => new Set());
   const safeSrc = candidates.find((candidate) => !failed.has(candidate)) ?? null;
   const show = safeSrc !== null;
@@ -39,7 +41,10 @@ export function PosterImage({
         decoding="async"
         referrerPolicy="no-referrer"
         onError={() => {
-          if (safeSrc !== null) setFailed((previous) => new Set(previous).add(safeSrc));
+          if (safeSrc !== null) {
+            markImageBroken(safeSrc);
+            setFailed((previous) => new Set(previous).add(safeSrc));
+          }
         }}
         className="h-full w-full object-cover"
       />
