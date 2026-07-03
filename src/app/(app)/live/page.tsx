@@ -84,6 +84,40 @@ const GROUPED_FILTERS: FilterId[] = [
   'france', 'main', 'sport', 'foot', 'news', 'cinema', 'entertainment', 'kids', 'doc', 'music', 'uhd',
 ];
 
+/** Sections editoriales du bouquet FR (vue par defaut "France"). */
+type SectionKey = 'main' | 'news' | 'sport' | 'cinema' | 'entertainment' | 'kids' | 'doc' | 'music' | 'other';
+
+const SECTION_META: { key: SectionKey; label: string; seeAll?: FilterId }[] = [
+  { key: 'main', label: 'Chaînes principales', seeAll: 'main' },
+  { key: 'news', label: 'Info', seeAll: 'news' },
+  { key: 'sport', label: 'Sport', seeAll: 'sport' },
+  { key: 'cinema', label: 'Cinéma & séries', seeAll: 'cinema' },
+  { key: 'entertainment', label: 'Divertissement', seeAll: 'entertainment' },
+  { key: 'kids', label: 'Enfants', seeAll: 'kids' },
+  { key: 'doc', label: 'Documentaires', seeAll: 'doc' },
+  { key: 'music', label: 'Musique', seeAll: 'music' },
+  { key: 'other', label: 'Autres chaînes FR' },
+];
+
+const SECTION_CAP = 12;
+
+function sectionOf(group: ChannelGroup): SectionKey {
+  if (isMainFrenchChannel(group.best)) return 'main';
+  const theme = group.best.theme;
+  if (
+    theme === 'news' ||
+    theme === 'sport' ||
+    theme === 'cinema' ||
+    theme === 'entertainment' ||
+    theme === 'kids' ||
+    theme === 'doc' ||
+    theme === 'music'
+  ) {
+    return theme;
+  }
+  return 'other';
+}
+
 function paginatedFilter(id: FilterId): LiveFilter {
   return id === 'international' ? { kind: 'nonFrench' } : { kind: 'all' };
 }
@@ -330,6 +364,20 @@ export default function LivePage() {
   );
   const total = grouped ? groups.length : pool.length;
 
+  // Bouquet editorial : la vue "France" par defaut s'organise en sections.
+  const bouquet = filter === 'france' && !searching;
+  const bySection = useMemo(() => {
+    if (!bouquet) return null;
+    const map = new Map<SectionKey, ChannelGroup[]>();
+    for (const group of groups) {
+      const key = sectionOf(group);
+      const arr = map.get(key);
+      if (arr !== undefined) arr.push(group);
+      else map.set(key, [group]);
+    }
+    return map;
+  }, [bouquet, groups]);
+
   const canLoadMore =
     visible < total || (PAGINATED.includes(filter) && !searching && !exhaustedRef.current);
   const sentinelRef = useLoadMore(loadMore, canLoadMore && !loading);
@@ -396,6 +444,49 @@ export default function LivePage() {
             title="Catalogue non synchronisé"
             hint="Lance une synchronisation depuis les réglages pour charger les chaînes."
           />
+        </div>
+      ) : bouquet ? (
+        <div className="mt-4 space-y-8">
+          {loading && groups.length === 0
+            ? Array.from({ length: 10 }, (_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)
+            : SECTION_META.map(({ key, label, seeAll }) => {
+                const sec = bySection?.get(key) ?? [];
+                if (sec.length === 0) return null;
+                return (
+                  <section key={key}>
+                    <div className="mb-2 flex items-center justify-between px-1">
+                      <h2 className="text-sm font-semibold text-fg">
+                        {label} <span className="text-fg-faint">· {sec.length}</span>
+                      </h2>
+                      {seeAll !== undefined && sec.length > SECTION_CAP && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setFilter(seeAll);
+                            setQuery('');
+                            void settingsRepository.setSetting('lastLiveFilter', seeAll);
+                          }}
+                          className="text-xs text-fg-faint hover:text-fg"
+                        >
+                          Voir tout
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4 lg:grid-cols-3">
+                      {sec.slice(0, SECTION_CAP).map((g) => (
+                        <ChannelGroupRow
+                          key={g.key}
+                          group={g}
+                          onHide={() =>
+                            void hideCategory('live', g.best.categoryId, categoryOf.get(g.best.categoryId) ?? g.name)
+                          }
+                        />
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
+          {!loading && groups.length === 0 && <EmptyState title="Aucune chaîne française" />}
         </div>
       ) : (
         <div className="mt-3">

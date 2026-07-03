@@ -9,7 +9,7 @@ import { MediaCard } from '@/components/shared/MediaCard';
 import { PosterImage } from '@/components/shared/PosterImage';
 import { Rail } from '@/components/shared/Rail';
 import { Button } from '@/components/ui/Button';
-import { IconFilm, IconHeart, IconRefresh, IconSeries, IconTv } from '@/components/ui/icons';
+import { IconFilm, IconHeart, IconRefresh, IconSearch, IconSeries, IconTv } from '@/components/ui/icons';
 import { useAuthStore } from '@/stores/authStore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
@@ -176,6 +176,14 @@ export default function HomePage() {
         textClassName="text-xl"
       />
       <h1 className="pt-2 text-3xl font-semibold tracking-tight text-fg">Accueil</h1>
+
+      <Link
+        href="/search"
+        className="mt-4 flex items-center gap-2.5 rounded-xl border border-ink-600 bg-ink-800 px-4 py-2.5 text-sm text-fg-faint transition-colors hover:border-ink-500 hover:text-fg-muted"
+      >
+        <IconSearch className="h-5 w-5" />
+        Rechercher une chaîne, un film, une série…
+      </Link>
 
       {!hasCatalog && (
         <div className="mt-8">
