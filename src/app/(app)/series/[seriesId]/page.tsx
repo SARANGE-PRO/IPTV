@@ -193,6 +193,8 @@ export default function SeriesDetailPage() {
               <VideoPlayer
                 src={src}
                 transcode={plan === 'gateway'}
+                contentType="episode"
+                container={playingEp.containerExtension}
                 startAt={startAt}
                 duration={playingEp.durationSecs}
                 poster={posterUrl}

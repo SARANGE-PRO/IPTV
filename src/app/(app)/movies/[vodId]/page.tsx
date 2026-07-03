@@ -162,6 +162,8 @@ export default function MovieDetailPage() {
               <VideoPlayer
                 src={src}
                 transcode={plan === 'gateway'}
+                contentType="vod"
+                container={movie.containerExtension}
                 startAt={startAt}
                 duration={fallbackDuration}
                 poster={backdropUrl ?? posterUrl}

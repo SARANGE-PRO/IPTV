@@ -2,10 +2,12 @@
 
 import type Hls from 'hls.js';
 import { useEffect, useRef, useState } from 'react';
+import { PlaybackErrorInfo } from '@/components/player/PlaybackErrorInfo';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/cn';
 import { nativeDurationSeconds } from '@/services/player/mediaDurationService';
 import { isSeekable } from '@/services/player/playbackCapabilityService';
+import type { PlaybackErrorCode, PlaybackFailure } from '@/types/playbackDiagnostics';
 import { secureImageSrc, secureMediaUrl } from '@/utils/secureUrl';
 
 /**
@@ -31,6 +33,9 @@ export interface VideoPlayerProps {
    * passerelle. Defaut false = lecture directe (MP4/HLS natif Safari).
    */
   transcode?: boolean;
+  /** Contexte pour le diagnostic d'erreur (bouton "i"). */
+  contentType?: 'live' | 'vod' | 'episode';
+  container?: string | null;
   className?: string;
 }
 
@@ -58,12 +63,15 @@ export function VideoPlayer({
   onEnded,
   onError,
   transcode = false,
+  contentType,
+  container = null,
   className,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const [status, setStatus] = useState<PlayerStatus>('loading');
   const [message, setMessage] = useState<string | null>(null);
+  const [failure, setFailure] = useState<PlaybackFailure | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [limitedSeek, setLimitedSeek] = useState(false);
   const [pipSupported, setPipSupported] = useState(false);
@@ -98,6 +106,7 @@ export function VideoPlayer({
 
     setStatus('loading');
     setMessage(null);
+    setFailure(null);
     setLimitedSeek(false);
     resumedRef.current = false;
 
@@ -108,17 +117,22 @@ export function VideoPlayer({
       }
     };
 
-    const fail = (msg: string) => {
+    const fail = (
+      code: PlaybackErrorCode,
+      msg: string,
+      extra?: Pick<PlaybackFailure, 'httpStatus' | 'mediaErrorCode' | 'detail'>,
+    ) => {
       clearLoadTimer();
       if (!cancelled) {
         setStatus('error');
         setMessage(msg);
+        setFailure({ code, message: msg, ...extra });
         onErrorRef.current?.();
       }
     };
 
     if (streamUrl === null) {
-      fail('URL du flux invalide.');
+      fail('invalid_url', 'URL du flux invalide.');
       return;
     }
 
@@ -127,8 +141,10 @@ export function VideoPlayer({
     const badContainer = unsupportedContainer(src);
     if (badContainer !== null && !live && !transcode) {
       fail(
+        'unsupported_container',
         `Format ${badContainer} non lisible dans un navigateur (transcodage requis). ` +
           'Les films .mp4 et le Live se lisent normalement.',
+        { detail: badContainer },
       );
       return;
     }
@@ -176,11 +192,13 @@ export function VideoPlayer({
     };
     const handleError = () => {
       fail(
+        'native_error',
         liveRef.current
           ? 'Lecture Live impossible dans ce navigateur (format non lu — fréquent sur iPhone/iPad —, flux hors ' +
               'service, limite de connexions, ou passerelle arrêtée). Essaie une autre version, ou ouvre dans VLC.'
           : 'Lecture impossible : format non lu par ce navigateur (ex. MKV sur iPhone), flux hors service ou ' +
               'limite de connexions atteinte. Ouvre dans VLC, ou réessaie.',
+        { mediaErrorCode: video.error?.code ?? null },
       );
     };
 
@@ -213,7 +231,7 @@ export function VideoPlayer({
           const HlsCtor = mod.default;
           if (cancelled) return;
           if (!HlsCtor.isSupported()) {
-            fail('Lecture HLS non supportée par ce navigateur.');
+            fail('hls_unsupported', 'Lecture HLS non supportée par ce navigateur.');
             return;
           }
           const hls = new HlsCtor({
@@ -242,12 +260,22 @@ export function VideoPlayer({
             if (typeof console !== 'undefined') {
               console.warn('[VideoPlayer] HLS fatal', { type: data.type, details: data.details });
             }
-            fail('Erreur HLS fatale. Verifiez HTTPS, CORS et la disponibilite du flux.');
+            const httpStatus = (data.response as { code?: number } | undefined)?.code ?? null;
+            const hlsCode: PlaybackErrorCode =
+              data.type === HlsCtor.ErrorTypes.NETWORK_ERROR
+                ? 'hls_network'
+                : data.type === HlsCtor.ErrorTypes.MEDIA_ERROR
+                  ? 'hls_media'
+                  : 'hls_fatal';
+            fail(hlsCode, 'Erreur HLS fatale. Verifiez HTTPS, CORS et la disponibilite du flux.', {
+              httpStatus,
+              detail: data.details ?? null,
+            });
           });
           hls.loadSource(streamUrl);
           hls.attachMedia(video);
         } catch {
-          fail('Impossible de charger le module de lecture HLS.');
+          fail('hls_module_failed', 'Impossible de charger le module de lecture HLS.');
           return;
         }
       }
@@ -261,6 +289,7 @@ export function VideoPlayer({
     loadTimer = setTimeout(() => {
       loadTimer = null;
       fail(
+        'load_timeout',
         liveRef.current
           ? 'Le flux Live ne demarre pas (serveur lent, hors service ou limite de connexions). Reessaie ou ouvre dans VLC.'
           : 'La lecture ne demarre pas (serveur lent ou flux indisponible). Reessaie ou ouvre dans VLC.',
@@ -337,11 +366,21 @@ export function VideoPlayer({
           </div>
         )}
         {status === 'error' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/85 px-6 text-center">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-y-auto bg-black/85 px-6 py-6 text-center">
             <p className="text-sm leading-relaxed text-fg">{message}</p>
             <Button size="sm" variant="secondary" onClick={() => setAttempt((a) => a + 1)}>
               Réessayer
             </Button>
+            {failure !== null && (
+              <PlaybackErrorInfo
+                failure={failure}
+                context={{
+                  type: contentType ?? (live ? 'live' : 'vod'),
+                  container,
+                  transcode,
+                }}
+              />
+            )}
           </div>
         )}
       </div>
