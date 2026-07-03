@@ -21,9 +21,26 @@ import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTi
  * Recherche globale : chaines + films + series en une fois. Chaque source passe
  * par l'index multiEntry Dexie (jamais de scan complet), resultats bornes.
  */
+/** Requete initiale lue depuis l'URL (?q=) — permet de restaurer la recherche
+ *  au retour/refresh et de partager un lien de recherche. */
+function initialQuery(): string {
+  if (typeof window === 'undefined') return '';
+  return new URLSearchParams(window.location.search).get('q') ?? '';
+}
+
 export default function SearchPage() {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const debounced = useDebounce(query.trim(), 300);
+
+  // Synchronise la requete dans l'URL SANS navigation ni pollution d'historique
+  // (replaceState) : le retour arriere restaure l'ecran de recherche tel quel.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const q = query.trim();
+    const next = q === '' ? window.location.pathname : `${window.location.pathname}?q=${encodeURIComponent(q)}`;
+    window.history.replaceState(window.history.state, '', next);
+  }, [query]);
+
   const searching = debounced.length >= 2;
   const hiddenLive = useFilterStore((s) => s.hidden.live);
   const hiddenVod = useFilterStore((s) => s.hidden.vod);
