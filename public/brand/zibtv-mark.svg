@@ -1,15 +1,19 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-labelledby="t">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="t">
   <title id="t">ZiBTV</title>
   <defs>
-    <linearGradient id="zr" x1="0" y1="46" x2="0" y2="210" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#ff4a50"/>
-      <stop offset=".5" stop-color="#e50914"/>
-      <stop offset="1" stop-color="#a8070f"/>
+    <linearGradient id="mTop" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#E50914"/><stop offset="50%" stop-color="#B20710"/>
+      <stop offset="80%" stop-color="#2A0103"/><stop offset="100%" stop-color="#000000"/>
+    </linearGradient>
+    <linearGradient id="mBot" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#000000"/><stop offset="20%" stop-color="#2A0103"/>
+      <stop offset="50%" stop-color="#B20710"/><stop offset="100%" stop-color="#E50914"/>
+    </linearGradient>
+    <linearGradient id="mDiag" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF3038"/><stop offset="50%" stop-color="#E50914"/><stop offset="100%" stop-color="#B20710"/>
     </linearGradient>
   </defs>
-  <!-- Z ruban : queues biseautees haut-gauche / bas-droite -->
-  <path d="M44 48 H212 V90 L118 166 H184 L212 208 H44 V166 L138 90 H72 Z"
-        fill="url(#zr)" stroke="#ff5b61" stroke-width="2.4" stroke-linejoin="round"/>
-  <!-- reflet superieur -->
-  <path d="M54 56 H202" fill="none" stroke="#ffb4b7" stroke-opacity=".5" stroke-width="4.5" stroke-linecap="round"/>
+  <polygon points="10,10 90,10 68,40 10,40" fill="url(#mTop)"/>
+  <polygon points="32,60 90,60 90,90 10,90" fill="url(#mBot)"/>
+  <polygon points="90,10 60,10 10,90 40,90" fill="url(#mDiag)"/>
 </svg>

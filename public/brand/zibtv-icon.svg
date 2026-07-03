@@ -1,27 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="t">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="t">
   <title id="t">ZiBTV</title>
   <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#1b1b20"/>
-      <stop offset=".5" stop-color="#0c0c0e"/>
-      <stop offset="1" stop-color="#050506"/>
+    <linearGradient id="iTop" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#E50914"/><stop offset="50%" stop-color="#B20710"/>
+      <stop offset="80%" stop-color="#2A0103"/><stop offset="100%" stop-color="#000000"/>
     </linearGradient>
-    <linearGradient id="zr" x1="0" y1="120" x2="0" y2="400" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#ff4a50"/>
-      <stop offset=".5" stop-color="#e50914"/>
-      <stop offset="1" stop-color="#a8070f"/>
+    <linearGradient id="iBot" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#000000"/><stop offset="20%" stop-color="#2A0103"/>
+      <stop offset="50%" stop-color="#B20710"/><stop offset="100%" stop-color="#E50914"/>
     </linearGradient>
-    <radialGradient id="glow" cx="50%" cy="52%" r="46%">
-      <stop stop-color="#ff1622" stop-opacity=".5"/>
-      <stop offset="1" stop-color="#ff1622" stop-opacity="0"/>
-    </radialGradient>
+    <linearGradient id="iDiag" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF3038"/><stop offset="50%" stop-color="#E50914"/><stop offset="100%" stop-color="#B20710"/>
+    </linearGradient>
   </defs>
-  <rect x="16" y="16" width="480" height="480" rx="116" fill="url(#bg)" stroke="#e50914" stroke-opacity=".5" stroke-width="3"/>
-  <rect x="27" y="27" width="458" height="458" rx="106" fill="none" stroke="#ffffff" stroke-opacity=".06" stroke-width="1.5"/>
-  <ellipse cx="256" cy="262" rx="150" ry="150" fill="url(#glow)"/>
-  <g transform="translate(38 38) scale(1.7)">
-    <path d="M44 48 H212 V90 L118 166 H184 L212 208 H44 V166 L138 90 H72 Z"
-          fill="url(#zr)" stroke="#ff6167" stroke-width="2.4" stroke-linejoin="round"/>
-    <path d="M54 56 H202" fill="none" stroke="#ffb4b7" stroke-opacity=".45" stroke-width="4.5" stroke-linecap="round"/>
+  <rect width="100" height="100" fill="#000000"/>
+  <g transform="translate(15 15) scale(0.7)">
+    <polygon points="10,10 90,10 68,40 10,40" fill="url(#iTop)"/>
+    <polygon points="32,60 90,60 90,90 10,90" fill="url(#iBot)"/>
+    <polygon points="90,10 60,10 10,90 40,90" fill="url(#iDiag)"/>
   </g>
 </svg>

@@ -33,3 +33,49 @@
     padding-bottom: env(safe-area-inset-bottom);
   }
 }
+
+/* --- Splash d'intro ZiBTV (une fois par session, ~3s) --- */
+@layer components {
+  .zib-splash {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #000;
+    perspective: 1000px;
+    animation: zibHide 0.6s ease-in-out forwards 2.9s;
+  }
+  .zib-splash-logo {
+    width: 168px;
+    height: 168px;
+    overflow: visible;
+    transform-origin: 50% 50%;
+    will-change: transform, opacity, filter;
+    backface-visibility: hidden;
+    animation: zibZoom 1.2s cubic-bezier(0.65, 0, 0.15, 1) forwards 1.7s;
+  }
+  .zib-splash .z-part { opacity: 0; }
+  .zib-splash .z-top { animation: zibSwipeR 0.45s cubic-bezier(0.2,0.8,0.2,1) forwards 0.3s; }
+  .zib-splash .z-bottom { animation: zibSwipeL 0.45s cubic-bezier(0.2,0.8,0.2,1) forwards 0.6s; }
+  .zib-splash .z-diag { animation: zibSwipeD 0.55s cubic-bezier(0.1,0.9,0.2,1) forwards 1s; }
+  .zib-splash .z-glow { animation: zibFlare 0.7s cubic-bezier(0.1,0.9,0.2,1) forwards 1s; mix-blend-mode: overlay; }
+}
+@keyframes zibSwipeR { 0% { clip-path: inset(0 100% 0 0); opacity: 1; } 100% { clip-path: inset(0 0 0 0); opacity: 1; } }
+@keyframes zibSwipeL { 0% { clip-path: inset(0 0 0 100%); opacity: 1; } 100% { clip-path: inset(0 0 0 0); opacity: 1; } }
+@keyframes zibSwipeD { 0% { clip-path: inset(0 0 100% 0); opacity: 1; } 100% { clip-path: inset(0 0 0 0); opacity: 1; } }
+@keyframes zibFlare {
+  0% { clip-path: inset(0 0 100% 0); opacity: 1; fill: #fff; }
+  40% { fill: #fff; filter: drop-shadow(0 0 10px #fff); }
+  100% { clip-path: inset(0 0 0 0); opacity: 0; fill: #FF3038; filter: drop-shadow(0 0 0 transparent); }
+}
+@keyframes zibZoom {
+  0% { transform: scale3d(1,1,1); opacity: 1; }
+  15% { transform: scale3d(0.9,0.9,1); filter: drop-shadow(0 0 20px rgba(229,9,20,0.6)); opacity: 1; }
+  100% { transform: scale3d(46,46,1); filter: drop-shadow(0 0 50px rgba(229,9,20,0)); opacity: 0; }
+}
+@keyframes zibHide { 0% { opacity: 1; visibility: visible; } 100% { opacity: 0; visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) {
+  .zib-splash, .zib-splash-logo, .zib-splash .z-part { animation-duration: 0.01s !important; }
+}

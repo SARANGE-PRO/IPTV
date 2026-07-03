@@ -49,13 +49,7 @@ export default function HomePage() {
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
-      <div className="flex items-center gap-2 pt-2">
-        <span className="h-2.5 w-2.5 rounded-full bg-accent" />
-        <span className="text-xs font-medium uppercase tracking-[0.22em] text-fg-faint">
-          ZiBTV
-        </span>
-      </div>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">Accueil</h1>
+      <h1 className="pt-2 text-3xl font-semibold tracking-tight text-fg">Accueil</h1>
 
       {!hasCatalog && (
         <div className="mt-8">
