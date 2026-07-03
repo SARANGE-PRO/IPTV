@@ -3,8 +3,8 @@
 import { CatalogHero } from '@/components/media/CatalogHero';
 import { MediaBrowser } from '@/components/shared/MediaBrowser';
 import type { QuickFilterDefinition, SortOption } from '@/components/shared/MediaBrowser';
-import * as catalogRepository from '@/db/repositories/catalogRepository';
-import * as playbackRepository from '@/db/repositories/playbackRepository';
+import * as catalogRepository from '@/services/data/catalogService';
+import * as playbackRepository from '@/services/data/playbackDataService';
 import { getSeriesTop10 } from '@/services/ranking/smartRankingService';
 import type { Series } from '@/types/models';
 import { displayYear } from '@/utils/displayTitle';

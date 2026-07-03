@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { IconSearch } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
-import * as catalogRepository from '@/db/repositories/catalogRepository';
+import * as catalogRepository from '@/services/data/catalogService';
 import { useDebounce } from '@/hooks/useDebounce';
 import { detectFrenchVariant } from '@/services/media/languageDetectionService';
 import { useFilterStore } from '@/stores/filterStore';

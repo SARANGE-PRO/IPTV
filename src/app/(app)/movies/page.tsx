@@ -3,7 +3,7 @@
 import { CatalogHero } from '@/components/media/CatalogHero';
 import { MediaBrowser } from '@/components/shared/MediaBrowser';
 import type { QuickFilterDefinition, SortOption } from '@/components/shared/MediaBrowser';
-import * as catalogRepository from '@/db/repositories/catalogRepository';
+import * as catalogRepository from '@/services/data/catalogService';
 import { getMovieTop10 } from '@/services/ranking/smartRankingService';
 import type { Movie } from '@/types/models';
 import { displayYear } from '@/utils/displayTitle';

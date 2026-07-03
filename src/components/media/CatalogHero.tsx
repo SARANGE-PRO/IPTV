@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { PosterImage } from '@/components/shared/PosterImage';
 import { Button } from '@/components/ui/Button';
 import { IconPlay } from '@/components/ui/icons';
-import * as catalogRepository from '@/db/repositories/catalogRepository';
+import * as catalogRepository from '@/services/data/catalogService';
 import { detectFrenchVariant } from '@/services/media/languageDetectionService';
 import type { Section } from '@/types/models';
 import { displayTitle, displayYear } from '@/utils/displayTitle';

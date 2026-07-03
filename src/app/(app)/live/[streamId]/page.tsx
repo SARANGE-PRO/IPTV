@@ -10,7 +10,7 @@ import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { IconArrowLeft } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
-import * as catalogRepository from '@/db/repositories/catalogRepository';
+import * as catalogRepository from '@/services/data/catalogService';
 import { findChannelVersions } from '@/services/live/channelGroupingService';
 import { buildLiveStreamUrl } from '@/services/xtream/xtreamUrls';
 import { useAuthStore } from '@/stores/authStore';
