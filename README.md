@@ -1,4 +1,4 @@
-# IPTV PWA
+# ZiBTV
 
 Progressive Web App IPTV premium (Live TV · Films · Séries) consommant une API
 Xtream Codes personnelle. Pensée mobile-first pour Safari iOS/iPadOS, installable

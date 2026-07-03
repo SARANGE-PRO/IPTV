@@ -14,6 +14,7 @@ export function useTmdbMetadata(
   const [meta, setMeta] = useState<TmdbMetadata | null>(null);
 
   useEffect(() => {
+    setMeta(null);
     if (name === null || name === '') return;
     let active = true;
     const fetcher = kind === 'movie' ? getMovieMetadata : getSeriesMetadata;

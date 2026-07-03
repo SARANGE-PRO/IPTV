@@ -1,0 +1,6 @@
+{$MEDIA_DOMAIN} {
+  reverse_proxy gateway:8080 {
+    # Faible latence sans conserver la reponse complete en memoire.
+    flush_interval 100ms
+  }
+}

@@ -1,0 +1,31 @@
+services:
+  gateway:
+    build: .
+    restart: unless-stopped
+    environment:
+      UPSTREAM_ORIGIN: ${UPSTREAM_ORIGIN}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-}
+      PUBLIC_ORIGIN: https://${MEDIA_DOMAIN}
+    networks: [media]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [gateway]
+    environment:
+      MEDIA_DOMAIN: ${MEDIA_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [media]
+
+networks:
+  media:
+
+volumes:
+  caddy_data:
+  caddy_config:

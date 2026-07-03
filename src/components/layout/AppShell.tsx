@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
+import { BrandLogo } from '@/components/shared/BrandLogo';
 import {
   IconFilm,
   IconHeart,
@@ -48,10 +49,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-dvh md:pl-60">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-ink-700 bg-ink-900/60 px-4 py-8 md:flex">
-        <div className="mb-8 flex items-center gap-2.5 px-2">
-          <span className="h-2.5 w-2.5 rounded-full bg-accent" />
-          <span className="text-sm font-semibold tracking-[0.3em] text-fg">IPTV</span>
-        </div>
+        <BrandLogo className="mb-8 px-2" markClassName="h-8 w-8" textClassName="text-lg" />
         <nav className="flex flex-col gap-1">
           {NAV.map(({ href, label, icon: Icon }) => (
             <Link

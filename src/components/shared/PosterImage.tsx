@@ -1,9 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { Monogram } from '@/components/shared/Monogram';
 import { cn } from '@/lib/cn';
+import { secureUrl } from '@/utils/secureUrl';
 
-/** Image lazy avec fallback texte (les posters IPTV sont souvent morts). */
+/**
+ * Image lazy avec fallback premium (monogramme). Les posters IPTV/TMDB sont
+ * souvent morts : `onError` bascule proprement sans jamais casser l'affichage.
+ * Ordre d'image gere par l'appelant (TMDB -> Xtream -> ce fallback local).
+ */
 export function PosterImage({
   src,
   alt,
@@ -13,24 +19,23 @@ export function PosterImage({
   alt: string;
   className?: string;
 }) {
-  const [failed, setFailed] = useState(false);
-  const show = src !== null && !failed;
+  const safeSrc = secureUrl(src);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const show = safeSrc !== null && safeSrc !== failedSrc;
+
+  if (!show) return <Monogram name={alt} className={cn('text-lg', className)} />;
   return (
-    <div className={cn('relative flex items-center justify-center overflow-hidden bg-ink-800', className)}>
-      {show ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={src}
-          alt={alt}
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-          onError={() => setFailed(true)}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        <span className="line-clamp-3 px-2 text-center text-xs text-fg-faint">{alt}</span>
-      )}
+    <div className={cn('overflow-hidden bg-ink-800', className)}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={safeSrc ?? undefined}
+        alt={alt}
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={() => setFailedSrc(safeSrc)}
+        className="h-full w-full object-cover"
+      />
     </div>
   );
 }

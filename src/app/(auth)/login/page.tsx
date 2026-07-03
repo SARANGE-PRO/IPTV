@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type FormEvent } from 'react';
 import { SplashScreen } from '@/components/layout/SplashScreen';
+import { BrandLogo } from '@/components/shared/BrandLogo';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import type { AuthErrorCode } from '@/services/session/secureSessionService';
@@ -71,10 +72,7 @@ export default function LoginPage() {
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-sm animate-fade-in flex-col justify-center px-6 py-12 pt-safe pb-safe">
-      <div className="mb-10 flex items-center gap-3">
-        <span className="h-3 w-3 rounded-full bg-accent" />
-        <span className="text-lg font-semibold tracking-[0.35em] text-fg">IPTV</span>
-      </div>
+      <BrandLogo className="mb-10" markClassName="h-14 w-14" textClassName="text-2xl" />
 
       <h1 className="text-2xl font-semibold tracking-tight text-fg">Connexion</h1>
       <p className="mt-2 text-sm text-fg-muted">

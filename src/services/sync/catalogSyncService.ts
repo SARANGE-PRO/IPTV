@@ -9,7 +9,7 @@ import {
   normalizeSeries,
 } from '@/services/xtream/normalize';
 import * as xtreamApi from '@/services/xtream/xtreamApi';
-import type { Section } from '@/types/models';
+import type { Category, Section } from '@/types/models';
 import type { XtreamCredentials } from '@/types/xtream';
 
 /**
@@ -41,27 +41,30 @@ function fetchCategories(creds: XtreamCredentials, section: Section) {
 async function fetchAndStoreItems(
   creds: XtreamCredentials,
   section: Section,
-  frenchByCategory: Map<string, boolean>,
+  categoryById: Map<string, Category>,
 ): Promise<number> {
+  const isFrenchCat = (id: string): boolean => categoryById.get(id)?.isFrench === 1;
+
   if (section === 'live') {
     const raw = await xtreamApi.getLiveStreams(creds);
-    const items = (Array.isArray(raw) ? raw : []).map((r) =>
-      normalizeLiveChannel(r, frenchByCategory.get(normalizeCategoryId(r.category_id)) === true),
-    );
+    const items = (Array.isArray(raw) ? raw : []).map((r) => {
+      const cat = categoryById.get(normalizeCategoryId(r.category_id));
+      return normalizeLiveChannel(r, cat !== undefined ? { isFrench: cat.isFrench === 1, name: cat.name } : undefined);
+    });
     await catalogRepository.replaceLiveChannels(items);
     return items.length;
   }
   if (section === 'vod') {
     const raw = await xtreamApi.getVodStreams(creds);
     const items = (Array.isArray(raw) ? raw : []).map((r) =>
-      normalizeMovie(r, frenchByCategory.get(normalizeCategoryId(r.category_id)) === true),
+      normalizeMovie(r, isFrenchCat(normalizeCategoryId(r.category_id))),
     );
     await catalogRepository.replaceMovies(items);
     return items.length;
   }
   const raw = await xtreamApi.getSeries(creds);
   const items = (Array.isArray(raw) ? raw : []).map((r) =>
-    normalizeSeries(r, frenchByCategory.get(normalizeCategoryId(r.category_id)) === true),
+    normalizeSeries(r, isFrenchCat(normalizeCategoryId(r.category_id))),
   );
   await catalogRepository.replaceSeries(items);
   return items.length;
@@ -80,10 +83,8 @@ export async function syncSection(
     );
     await catalogRepository.replaceCategories(section, categories);
 
-    const frenchByCategory = new Map<string, boolean>(
-      categories.map((c) => [c.id, c.isFrench === 1] as [string, boolean]),
-    );
-    const itemCount = await fetchAndStoreItems(creds, section, frenchByCategory);
+    const categoryById = new Map<string, Category>(categories.map((c) => [c.id, c] as [string, Category]));
+    const itemCount = await fetchAndStoreItems(creds, section, categoryById);
 
     await syncMetadataRepository.markSyncSuccess(section, {
       categoryCount: categories.length,

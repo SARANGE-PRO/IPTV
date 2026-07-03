@@ -1,129 +1,218 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
-import { CategoryPanel } from '@/components/shared/CategoryPanel';
-import { CountrySelect } from '@/components/shared/CountrySelect';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
-import { PosterImage } from '@/components/shared/PosterImage';
-import { IconChevronDown } from '@/components/ui/icons';
+import { IconEyeOff, IconSearch } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
+import type { LiveFilter } from '@/db/repositories/catalogRepository';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useLoadMore } from '@/hooks/useLoadMore';
 import { useCatalogStore } from '@/stores/catalogStore';
+import { useFavoritesStore } from '@/stores/favoritesStore';
 import { useFilterStore } from '@/stores/filterStore';
+import { usePlaybackStore } from '@/stores/playbackStore';
 import type { LiveChannel } from '@/types/models';
-import { prioritizeCategories } from '@/utils/categoryPriority';
+import type { ChannelTheme } from '@/utils/channelTheme';
 import { formatCount } from '@/utils/format';
 
-const WINDOW = 150;
-const SEARCH_LIMIT = 100;
+/** Filtres rapides — remplacent la navigation rigide par categorie fournisseur. */
+type QuickFilter =
+  | { id: 'france'; label: 'France' }
+  | { id: 'favorites'; label: 'Favoris' }
+  | { id: 'recent'; label: 'Récents' }
+  | { id: 'uhd'; label: '4K/UHD' }
+  | { id: 'all'; label: 'Tous' }
+  | { id: ChannelTheme; label: string };
 
-function ChannelRow({ channel }: { channel: LiveChannel }) {
+const FILTERS: QuickFilter[] = [
+  { id: 'france', label: 'France' },
+  { id: 'favorites', label: 'Favoris' },
+  { id: 'recent', label: 'Récents' },
+  { id: 'sport', label: 'Sport' },
+  { id: 'news', label: 'News' },
+  { id: 'cinema', label: 'Cinéma' },
+  { id: 'entertainment', label: 'Divertissement' },
+  { id: 'kids', label: 'Enfants' },
+  { id: 'music', label: 'Musique' },
+  { id: 'doc', label: 'Doc' },
+  { id: 'uhd', label: '4K/UHD' },
+  { id: 'all', label: 'Tous' },
+];
+
+const STEP = 60;
+const PAGE = 200;
+const CAP = 4000; // filtres bornes : jamais les 55k en memoire
+
+type FilterId = QuickFilter['id'];
+
+function toRepoFilter(id: FilterId): LiveFilter {
+  if (id === 'france') return { kind: 'french' };
+  if (id === 'uhd') return { kind: 'uhd' };
+  if (id === 'all') return { kind: 'all' };
+  return { kind: 'theme', theme: id as ChannelTheme };
+}
+
+/** FR d'abord, puis ordre fournisseur. */
+function orderChannels(list: LiveChannel[]): LiveChannel[] {
+  return [...list].sort((a, b) => b.isFrench - a.isFrench || a.sortOrder - b.sortOrder);
+}
+
+function ChannelRow({ channel, onHide }: { channel: LiveChannel; onHide: () => void }) {
   return (
-    <Link
-      href={`/live/${channel.id}`}
-      className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-ink-800"
-    >
-      <PosterImage src={channel.logoUrl} alt={channel.name} className="h-10 w-10 shrink-0 rounded-lg" />
-      <span className="min-w-0 flex-1 truncate text-sm text-fg">{channel.name}</span>
-      {channel.isFrench === 1 && (
-        <span className="rounded bg-accent/15 px-1 py-0.5 text-[10px] font-semibold text-accent">FR</span>
-      )}
+    <div className="group flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-ink-800">
+      <Link href={`/live/${channel.id}`} className="flex min-w-0 flex-1 items-center gap-3">
+        <ChannelLogo channel={channel} className="h-11 w-11 shrink-0" />
+        <span className="min-w-0 flex-1 truncate text-sm text-fg">{channel.name}</span>
+        {channel.isFrench === 1 && (
+          <span className="rounded bg-accent/15 px-1 py-0.5 text-[10px] font-semibold text-accent">FR</span>
+        )}
+      </Link>
+      <button
+        aria-label="Masquer la catégorie de cette chaîne"
+        title="Masquer la catégorie"
+        onClick={onHide}
+        className="shrink-0 rounded p-1.5 text-fg-faint opacity-0 hover:text-accent group-hover:opacity-100"
+      >
+        <IconEyeOff className="h-4 w-4" />
+      </button>
       <FavoriteButton type="live" itemId={channel.id} />
-    </Link>
+    </div>
   );
 }
 
 export default function LivePage() {
   const slice = useCatalogStore((s) => s.sections.live);
-  const country = useFilterStore((s) => s.country);
-  const setCountry = useFilterStore((s) => s.setCountry);
+  const categories = slice.categories;
   const hidden = useFilterStore((s) => s.hidden.live);
+  const hideCategory = useFilterStore((s) => s.hideCategory);
+  const favLiveIds = useFavoritesStore((s) => s.ids.live);
+  const recentChannels = usePlaybackStore((s) => s.recentChannels);
 
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [channels, setChannels] = useState<LiveChannel[]>([]);
-  const [loadingChannels, setLoadingChannels] = useState(false);
-  const [visible, setVisible] = useState(WINDOW);
+  const [filter, setFilter] = useState<FilterId>('france');
   const [query, setQuery] = useState('');
   const debouncedQuery = useDebounce(query.trim(), 300);
-  const [results, setResults] = useState<LiveChannel[] | null>(null);
-  const [searching, setSearching] = useState(false);
+  const searching = debouncedQuery.length >= 2;
 
-  const categories = useMemo(
-    () => prioritizeCategories(slice.categories, country, hidden),
-    [slice.categories, country, hidden],
-  );
-  const countries = useMemo(
-    () => slice.categories.map((c) => c.country).filter((c): c is string => c !== null),
-    [slice.categories],
-  );
-  const selected = useMemo(
-    () => categories.find((c) => c.id === selectedId) ?? null,
-    [categories, selectedId],
-  );
+  const [pool, setPool] = useState<LiveChannel[]>([]);
+  const [visible, setVisible] = useState(STEP);
+  const [loading, setLoading] = useState(false);
+  const [count, setCount] = useState<number | null>(null);
+  const [capped, setCapped] = useState(false);
+  const exhaustedRef = useRef(false);
+  const offsetRef = useRef(0);
+  const loadingRef = useRef(false);
 
+  const categoryOf = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories]);
+  const notHidden = useCallback((c: LiveChannel) => !hidden.has(c.categoryId), [hidden]);
+
+  // Chargement du pool selon filtre / recherche.
   useEffect(() => {
-    const first = categories[0];
-    if (first === undefined) return;
-    if (selectedId === null || !categories.some((c) => c.id === selectedId)) {
-      setSelectedId(first.id);
-    }
-  }, [categories, selectedId]);
-
-  useEffect(() => {
-    if (selectedId === null) return;
     let active = true;
-    setLoadingChannels(true);
-    setVisible(WINDOW);
-    void catalogRepository.getLiveChannelsByCategory(selectedId).then((list) => {
-      if (active) {
-        setChannels(list);
-        setLoadingChannels(false);
+    setLoading(true);
+    setVisible(STEP);
+    setCapped(false);
+    setCount(null);
+    offsetRef.current = 0;
+    exhaustedRef.current = false;
+
+    const run = async () => {
+      // Recherche : index multiEntry, tous filtres confondus.
+      if (searching) {
+        const res = (await catalogRepository.searchLiveChannels(debouncedQuery, 120)).filter(notHidden);
+        if (active) {
+          setPool(res);
+          setCount(res.length);
+        }
+        return;
       }
+      // Favoris : depuis le store (petit ensemble).
+      if (filter === 'favorites') {
+        const res = orderChannels((await catalogRepository.getLiveChannelsByIds([...favLiveIds])).filter(notHidden));
+        if (active) {
+          setPool(res);
+          setCount(res.length);
+        }
+        return;
+      }
+      // Recents : ordre de visionnage conserve.
+      if (filter === 'recent') {
+        const ids = recentChannels.map((e) => e.itemId);
+        const byId = new Map((await catalogRepository.getLiveChannelsByIds(ids)).map((c) => [c.id, c]));
+        const res = ids.map((id) => byId.get(id)).filter((c): c is LiveChannel => c !== undefined).filter(notHidden);
+        if (active) {
+          setPool(res);
+          setCount(res.length);
+        }
+        return;
+      }
+      // 'all' : pagination Dexie (jamais tout en memoire).
+      if (filter === 'all') {
+        const first = (await catalogRepository.getLiveChannelsPage({ kind: 'all' }, 0, PAGE)).filter(notHidden);
+        offsetRef.current = PAGE;
+        exhaustedRef.current = first.length < PAGE;
+        void catalogRepository.countLiveChannels({ kind: 'all' }).then((n) => active && setCount(n));
+        if (active) setPool(orderChannels(first));
+        return;
+      }
+      // Filtres bornes (france / theme / uhd) : charge jusqu'a CAP puis tri FR-first.
+      const repoFilter = toRepoFilter(filter);
+      const loaded = (await catalogRepository.getLiveChannelsPage(repoFilter, 0, CAP)).filter(notHidden);
+      void catalogRepository.countLiveChannels(repoFilter).then((n) => active && setCount(n));
+      if (active) {
+        setPool(orderChannels(loaded));
+        setCapped(loaded.length >= CAP);
+      }
+    };
+
+    void run().finally(() => {
+      if (active) setLoading(false);
     });
     return () => {
       active = false;
     };
-  }, [selectedId]);
+  }, [filter, searching, debouncedQuery, favLiveIds, recentChannels, notHidden]);
 
-  useEffect(() => {
-    if (debouncedQuery.length < 2) {
-      setResults(null);
-      setSearching(false);
+  // Charge plus : fenetre (pool) + pagination Dexie pour 'all'.
+  const loadMore = useCallback(() => {
+    if (loadingRef.current) return;
+    const needMorePool = !searching && filter === 'all' && visible >= pool.length && !exhaustedRef.current;
+    if (needMorePool) {
+      loadingRef.current = true;
+      void catalogRepository
+        .getLiveChannelsPage({ kind: 'all' }, offsetRef.current, PAGE)
+        .then((page) => {
+          const kept = page.filter(notHidden);
+          offsetRef.current += PAGE;
+          exhaustedRef.current = page.length < PAGE;
+          setPool((prev) => [...prev, ...kept]);
+          setVisible((v) => v + STEP);
+          loadingRef.current = false;
+        });
       return;
     }
-    let active = true;
-    setSearching(true);
-    void catalogRepository.searchLiveChannels(debouncedQuery, SEARCH_LIMIT).then((r) => {
-      if (active) {
-        setResults(r);
-        setSearching(false);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, [debouncedQuery]);
+    if (visible < pool.length) setVisible((v) => v + STEP);
+  }, [searching, filter, visible, pool.length, notHidden]);
 
-  const shown = results ?? channels.slice(0, visible);
-  const sentinelRef = useLoadMore(
-    () => setVisible((v) => v + WINDOW),
-    results === null && visible < channels.length,
-  );
-  const catalogEmpty = slice.categories.length === 0 && slice.status !== 'loading';
+  const canLoadMore = visible < pool.length || (filter === 'all' && !searching && !exhaustedRef.current);
+  const sentinelRef = useLoadMore(loadMore, canLoadMore && !loading);
+
+  const shown = pool.slice(0, visible);
+  const catalogEmpty = categories.length === 0 && slice.status !== 'loading';
 
   return (
     <main className="mx-auto w-full max-w-4xl px-4 py-6 md:px-8">
       <h1 className="text-2xl font-semibold tracking-tight text-fg">Live TV</h1>
 
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="flex-1">
+      <div className="mt-4">
+        <div className="relative">
+          <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-fg-faint" />
           <Input
+            className="pl-10"
             placeholder="Rechercher une chaîne…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -133,26 +222,34 @@ export default function LivePage() {
             inputMode="search"
           />
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setPanelOpen(true)}
-            className="flex h-10 max-w-56 items-center gap-2 rounded-xl border border-ink-600 bg-ink-800 px-3 text-sm text-fg"
-          >
-            <span className="truncate">{selected?.name ?? 'Catégories'}</span>
-            <IconChevronDown className="h-4 w-4 shrink-0 text-fg-faint" />
-          </button>
-          <CountrySelect value={country} countries={countries} onChange={setCountry} />
-        </div>
       </div>
 
-      {results === null && channels.length > 0 && (
-        <p className="mt-3 text-xs text-fg-faint">{formatCount(channels.length)} chaînes</p>
-      )}
-      {results !== null && (
+      {/* Filtres rapides */}
+      <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+        {FILTERS.map((f) => (
+          <button
+            key={f.id}
+            onClick={() => {
+              setFilter(f.id);
+              setQuery('');
+            }}
+            disabled={searching}
+            className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors ${
+              !searching && filter === f.id
+                ? 'bg-accent text-white'
+                : 'bg-ink-800 text-fg-muted hover:text-fg disabled:opacity-40'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {count !== null && (
         <p className="mt-3 text-xs text-fg-faint">
-          {results.length >= SEARCH_LIMIT
-            ? `${SEARCH_LIMIT}+ résultats — affine ta recherche`
-            : `${results.length} résultat${results.length > 1 ? 's' : ''}`}
+          {searching
+            ? `${pool.length}${pool.length >= 120 ? '+' : ''} résultat${pool.length > 1 ? 's' : ''}`
+            : `${formatCount(count)} chaîne${count > 1 ? 's' : ''}${capped ? ' · affine avec la recherche' : ''}`}
         </p>
       )}
 
@@ -164,33 +261,28 @@ export default function LivePage() {
           />
         </div>
       ) : (
-        <div className="mt-4 flex flex-col">
-          {(loadingChannels || searching) && shown.length === 0
+        <div className="mt-3 flex flex-col">
+          {loading && shown.length === 0
             ? Array.from({ length: 10 }, (_, i) => <Skeleton key={i} className="mb-2 h-14 rounded-xl" />)
-            : shown.map((c) => <ChannelRow key={c.id} channel={c} />)}
+            : shown.map((c) => (
+                <ChannelRow
+                  key={c.id}
+                  channel={c}
+                  onHide={() => void hideCategory('live', c.categoryId, categoryOf.get(c.categoryId) ?? c.name)}
+                />
+              ))}
 
-          {results !== null && results.length === 0 && !searching && (
+          {!loading && shown.length === 0 && (
             <div className="mt-4">
-              <EmptyState title="Aucune chaîne trouvée" />
+              <EmptyState
+                title={searching ? 'Aucune chaîne trouvée' : 'Aucune chaîne dans ce filtre'}
+                hint={filter === 'favorites' ? 'Ajoute des favoris avec le cœur.' : undefined}
+              />
             </div>
           )}
-          {results === null && !loadingChannels && channels.length === 0 && selected !== null && (
-            <div className="mt-4">
-              <EmptyState title="Catégorie vide" />
-            </div>
-          )}
-          {results === null && <div ref={sentinelRef} className="h-10" />}
+          <div ref={sentinelRef} className="h-10" />
         </div>
       )}
-
-      <CategoryPanel
-        open={panelOpen}
-        onClose={() => setPanelOpen(false)}
-        categories={categories}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        section="live"
-      />
     </main>
   );
 }

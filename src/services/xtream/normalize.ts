@@ -8,10 +8,17 @@ import type {
   XtreamSeriesInfo,
   XtreamVodStream,
 } from '@/types/xtream';
+import { detectChannelTheme, detectUhd } from '@/utils/channelTheme';
 import { detectCountry, detectLanguage } from '@/utils/countryDetection';
 import { isFrenchLabel } from '@/utils/frenchDetection';
 import { buildSearchTokens, normalizeText } from '@/utils/text';
 import { cleanTitle } from '@/utils/titleCleaner';
+
+/** Infos de la categorie parente, transmises a la normalisation des items. */
+export interface CategoryContext {
+  isFrench: boolean;
+  name: string;
+}
 
 /** Conversion types bruts Xtream -> modeles internes (coercition NumLike incluse). */
 
@@ -61,8 +68,9 @@ export function normalizeCategory(section: Section, raw: XtreamCategory): Catego
   };
 }
 
-export function normalizeLiveChannel(raw: XtreamLiveStream, categoryIsFrench: boolean): LiveChannel {
+export function normalizeLiveChannel(raw: XtreamLiveStream, category?: CategoryContext): LiveChannel {
   const name = strOrNull(raw.name) ?? `Chaine ${String(raw.stream_id)}`;
+  const categoryName = category?.name ?? '';
   return {
     id: String(raw.stream_id),
     categoryId: normalizeCategoryId(raw.category_id),
@@ -72,9 +80,11 @@ export function normalizeLiveChannel(raw: XtreamLiveStream, categoryIsFrench: bo
     logoUrl: strOrNull(raw.stream_icon),
     epgChannelId: strOrNull(raw.epg_channel_id),
     sortOrder: toNum(raw.num) ?? 0,
-    isFrench: categoryIsFrench || isFrenchLabel(name) ? 1 : 0,
-    country: detectCountry(name),
-    language: detectLanguage(name),
+    isFrench: (category?.isFrench ?? false) || isFrenchLabel(name) ? 1 : 0,
+    theme: detectChannelTheme(name, categoryName),
+    isUhd: detectUhd(name, categoryName) ? 1 : 0,
+    country: detectCountry(name) ?? detectCountry(categoryName),
+    language: detectLanguage(name) ?? detectLanguage(categoryName),
   };
 }
 

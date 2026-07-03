@@ -60,6 +60,8 @@ interface Envelope<T> {
   error?: { code?: string; message?: string };
 }
 
+const CLIENT_TIMEOUT_MS = 10_000;
+
 async function call<T>(body: Record<string, unknown>): Promise<T | null> {
   let res: Response;
   try {
@@ -67,8 +69,13 @@ async function call<T>(body: Record<string, unknown>): Promise<T | null> {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(body),
+      cache: 'no-store',
+      signal: AbortSignal.timeout(CLIENT_TIMEOUT_MS),
     });
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+      throw new TmdbError('timeout', 'Le proxy TMDB ne repond pas.');
+    }
     throw new TmdbError('unreachable', 'Proxy TMDB injoignable.');
   }
   let payload: Envelope<T> | null = null;

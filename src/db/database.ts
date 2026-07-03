@@ -78,6 +78,12 @@ export class IptvDatabase extends Dexie {
       xtream_vod_streams: 'id, categoryId, name, addedAt, isFrench, *searchTokens',
       xtream_series: 'id, categoryId, name, lastModifiedAt, isFrench, *searchTokens',
     });
+
+    // v3 : theme + isUhd sur les chaines Live (filtres rapides ergonomie Live).
+    // Resynchronisation necessaire pour peupler ces champs.
+    this.version(3).stores({
+      xtream_live_streams: 'id, categoryId, name, isFrench, theme, isUhd, *searchTokens',
+    });
   }
 }
 

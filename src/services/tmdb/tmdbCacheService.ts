@@ -11,6 +11,32 @@ import { enrichMovie, enrichSeries, tmdbCacheKey } from './tmdbMatcher';
  */
 
 const NEGATIVE_RETRY_MS = 1000 * 60 * 60 * 24 * 3; // reessai 'notfound' apres 3 j
+const inFlight = new Map<string, Promise<TmdbMetadata | null>>();
+
+async function fetchAndCache(
+  key: string,
+  type: 'movie' | 'tv',
+  rawName: string,
+  year: number | null,
+  enricher: (name: string, year: number | null) => Promise<TmdbMetadata | null>,
+  stale: TmdbMetadata | null,
+): Promise<TmdbMetadata | null> {
+  try {
+    const data = await enricher(rawName, year);
+    await tmdbRepository.putTmdbEntry({
+      key,
+      type,
+      status: data !== null ? 'found' : 'notfound',
+      data,
+      fetchedAt: Date.now(),
+    });
+    return data;
+  } catch {
+    return stale;
+  } finally {
+    inFlight.delete(key);
+  }
+}
 
 async function getOrFetch(
   type: 'movie' | 'tv',
@@ -26,22 +52,12 @@ async function getOrFetch(
     if (cached.status === 'notfound' && age < NEGATIVE_RETRY_MS) return null;
   }
 
-  let data: TmdbMetadata | null;
-  try {
-    data = await enricher(rawName, year);
-  } catch {
-    // Reseau/TMDB KO : renvoyer un cache perime si present, sinon null.
-    return cached?.data ?? null;
-  }
+  const pending = inFlight.get(key);
+  if (pending !== undefined) return pending;
 
-  await tmdbRepository.putTmdbEntry({
-    key,
-    type,
-    status: data !== null ? 'found' : 'notfound',
-    data,
-    fetchedAt: Date.now(),
-  });
-  return data;
+  const request = fetchAndCache(key, type, rawName, year, enricher, cached?.data ?? null);
+  inFlight.set(key, request);
+  return request;
 }
 
 export function getMovieMetadata(rawName: string, year: number | null): Promise<TmdbMetadata | null> {

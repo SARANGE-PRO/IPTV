@@ -1,6 +1,7 @@
 import type { Table } from 'dexie';
 import { db } from '@/db/database';
 import type { BoolNum, Category, LiveChannel, Movie, Section, Series, SeriesDetails } from '@/types/models';
+import type { ChannelTheme } from '@/utils/channelTheme';
 import { normalizeText, tokenizeQuery } from '@/utils/text';
 
 /**
@@ -61,6 +62,35 @@ export function getLiveChannelById(id: string): Promise<LiveChannel | undefined>
 export async function getLiveChannelsByIds(ids: string[]): Promise<LiveChannel[]> {
   const rows = await db.xtream_live_streams.bulkGet(ids);
   return rows.filter((c): c is LiveChannel => c !== undefined);
+}
+
+/** Filtres rapides Live (ergonomie unifiee). 'all' = tout le catalogue. */
+export type LiveFilter =
+  | { kind: 'all' }
+  | { kind: 'french' }
+  | { kind: 'uhd' }
+  | { kind: 'theme'; theme: ChannelTheme };
+
+function liveCollection(filter: LiveFilter) {
+  switch (filter.kind) {
+    case 'french':
+      return db.xtream_live_streams.where('isFrench').equals(1);
+    case 'uhd':
+      return db.xtream_live_streams.where('isUhd').equals(1);
+    case 'theme':
+      return db.xtream_live_streams.where('theme').equals(filter.theme);
+    default:
+      return db.xtream_live_streams.toCollection();
+  }
+}
+
+/** Page de chaines pour un filtre — jamais de chargement global des 55k. */
+export function getLiveChannelsPage(filter: LiveFilter, offset: number, limit: number): Promise<LiveChannel[]> {
+  return liveCollection(filter).offset(offset).limit(limit).toArray();
+}
+
+export function countLiveChannels(filter: LiveFilter): Promise<number> {
+  return liveCollection(filter).count();
 }
 
 // --- Films ------------------------------------------------------------------------

@@ -4,6 +4,7 @@ import type Hls from 'hls.js';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/cn';
+import { secureUrl } from '@/utils/secureUrl';
 
 /**
  * Lecteur video isole. HLS natif (Safari iOS/iPadOS) prioritaire ; hls.js
@@ -39,6 +40,8 @@ export function VideoPlayer({
   const [status, setStatus] = useState<PlayerStatus>('loading');
   const [message, setMessage] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const streamUrl = secureUrl(src);
+  const posterUrl = secureUrl(poster);
 
   const onProgressRef = useRef(onProgress);
   onProgressRef.current = onProgress;
@@ -54,6 +57,8 @@ export function VideoPlayer({
     const video = videoRef.current;
     if (video === null) return;
     let cancelled = false;
+    let networkRecoveries = 0;
+    let mediaRecoveries = 0;
 
     setStatus('loading');
     setMessage(null);
@@ -64,6 +69,11 @@ export function VideoPlayer({
         setMessage(msg);
       }
     };
+
+    if (streamUrl === null) {
+      fail('URL du flux invalide.');
+      return;
+    }
 
     const sendProgress = (force: boolean) => {
       if (liveRef.current) return;
@@ -88,8 +98,12 @@ export function VideoPlayer({
       sendProgress(true);
       onEndedRef.current?.();
     };
-    const handleError = () =>
-      fail('Flux illisible ou indisponible. Le format n’est peut-être pas supporté par ce navigateur.');
+    const handleError = () => {
+      const mkvHint = /\.mkv(?:$|[?#])/i.test(streamUrl ?? '')
+        ? ' Le conteneur MKV ou ses codecs doivent etre transcodes en HLS/MP4 pour ce navigateur.'
+        : '';
+      fail(`Flux illisible ou indisponible. Verifiez le HTTPS du serveur et les codecs.${mkvHint}`);
+    };
 
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('canplay', handleReady);
@@ -99,12 +113,13 @@ export function VideoPlayer({
     video.addEventListener('ended', handleEnded);
     video.addEventListener('error', handleError);
 
-    const isHls = /\.m3u8(?:$|\?)/i.test(src);
+    const isHls = /\.m3u8(?:$|[?#])/i.test(streamUrl);
     const canNativeHls = video.canPlayType('application/vnd.apple.mpegurl') !== '';
 
     const setup = async () => {
       if (!isHls || canNativeHls) {
-        video.src = src;
+        // Safari/iOS conserve ainsi son lecteur HLS natif.
+        video.src = streamUrl;
       } else {
         try {
           const mod = await import('hls.js');
@@ -114,12 +129,27 @@ export function VideoPlayer({
             fail('Lecture HLS non supportée par ce navigateur.');
             return;
           }
-          const hls = new HlsCtor({ enableWorker: true });
+          const hls = new HlsCtor({
+            enableWorker: true,
+            lowLatencyMode: liveRef.current,
+            backBufferLength: liveRef.current ? 30 : 90,
+          });
           hlsRef.current = hls;
           hls.on(HlsCtor.Events.ERROR, (_event, data) => {
-            if (data.fatal) fail('Erreur de lecture du flux. Il est peut-être indisponible.');
+            if (!data.fatal) return;
+            if (data.type === HlsCtor.ErrorTypes.NETWORK_ERROR && networkRecoveries < 2) {
+              networkRecoveries += 1;
+              hls.startLoad();
+              return;
+            }
+            if (data.type === HlsCtor.ErrorTypes.MEDIA_ERROR && mediaRecoveries < 1) {
+              mediaRecoveries += 1;
+              hls.recoverMediaError();
+              return;
+            }
+            fail('Erreur HLS fatale. Verifiez HTTPS, CORS et la disponibilite du flux.');
           });
-          hls.loadSource(src);
+          hls.loadSource(streamUrl);
           hls.attachMedia(video);
         } catch {
           fail('Impossible de charger le module de lecture HLS.');
@@ -149,7 +179,7 @@ export function VideoPlayer({
       video.removeAttribute('src');
       video.load();
     };
-  }, [src, attempt]);
+  }, [streamUrl, attempt]);
 
   return (
     <div className={cn('relative overflow-hidden rounded-2xl bg-black', className)}>
@@ -158,7 +188,7 @@ export function VideoPlayer({
         controls
         playsInline
         autoPlay
-        poster={poster ?? undefined}
+        poster={posterUrl ?? undefined}
         className="aspect-video w-full bg-black"
       />
       {status === 'loading' && (

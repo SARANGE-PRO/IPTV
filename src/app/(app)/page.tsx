@@ -52,7 +52,7 @@ export default function HomePage() {
       <div className="flex items-center gap-2 pt-2">
         <span className="h-2.5 w-2.5 rounded-full bg-accent" />
         <span className="text-xs font-medium uppercase tracking-[0.22em] text-fg-faint">
-          IPTV PWA
+          ZiBTV
         </span>
       </div>
       <h1 className="mt-2 text-3xl font-semibold tracking-tight text-fg">Accueil</h1>

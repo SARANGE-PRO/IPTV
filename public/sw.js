@@ -10,9 +10,14 @@
  * manifest). Navigation : reseau d'abord, fallback page offline.
  */
 
-const CACHE = 'iptv-shell-v1';
+const CACHE = 'zibtv-shell-v2';
 const OFFLINE_URL = '/offline.html';
-const PRECACHE = ['/offline.html', '/manifest.webmanifest', '/icons/icon-192.png'];
+const PRECACHE = [
+  '/offline.html',
+  '/manifest.webmanifest',
+  '/icons/icon-192.png',
+  '/brand/zibtv-mark.svg',
+];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)).then(() => self.skipWaiting()));
@@ -32,6 +37,7 @@ function isCacheableAsset(url) {
     url.origin === self.location.origin &&
     (url.pathname.startsWith('/_next/static/') ||
       url.pathname.startsWith('/icons/') ||
+      url.pathname.startsWith('/brand/') ||
       url.pathname === '/manifest.webmanifest' ||
       url.pathname === '/apple-touch-icon.png')
   );

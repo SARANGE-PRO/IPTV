@@ -1,3 +1,5 @@
+import type { ChannelTheme } from '@/utils/channelTheme';
+
 /**
  * Modeles internes NORMALISES — seule forme consommee par stores, services et
  * composants. La conversion depuis les types bruts (types/xtream.ts) sera
@@ -51,6 +53,10 @@ export interface LiveChannel {
   /** Ordre fournisseur (champ num) — tri d'affichage par defaut. */
   sortOrder: number;
   isFrench: BoolNum;
+  /** Theme pour filtres rapides Live (schema v3). Voir utils/channelTheme. */
+  theme: ChannelTheme;
+  /** Chaine 4K/UHD/premium (index 0|1, schema v3). */
+  isUhd: BoolNum;
   country: string | null;
   language: string | null;
 }

@@ -4,14 +4,16 @@ import { ServiceWorkerRegister } from '@/components/layout/ServiceWorkerRegister
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: { default: 'IPTV', template: '%s · IPTV' },
-  description: 'PWA IPTV premium — Live TV, films et séries.',
-  applicationName: 'IPTV',
+  title: { default: 'ZiBTV', template: '%s · ZiBTV' },
+  description: 'ZiBTV — Live TV, films et séries.',
+  applicationName: 'ZiBTV',
   manifest: '/manifest.webmanifest',
-  appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'IPTV' },
+  appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'ZiBTV' },
   formatDetection: { telephone: false },
   icons: {
     icon: [
+      { url: '/brand/zibtv-icon.svg', sizes: 'any', type: 'image/svg+xml' },
+      { url: '/icons/icon-32.png', sizes: '32x32', type: 'image/png' },
       { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
       { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],

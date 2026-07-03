@@ -97,6 +97,24 @@ export const DEFAULT_BLACKLIST_HINTS = [
   'russia',
 ] as const;
 
+/**
+ * Themes de chaines Live pour les filtres rapides. Detection par mots-cles sur
+ * le nom de la chaine + le nom de sa categorie fournisseur. Ordre = priorite
+ * de classification (premier theme qui matche l'emporte).
+ */
+export const CHANNEL_THEME_KEYWORDS: Record<string, readonly string[]> = {
+  sport: ['sport', 'sports', 'foot', 'football', 'bein', 'rmc sport', 'canal sport', 'league', 'ligue', 'nba', 'ufc', 'f1', 'formula', 'tennis', 'rugby', 'golf', 'espn', 'eurosport', 'dazn', 'match'],
+  news: ['news', 'info', 'infos', 'actu', 'bfm', 'cnews', 'lci', 'franceinfo', 'france info', 'i24', 'cnn', 'euronews', 'bbc news', 'al jazeera'],
+  kids: ['kids', 'enfant', 'enfants', 'junior', 'cartoon', 'disney', 'nickelodeon', 'gulli', 'boomerang', 'baby', 'piwi', 'tiji', 'canal j', 'toon', 'jeunesse'],
+  cinema: ['cinema', 'cine', 'film', 'films', 'movie', 'movies', 'canal+', 'canal plus', 'ocs', 'tcm', 'action', 'thriller', 'horror', 'horreur', 'comedie', 'paramount', 'warner'],
+  music: ['music', 'musique', 'mtv', 'nrj', 'trace', 'clubbing', 'hits', 'radio', 'm6 music', 'melody', 'mcm'],
+  doc: ['doc', 'docu', 'documentaire', 'discovery', 'national geographic', 'nat geo', 'histoire', 'science', 'planete', 'ushuaia', 'animaux', 'nature'],
+  entertainment: ['divertissement', 'entertainment', 'serie', 'series', 'tv show', 'realite', 'tf1', 'm6', 'w9', 'tmc', 'nrj12', 'c8', 'tfx', 'general', 'generaliste'],
+} as const;
+
+/** Mots-cles marquant une chaine 4K / UHD / haute definition premium. */
+export const UHD_KEYWORDS = ['4k', 'uhd', 'ultra hd', 'ultrahd', 'hevc', 'raw', 'hdr'] as const;
+
 /** Durees de vie de cache par domaine (millisecondes). */
 export const CACHE_TTL = {
   liveStreams: 1000 * 60 * 60 * 6, // 6 h

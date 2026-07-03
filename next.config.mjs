@@ -2,6 +2,20 @@
 const nextConfig = {
   reactStrictMode: true,
 
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Content-Security-Policy',
+            value: 'upgrade-insecure-requests',
+          },
+        ],
+      },
+    ];
+  },
+
   // ESLint sera recablé proprement a une etape ulterieure ; on ne bloque pas
   // le build dessus pour l'instant (le type-check TS strict reste actif).
   eslint: { ignoreDuringBuilds: true },
