@@ -10,6 +10,10 @@
   html,
   body {
     height: 100%;
+    /* Fond sombre AUSSI sur <html> : sinon le blanc par defaut de la racine
+       apparait en bas sur iOS (rubber-band / calage du viewport au lancement)
+       -> fine ligne blanche pendant le splash. */
+    @apply bg-ink-950;
   }
 
   body {

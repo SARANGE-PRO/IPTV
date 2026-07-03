@@ -6,9 +6,13 @@ import { SplashScreen } from '@/components/layout/SplashScreen';
 import { BrandLogo } from '@/components/shared/BrandLogo';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { cn } from '@/lib/cn';
 import type { AuthErrorCode } from '@/services/session/secureSessionService';
 import * as secureSessionService from '@/services/session/secureSessionService';
 import { useAuthStore } from '@/stores/authStore';
+import { parseM3uCredentials } from '@/utils/m3uUrl';
+
+type LoginMode = 'fields' | 'link';
 
 const ERROR_MESSAGES: Record<AuthErrorCode, string> = {
   invalid_credentials: 'Identifiants incorrects. Vérifie le nom d’utilisateur et le mot de passe.',
@@ -30,9 +34,12 @@ export default function LoginPage() {
   const login = useAuthStore((s) => s.login);
   const restoreSession = useAuthStore((s) => s.restoreSession);
 
+  const [mode, setMode] = useState<LoginMode>('fields');
   const [serverUrl, setServerUrl] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [m3uUrl, setM3uUrl] = useState('');
+  const [linkError, setLinkError] = useState<string | null>(null);
   const [rememberMe, setRememberMe] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -62,8 +69,22 @@ export default function LoginPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (submitting) return;
+
+    let creds = { serverUrl, username, password };
+    if (mode === 'link') {
+      const parsed = parseM3uCredentials(m3uUrl);
+      if (parsed === null) {
+        setLinkError(
+          'Lien non reconnu. Attendu : http://serveur:port/get.php?username=…&password=…',
+        );
+        return;
+      }
+      setLinkError(null);
+      creds = parsed;
+    }
+
     setSubmitting(true);
-    await login({ serverUrl, username, password }, rememberMe);
+    await login(creds, rememberMe);
     setSubmitting(false);
     // Si succes : status passe a 'authenticated' -> redirection via l'effet.
   };
@@ -89,38 +110,88 @@ export default function LoginPage() {
       )}
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-        <Input
-          label="URL du serveur"
-          type="text"
-          inputMode="url"
-          placeholder="http://exemple.com:8080"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          autoComplete="url"
-          value={serverUrl}
-          onChange={(e) => setServerUrl(e.target.value)}
-          required
-        />
-        <Input
-          label="Nom d’utilisateur"
-          type="text"
-          autoCapitalize="none"
-          autoCorrect="off"
-          spellCheck={false}
-          autoComplete="username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-        />
-        <Input
-          label="Mot de passe"
-          type="password"
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
+        <div className="flex gap-1 rounded-xl bg-ink-800 p-1">
+          {(
+            [
+              { id: 'fields', label: 'Identifiants' },
+              { id: 'link', label: 'Lien M3U' },
+            ] as const
+          ).map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => {
+                setMode(id);
+                setLinkError(null);
+              }}
+              className={cn(
+                'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                mode === id ? 'bg-ink-600 text-fg' : 'text-fg-muted hover:text-fg',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {mode === 'fields' ? (
+          <>
+            <Input
+              label="URL du serveur"
+              type="text"
+              inputMode="url"
+              placeholder="http://exemple.com:8080"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="url"
+              value={serverUrl}
+              onChange={(e) => setServerUrl(e.target.value)}
+              required
+            />
+            <Input
+              label="Nom d’utilisateur"
+              type="text"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+            />
+            <Input
+              label="Mot de passe"
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </>
+        ) : (
+          <div>
+            <Input
+              label="Lien M3U / get.php"
+              type="text"
+              inputMode="url"
+              placeholder="http://serveur:port/get.php?username=…&password=…"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              value={m3uUrl}
+              onChange={(e) => {
+                setM3uUrl(e.target.value);
+                if (linkError !== null) setLinkError(null);
+              }}
+              required
+            />
+            {linkError !== null && <p className="mt-2 text-xs text-accent">{linkError}</p>}
+            <p className="mt-2 text-xs text-fg-faint">
+              On en extrait le serveur, l’utilisateur et le mot de passe. Le lien lui-même n’est pas conservé.
+            </p>
+          </div>
+        )}
 
         <label className="flex select-none items-center gap-3 py-1">
           <input
