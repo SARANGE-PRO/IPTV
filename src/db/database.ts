@@ -103,6 +103,32 @@ export class IptvDatabase extends Dexie {
     this.version(5).stores({
       epg_cache: 'id, fetchedAt',
     });
+
+    // v6 : BACKFILL des index derives. Les v2-v4 ont ajoute searchTokens/theme/
+    // isUhd/year/normalizedName SANS `.upgrade()` -> les lignes synchronisees
+    // AVANT ces versions restaient hors de ces index (recherche/tri partiels),
+    // et l'app ne resynchronise pas automatiquement. Recomputer ces champs ici
+    // exigerait la logique de normalisation (couche services) -> inversion de
+    // dependance interdite. On PURGE donc le catalogue + sync_metadata : la
+    // prochaine synchronisation le reconstruit proprement, index complets.
+    // Favoris / historique / reglages / session sont PRESERVES (tables distinctes).
+    // Cout assume : une resync manuelle apres cette mise a jour.
+    // PATTERN a suivre desormais : toute version qui ajoute un index derive doit
+    // fournir un `.upgrade()` (backfill ou purge), jamais l'oublier.
+    this.version(6)
+      .stores({})
+      .upgrade(async (tx) => {
+        await Promise.all([
+          tx.table('xtream_live_categories').clear(),
+          tx.table('xtream_live_streams').clear(),
+          tx.table('xtream_vod_categories').clear(),
+          tx.table('xtream_vod_streams').clear(),
+          tx.table('xtream_series_categories').clear(),
+          tx.table('xtream_series').clear(),
+          tx.table('xtream_series_details').clear(),
+          tx.table('sync_metadata').clear(),
+        ]);
+      });
   }
 }
 
