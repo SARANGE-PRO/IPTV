@@ -18,6 +18,7 @@ import { resetGatewayHealthCache } from '@/services/player/mediaGatewayService';
 import { getSeriesDetailsCached } from '@/services/xtream/seriesDetailsService';
 import { tmdbPoster } from '@/services/tmdb/tmdbImage';
 import { buildSeriesEpisodeUrl } from '@/services/xtream/xtreamUrls';
+import { supportsNativeHls } from '@/utils/playerSupport';
 import { usePlaybackPlan } from '@/hooks/usePlaybackPlan';
 import { useTmdbMetadata } from '@/hooks/useTmdbMetadata';
 import { useAuthStore } from '@/stores/authStore';
@@ -200,6 +201,7 @@ export default function SeriesDetailPage() {
               <VideoPlayer
                 src={src}
                 transcode={plan === 'gateway'}
+                preferHls={plan === 'gateway' && supportsNativeHls()}
                 contentType="episode"
                 container={playingEp.containerExtension}
                 startAt={startAt}

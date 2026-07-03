@@ -1,7 +1,12 @@
 import { spawn } from 'node:child_process';
 import { createHmac, randomBytes } from 'node:crypto';
+import { promises as fs } from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
 import { Readable } from 'node:stream';
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Passerelle media AUTO-HEBERGEE (IP residentielle) — resout les deux murs
@@ -264,11 +269,137 @@ function transcodeToFragmentedMp4(sourceStream, res, live = false) {
   ff.stdout.pipe(res);
 }
 
+/**
+ * VOD transcode -> HLS (m3u8 + segments .ts) pour SAFARI iOS. Safari refuse le
+ * fMP4 PROGRESSIF sans Range (MediaError 4) ; il ne lit de facon fiable qu'HLS.
+ * On genere donc un HLS "event" (VOD croissant) avec ffmpeg, servi via cette
+ * passerelle. Chrome/Edge continuent d'utiliser le fMP4 progressif (plus simple).
+ *
+ * Session par URL de film : ffmpeg lit le flux amont (pipe) et ecrit segments +
+ * playlist dans un dossier temporaire ; la playlist est reecrite pour pointer
+ * les segments vers `/_hlsseg`. Nettoyage des sessions inactives (>60 s).
+ */
+const HLS_READY_TIMEOUT_MS = 30_000;
+const HLS_IDLE_MS = 60_000;
+const HLS_SEGMENT_RE = /^seg\d+\.ts$/i;
+const hlsSessions = new Map(); // key -> { dir, ff, ready, lastAccess }
+
+function hlsSegUrl(key, file, origin) {
+  return `${origin}/_hlsseg?s=${encodeURIComponent(key)}&f=${encodeURIComponent(file)}&_s=${sign(`${key}/${file}`)}`;
+}
+
+async function ensureHlsSession(key, target, trusted, signal) {
+  const existing = hlsSessions.get(key);
+  if (existing !== undefined) {
+    existing.lastAccess = Date.now();
+    if (existing.ready) return;
+  } else {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'zibtv-hls-'));
+    const headers = new Headers({ 'user-agent': UPSTREAM_UA, accept: '*/*' });
+    const { response } = await fetchAllowed(target, { method: 'GET', headers, signal }, trusted);
+    if (response.body === null) {
+      await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+      throw new Error('Flux amont vide (HLS).');
+    }
+    const out = path.join(dir, 'index.m3u8').replace(/\\/g, '/');
+    const segs = path.join(dir, 'seg%05d.ts').replace(/\\/g, '/');
+    const args = [
+      '-hide_banner', '-loglevel', 'error', '-nostdin', '-fflags', '+genpts',
+      '-i', 'pipe:0',
+      '-map', '0:v:0', '-map', '0:a:0?',
+      '-c:v', VIDEO_CODEC,
+      ...(VIDEO_CODEC === 'libx264' ? ['-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p'] : []),
+      '-c:a', 'aac', '-b:a', '160k', '-ac', '2',
+      // HLS "event" : playlist VOD qui grandit (Safari peut lire + revenir en
+      // arriere), ENDLIST ajoute par ffmpeg a la fin -> duree totale connue.
+      '-f', 'hls', '-hls_time', '4', '-hls_playlist_type', 'event',
+      '-hls_flags', 'independent_segments', '-hls_segment_type', 'mpegts',
+      '-hls_segment_filename', segs, out,
+    ];
+    const ff = spawn(FFMPEG, args, { stdio: ['pipe', 'ignore', 'pipe'] });
+    ff.stderr.on('data', () => {}); // ne journalise aucune URL
+    ff.stdin.on('error', () => {}); // EPIPE si ffmpeg se ferme avant la fin
+    const src = Readable.fromWeb(response.body);
+    const killFf = () => {
+      try { ff.kill('SIGKILL'); } catch {}
+    };
+    src.on('error', killFf);
+    ff.on('error', killFf);
+    src.pipe(ff.stdin);
+    hlsSessions.set(key, { dir, ff, ready: false, lastAccess: Date.now() });
+  }
+
+  const session = hlsSessions.get(key);
+  const deadline = Date.now() + HLS_READY_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    try {
+      const txt = await fs.readFile(path.join(session.dir, 'index.m3u8'), 'utf8');
+      if (/\.ts/i.test(txt)) {
+        session.ready = true;
+        session.lastAccess = Date.now();
+        return;
+      }
+    } catch {
+      // playlist pas encore ecrite
+    }
+    await sleep(300);
+  }
+  throw new Error('HLS: demarrage du transcodage trop lent.');
+}
+
+async function buildHlsPlaylist(key, origin) {
+  const session = hlsSessions.get(key);
+  if (session === undefined) throw new Error('Session HLS absente.');
+  const text = await fs.readFile(path.join(session.dir, 'index.m3u8'), 'utf8');
+  return text
+    .split(/\r?\n/)
+    .map((line) => {
+      const t = line.trim();
+      if (t !== '' && !t.startsWith('#') && /\.ts$/i.test(t)) return hlsSegUrl(key, t, origin);
+      return line;
+    })
+    .join('\n');
+}
+
+async function serveHlsSegment(req, res) {
+  try {
+    const u = new URL(req.url ?? '/', 'http://gateway.local');
+    const key = u.searchParams.get('s') ?? '';
+    const file = u.searchParams.get('f') ?? '';
+    const sig = u.searchParams.get('_s') ?? '';
+    // Anti-traversal + signature : uniquement les segments que NOUS avons signes.
+    if (!HLS_SEGMENT_RE.test(file) || sig !== sign(`${key}/${file}`)) {
+      return void res.writeHead(403, { 'content-type': 'text/plain' }).end('Segment non autorise.');
+    }
+    const session = hlsSessions.get(key);
+    if (session === undefined) return void res.writeHead(404, { 'content-type': 'text/plain' }).end('Session expiree.');
+    session.lastAccess = Date.now();
+    const buf = await fs.readFile(path.join(session.dir, file));
+    res.writeHead(200, { 'content-type': 'video/mp2t', 'cache-control': 'no-store' }).end(buf);
+  } catch {
+    if (!res.headersSent) res.writeHead(404, { 'content-type': 'text/plain' }).end('Segment introuvable.');
+  }
+}
+
+// Nettoyage des sessions HLS inactives (ffmpeg + dossier temporaire).
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, session] of hlsSessions) {
+    if (now - session.lastAccess > HLS_IDLE_MS) {
+      try { session.ff.kill('SIGKILL'); } catch {}
+      hlsSessions.delete(key);
+      fs.rm(session.dir, { recursive: true, force: true }).catch(() => {});
+    }
+  }
+}, 30_000).unref();
+
 const server = http.createServer(async (req, res) => {
   cors(res);
   if (req.method === 'OPTIONS') return void res.writeHead(204).end();
   if (req.url === '/_health') return void res.writeHead(200, { 'content-type': 'text/plain' }).end('ok');
   if (req.method !== 'GET' && req.method !== 'HEAD') return void res.writeHead(405, { allow: 'GET, HEAD, OPTIONS' }).end();
+  // Segment HLS d'une session VOD (transcode Safari) — sert un fichier local signe.
+  if ((req.url ?? '').startsWith('/_hlsseg')) return void serveHlsSegment(req, res);
 
   const aborter = new AbortController();
   const headerTimer = setTimeout(() => aborter.abort(), HEADER_TIMEOUT_MS);
@@ -283,10 +414,25 @@ const server = http.createServer(async (req, res) => {
       return void res.writeHead(403, { 'content-type': 'text/plain' }).end('Hote non autorise.');
     }
 
+    const rawTarget = target.toString();
+
+    // VOD MKV + client Safari (hls=1) -> transcodage HLS (Safari refuse le fMP4
+    // progressif). On (re)demarre la session ffmpeg et on renvoie la playlist
+    // reecrite ; Safari va ensuite chercher les segments via /_hlsseg.
+    const wantHls = new URL(req.url ?? '/', 'http://gateway.local').searchParams.get('hls') === '1';
+    if (wantHls && !viaSig && TRANSCODE && req.method === 'GET' && UNSUPPORTED_EXT.test(rawTarget)) {
+      clearTimeout(headerTimer);
+      const key = sign(rawTarget);
+      await ensureHlsSession(key, target, trusted, aborter.signal);
+      const playlist = await buildHlsPlaylist(key, publicOrigin(req));
+      return void res
+        .writeHead(200, { 'content-type': 'application/vnd.apple.mpegurl', 'cache-control': 'no-store' })
+        .end(playlist);
+    }
+
     // Candidat au transcodage = film MKV/AVI OU flux live .ts DIRECT (pas un
     // segment HLS signe). Pour ceux-la on n'envoie PAS de Range : le live .ts
     // refuse le Range (405) et le transcode est progressif de toute facon.
-    const rawTarget = target.toString();
     const transcodeCandidate = !viaSig && (UNSUPPORTED_EXT.test(rawTarget) || /\.ts(?:$|[?#])/i.test(rawTarget));
 
     // UA player + Range (seek passthrough mp4). On ne transmet PAS l'UA navigateur.

@@ -27,8 +27,15 @@ const MEDIA_GATEWAY_URL = process.env.NEXT_PUBLIC_MEDIA_GATEWAY_URL?.trim().repl
  * NB : une precedente version bypassait la passerelle pour le contenu "natif"
  * (MP4/HLS) en tablant sur un HTTPS direct du CDN — invalide pour un Xtream
  * HTTP-only, ce qui cassait toute la VOD et le Live Safari. Ne pas reintroduire.
+ *
+ * `options.hls` (Safari + VOD non-natif) : demande a la passerelle un flux HLS
+ * (Safari refuse le fMP4 progressif du transcodage -> MediaError 4). Sans effet
+ * hors passerelle.
  */
-export function secureMediaUrl(value: string | null | undefined): string | null {
+export function secureMediaUrl(
+  value: string | null | undefined,
+  options: { hls?: boolean } = {},
+): string | null {
   if (value === null || value === undefined) return null;
   const url = value.trim();
   if (url === '') return null;
@@ -43,7 +50,8 @@ export function secureMediaUrl(value: string | null | undefined): string | null 
   // Page HTTPS : passerelle si configuree, sinon upgrade TLS best-effort
   // (echoue proprement si le serveur n'a pas de vrai HTTPS).
   if (MEDIA_GATEWAY_URL !== '') {
-    return `${MEDIA_GATEWAY_URL}/_fetch?url=${encodeURIComponent(url)}`;
+    const base = `${MEDIA_GATEWAY_URL}/_fetch?url=${encodeURIComponent(url)}`;
+    return options.hls === true ? `${base}&hls=1` : base;
   }
   return url.replace(/^http:\/\//i, 'https://');
 }

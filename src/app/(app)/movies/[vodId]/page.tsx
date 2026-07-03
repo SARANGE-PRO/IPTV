@@ -17,6 +17,7 @@ import { progressRatio, shouldOfferResume } from '@/services/player/resumePlayba
 import { tmdbBackdrop, tmdbPoster } from '@/services/tmdb/tmdbImage';
 import * as xtreamApi from '@/services/xtream/xtreamApi';
 import { buildVodStreamUrl } from '@/services/xtream/xtreamUrls';
+import { supportsNativeHls } from '@/utils/playerSupport';
 import { usePlaybackPlan } from '@/hooks/usePlaybackPlan';
 import { useTmdbMetadata } from '@/hooks/useTmdbMetadata';
 import { useAuthStore } from '@/stores/authStore';
@@ -170,6 +171,7 @@ export default function MovieDetailPage() {
               <VideoPlayer
                 src={src}
                 transcode={plan === 'gateway'}
+                preferHls={plan === 'gateway' && supportsNativeHls()}
                 contentType="vod"
                 container={movie.containerExtension}
                 startAt={startAt}

@@ -36,6 +36,12 @@ export interface VideoPlayerProps {
    * passerelle. Defaut false = lecture directe (MP4/HLS natif Safari).
    */
   transcode?: boolean;
+  /**
+   * Safari + VOD non-natif : demande a la passerelle un flux HLS (Safari refuse
+   * le fMP4 progressif du transcodage). Decide par la page (plan gateway ET HLS
+   * natif). Sans effet pour le direct/Chrome.
+   */
+  preferHls?: boolean;
   /** Contexte pour le diagnostic d'erreur (bouton "i"). */
   contentType?: 'live' | 'vod' | 'episode';
   container?: string | null;
@@ -90,6 +96,7 @@ export function VideoPlayer({
   onEnded,
   onError,
   transcode = false,
+  preferHls = false,
   contentType,
   container = null,
   className,
@@ -106,7 +113,7 @@ export function VideoPlayer({
   // passerelle qui choisit passthrough (MP4/segments) ou remux/transcodage
   // (MKV/HEVC, live .ts). Le drapeau `transcode` ne sert plus qu'a autoriser
   // les conteneurs non-natifs et a contextualiser le diagnostic (voir plus bas).
-  const streamUrl = secureMediaUrl(src);
+  const streamUrl = secureMediaUrl(src, { hls: preferHls });
   const posterUrl = secureImageSrc(poster);
 
   const onProgressRef = useRef(onProgress);
