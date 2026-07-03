@@ -66,6 +66,10 @@ if errorlevel 1 (
   exit /b 1
 )
 
+echo.
+echo  Ton URL publique HTTPS - a coller dans NEXT_PUBLIC_MEDIA_GATEWAY_URL cote Vercel :
+"%TAILSCALE_EXE%" funnel status
+
 REM Un double-clic ne doit pas echouer si la passerelle tourne deja.
 set "GATEWAY_HEALTH="
 for /f "delims=" %%H in ('curl.exe --silent --fail "http://127.0.0.1:%PORT%/_health" 2^>nul') do set "GATEWAY_HEALTH=%%H"
@@ -74,7 +78,7 @@ if /I "%GATEWAY_HEALTH%"=="ok" (
   echo  ================================================================
   echo   ZiBTV est DEJA ACTIF sur le port %PORT%.
   echo   Le Funnel Tailscale est actif. Tu peux fermer CETTE nouvelle fenetre.
-  echo   Ne mets pas le PC en veille pendant une lecture distante.
+  echo   La fenetre d'origine deja ouverte bloque la veille du PC.
   echo  ================================================================
   echo.
   pause
@@ -98,12 +102,15 @@ echo.
 echo  ================================================================
 echo   ZiBTV est ACTIF. Garde cette fenetre ouverte.
 echo   Funnel Tailscale public : actif.
-echo   Tu peux eteindre l'ecran, mais ne mets pas le PC en veille.
+echo   La mise en veille est BLOQUEE automatiquement tant que cette
+echo   fenetre est ouverte. L'ecran, lui, peut s'eteindre sans risque.
 echo   Pour arreter la lecture distante : ferme cette fenetre.
 echo  ================================================================
 echo   Sante locale : http://localhost:%PORT%/_health
 echo.
-node server.mjs
+REM Lance node via un superviseur PowerShell qui (1) empeche la veille du PC
+REM tant que la fenetre est ouverte et (2) relance la passerelle si elle quitte.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0keep-awake.ps1"
 echo.
 echo [ARRET] La passerelle ZiBTV n'est plus active.
 pause
