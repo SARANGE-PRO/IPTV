@@ -46,6 +46,8 @@ export interface LiveChannel {
   normalizedName: string;
   logoUrl: string | null;
   epgChannelId: string | null;
+  /** Tokens de recherche (index multiEntry, schema v2). */
+  searchTokens: string[];
   /** Ordre fournisseur (champ num) — tri d'affichage par defaut. */
   sortOrder: number;
   isFrench: BoolNum;
@@ -65,6 +67,8 @@ export interface Movie {
   /** Note sur 10 si connue. */
   rating: number | null;
   year: number | null;
+  /** Tokens de recherche (index multiEntry, schema v2). */
+  searchTokens: string[];
   /** Date d'ajout cote panel (ms). null = absent de l'index "recents". */
   addedAt: number | null;
   isFrench: BoolNum;
@@ -80,6 +84,8 @@ export interface Series {
   normalizedName: string;
   posterUrl: string | null;
   backdropUrl: string | null;
+  /** Tokens de recherche (index multiEntry, schema v2). */
+  searchTokens: string[];
   plot: string | null;
   genre: string | null;
   releaseDate: string | null;

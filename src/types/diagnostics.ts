@@ -62,6 +62,8 @@ export interface DiagnosticReport {
   sections: SectionStats[];
   blacklistSuggestions: BlacklistSuggestion[];
   titleSamples: TitleCleaningSample[];
+  /** Erreurs normalisees et anonymisees rencontrees pendant l'analyse. */
+  errors: string[];
   /** Drapeau garantissant l'anonymisation (verifie avant export). */
   anonymized: true;
 }

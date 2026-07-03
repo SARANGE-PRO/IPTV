@@ -69,6 +69,15 @@ export class IptvDatabase extends Dexie {
       sync_metadata: 'section',
       search_index: 'token',
     });
+
+    // v2 : index multiEntry de recherche (searchTokens) sur les tables d'items.
+    // Les enregistrements v1 n'ont pas ce champ : une resynchronisation est
+    // necessaire pour alimenter la recherche.
+    this.version(2).stores({
+      xtream_live_streams: 'id, categoryId, name, isFrench, *searchTokens',
+      xtream_vod_streams: 'id, categoryId, name, addedAt, isFrench, *searchTokens',
+      xtream_series: 'id, categoryId, name, lastModifiedAt, isFrench, *searchTokens',
+    });
   }
 }
 

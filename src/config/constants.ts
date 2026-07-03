@@ -4,6 +4,11 @@
  * ailleurs dans le code).
  */
 
+import type { Section } from '@/types/models';
+
+/** Sections du catalogue, dans l'ordre de synchronisation. */
+export const SECTIONS: readonly Section[] = ['live', 'vod', 'series'];
+
 /** Pays / langue par defaut : la France est prioritaire. */
 export const DEFAULT_COUNTRY = 'FR';
 export const DEFAULT_LANGUAGE = 'fr';

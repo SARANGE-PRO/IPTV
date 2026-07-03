@@ -1,0 +1,93 @@
+'use client';
+
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useEffect, type ReactNode } from 'react';
+import {
+  IconFilm,
+  IconHeart,
+  IconHome,
+  IconSeries,
+  IconSettings,
+  IconTv,
+} from '@/components/ui/icons';
+import { cn } from '@/lib/cn';
+import { useCatalogStore } from '@/stores/catalogStore';
+import { useFavoritesStore } from '@/stores/favoritesStore';
+import { useFilterStore } from '@/stores/filterStore';
+import { usePlaybackStore } from '@/stores/playbackStore';
+
+const NAV = [
+  { href: '/', label: 'Accueil', icon: IconHome },
+  { href: '/live', label: 'Live', icon: IconTv },
+  { href: '/movies', label: 'Films', icon: IconFilm },
+  { href: '/series', label: 'Séries', icon: IconSeries },
+  { href: '/favorites', label: 'Favoris', icon: IconHeart },
+  { href: '/settings', label: 'Réglages', icon: IconSettings },
+] as const;
+
+/** Shell : sidebar desktop / bottom-nav mobile + bootstrap des stores. */
+export function AppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  const hydrateCatalog = useCatalogStore((s) => s.hydrate);
+  const hydrateFavorites = useFavoritesStore((s) => s.hydrate);
+  const hydrateRails = usePlaybackStore((s) => s.hydrateRails);
+  const hydrateHidden = useFilterStore((s) => s.hydrateHidden);
+  const hydrateDefaults = useFilterStore((s) => s.hydrateDefaults);
+
+  useEffect(() => {
+    void hydrateCatalog();
+    void hydrateFavorites();
+    void hydrateRails();
+    void hydrateHidden();
+    void hydrateDefaults();
+  }, [hydrateCatalog, hydrateFavorites, hydrateRails, hydrateHidden, hydrateDefaults]);
+
+  const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
+
+  return (
+    <div className="min-h-dvh md:pl-60">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-ink-700 bg-ink-900/60 px-4 py-8 md:flex">
+        <div className="mb-8 flex items-center gap-2.5 px-2">
+          <span className="h-2.5 w-2.5 rounded-full bg-accent" />
+          <span className="text-sm font-semibold tracking-[0.3em] text-fg">IPTV</span>
+        </div>
+        <nav className="flex flex-col gap-1">
+          {NAV.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors',
+                isActive(href) ? 'bg-ink-700 font-medium text-fg' : 'text-fg-muted hover:bg-ink-800 hover:text-fg',
+              )}
+            >
+              <Icon className="h-5 w-5" />
+              {label}
+            </Link>
+          ))}
+        </nav>
+      </aside>
+
+      <div className="pb-24 pt-safe md:pb-8">{children}</div>
+
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-700 bg-ink-900/90 pb-safe backdrop-blur md:hidden">
+        <div className="flex items-stretch justify-around">
+          {NAV.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className={cn(
+                'flex min-w-0 flex-1 flex-col items-center gap-1 py-2.5 text-[10px]',
+                isActive(href) ? 'text-accent' : 'text-fg-muted',
+              )}
+            >
+              <Icon className="h-5 w-5" />
+              <span className="truncate">{label}</span>
+            </Link>
+          ))}
+        </div>
+      </nav>
+    </div>
+  );
+}

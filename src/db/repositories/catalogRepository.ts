@@ -1,6 +1,7 @@
 import type { Table } from 'dexie';
 import { db } from '@/db/database';
-import type { Category, LiveChannel, Movie, Section, Series, SeriesDetails } from '@/types/models';
+import type { BoolNum, Category, LiveChannel, Movie, Section, Series, SeriesDetails } from '@/types/models';
+import { normalizeText, tokenizeQuery } from '@/utils/text';
 
 /**
  * Acces au catalogue (categories, chaines, films, series).
@@ -158,4 +159,110 @@ export async function clearCatalog(): Promise<void> {
       ]);
     },
   );
+}
+
+// --- Diagnostic -------------------------------------------------------------------
+
+/** Echantillon de films (ordre cle primaire) — pour les exemples de titres. */
+export function getMoviesSample(limit: number): Promise<Movie[]> {
+  return db.xtream_vod_streams.limit(limit).toArray();
+}
+
+export function getSeriesSample(limit: number): Promise<Series[]> {
+  return db.xtream_series.limit(limit).toArray();
+}
+
+/** Nombre d'items par categorie, via un scan de l'index (sans charger les objets). */
+export async function getCategoryItemCounts(section: Section): Promise<Map<string, number>> {
+  const keys =
+    section === 'live'
+      ? await db.xtream_live_streams.orderBy('categoryId').keys()
+      : section === 'vod'
+        ? await db.xtream_vod_streams.orderBy('categoryId').keys()
+        : await db.xtream_series.orderBy('categoryId').keys();
+  const counts = new Map<string, number>();
+  for (const key of keys) {
+    const id = String(key);
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+  }
+  return counts;
+}
+
+export function countFrenchItems(section: Section): Promise<number> {
+  if (section === 'live') return db.xtream_live_streams.where('isFrench').equals(1).count();
+  if (section === 'vod') return db.xtream_vod_streams.where('isFrench').equals(1).count();
+  return db.xtream_series.where('isFrench').equals(1).count();
+}
+
+// --- Pagination (gros catalogue : jamais de getAll global) --------------------------
+
+export function getMoviesPage(categoryId: string, offset: number, limit: number): Promise<Movie[]> {
+  return db.xtream_vod_streams.where('categoryId').equals(categoryId).offset(offset).limit(limit).toArray();
+}
+
+export function getSeriesPage(categoryId: string, offset: number, limit: number): Promise<Series[]> {
+  return db.xtream_series.where('categoryId').equals(categoryId).offset(offset).limit(limit).toArray();
+}
+
+export function countByCategory(section: Section, categoryId: string): Promise<number> {
+  if (section === 'live') return db.xtream_live_streams.where('categoryId').equals(categoryId).count();
+  if (section === 'vod') return db.xtream_vod_streams.where('categoryId').equals(categoryId).count();
+  return db.xtream_series.where('categoryId').equals(categoryId).count();
+}
+
+// --- Recherche (index multiEntry searchTokens, schema v2) ---------------------------
+
+interface Searchable {
+  id: string;
+  name: string;
+  normalizedName: string;
+  isFrench: BoolNum;
+  searchTokens: string[];
+}
+
+/**
+ * Recherche par prefixe de tokens via l'index multiEntry : le token le plus
+ * long passe par l'index, les autres filtrent les candidats. Jamais de scan
+ * complet de la table.
+ */
+async function searchIn<T extends Searchable>(
+  table: Table<T, string>,
+  query: string,
+  limit: number,
+): Promise<T[]> {
+  const tokens = tokenizeQuery(query);
+  const primary = tokens.reduce<string | null>(
+    (best, t) => (best === null || t.length > best.length ? t : best),
+    null,
+  );
+  if (primary === null) return [];
+  const rest = tokens.filter((t) => t !== primary);
+
+  const rows = await table
+    .where('searchTokens')
+    .startsWith(primary)
+    .distinct()
+    .filter((item) => rest.every((t) => item.searchTokens.some((tok) => tok.startsWith(t))))
+    .limit(limit)
+    .toArray();
+
+  const nq = normalizeText(query);
+  return rows.sort(
+    (a, b) =>
+      Number(b.normalizedName.startsWith(nq)) - Number(a.normalizedName.startsWith(nq)) ||
+      b.isFrench - a.isFrench ||
+      a.name.localeCompare(b.name, 'fr'),
+  );
+}
+
+export function searchLiveChannels(query: string, limit = 60): Promise<LiveChannel[]> {
+  return searchIn(db.xtream_live_streams, query, limit);
+}
+
+export function searchMovies(query: string, limit = 60): Promise<Movie[]> {
+  return searchIn(db.xtream_vod_streams, query, limit);
+}
+
+export function searchSeries(query: string, limit = 60): Promise<Series[]> {
+  return searchIn(db.xtream_series, query, limit);
 }
