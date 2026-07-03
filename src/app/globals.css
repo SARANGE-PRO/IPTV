@@ -1,0 +1,35 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-ink-950 text-fg antialiased;
+    -webkit-tap-highlight-color: transparent;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Cibles tactiles : pas de surbrillance bleue sur iOS, selection maitrisee. */
+  ::selection {
+    @apply bg-accent/30 text-fg;
+  }
+}
+
+@layer utilities {
+  /* Zones sures iOS (encoche / barre d'accueil) pour le mode standalone PWA. */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
