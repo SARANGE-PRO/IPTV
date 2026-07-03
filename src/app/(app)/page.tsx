@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { BrandLogo } from '@/components/shared/BrandLogo';
 import { ChannelLogo } from '@/components/shared/ChannelLogo';
-import { NextMatchBanner } from '@/components/live/NextMatchBanner';
+import { SportEventsRail } from '@/components/live/SportEventsRail';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { MediaCard } from '@/components/shared/MediaCard';
 import { PosterImage } from '@/components/shared/PosterImage';
@@ -19,6 +19,7 @@ import { usePlaybackStore } from '@/stores/playbackStore';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import * as playbackRepository from '@/db/repositories/playbackRepository';
 import { getMovieTop10 } from '@/services/ranking/smartRankingService';
+import { findUpcomingSportEvents, type SportEvent } from '@/services/live/sportEventsService';
 import type { LiveChannel, Movie, PlaybackEntry, Series } from '@/types/models';
 import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
 import { formatCount } from '@/utils/format';
@@ -77,6 +78,7 @@ export default function HomePage() {
   const hiddenVod = useFilterStore((s) => s.hidden.vod);
   const hiddenSeries = useFilterStore((s) => s.hidden.series);
   const [discovery, setDiscovery] = useState<DiscoveryRails>(EMPTY_RAILS);
+  const [sportEvents, setSportEvents] = useState<SportEvent[]>([]);
 
   useEffect(() => {
     void hydrateRails();
@@ -85,6 +87,26 @@ export default function HomePage() {
   const hasCatalog =
     sections.live.itemCount + sections.vod.itemCount + sections.series.itemCount > 0;
   const totalFavs = liveFavs + vodFavs + seriesFavs;
+  const majorEvents = sportEvents.filter((e) => e.major);
+
+  // Evenements sportifs a venir (foot + MMA) : scan EPG borne, cache 30 min.
+  useEffect(() => {
+    if (!hasCatalog || credentials === null) {
+      setSportEvents([]);
+      return;
+    }
+    let active = true;
+    void findUpcomingSportEvents(credentials)
+      .then((events) => {
+        if (active) setSportEvents(events);
+      })
+      .catch(() => {
+        // EPG indispo : pas de rail sportif, jamais bloquant.
+      });
+    return () => {
+      active = false;
+    };
+  }, [hasCatalog, credentials]);
 
   useEffect(() => {
     if (!hasCatalog) {
@@ -186,7 +208,7 @@ export default function HomePage() {
         Rechercher une chaîne, un film, une série…
       </Link>
 
-      {hasCatalog && <NextMatchBanner credentials={credentials} />}
+      <SportEventsRail events={sportEvents} title="À suivre en direct" />
 
       {!hasCatalog && (
         <div className="mt-8">
@@ -359,6 +381,10 @@ export default function HomePage() {
             {totalFavs} favori{totalFavs > 1 ? 's' : ''}
           </span>
         </Link>
+      )}
+
+      {majorEvents.length > 0 && (
+        <SportEventsRail events={majorEvents} title="Grands événements sportifs" />
       )}
 
       {hasCatalog && (
