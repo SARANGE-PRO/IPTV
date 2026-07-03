@@ -26,6 +26,10 @@ yarn-error.log*
 .env
 .env*.local
 
+# rapports de diagnostic exportés (invariant #4 : jamais persistés dans le dépôt)
+diagnostic-*.json
+chaines-fr-zibtv.json
+
 # editor
 .vscode/*
 !.vscode/extensions.json

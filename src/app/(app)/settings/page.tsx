@@ -419,7 +419,7 @@ export default function SettingsPage() {
           {storageLabel ?? 'Le stockage local contient le catalogue, les reprises et les caches.'}
         </p>
         <p className="mt-2 text-[11px] leading-relaxed text-fg-faint">
-          Sur iPhone et iPad, iOS peut purger le stockage d'une PWA rarement utilisee. Une resynchronisation
+          Sur iPhone et iPad, iOS peut purger le stockage d&apos;une PWA rarement utilisee. Une resynchronisation
           reconstruit le catalogue sans toucher au compte fournisseur.
         </p>
         {persisted !== null && (
