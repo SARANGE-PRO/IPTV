@@ -5,9 +5,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CountrySelect } from '@/components/shared/CountrySelect';
 import { Button } from '@/components/ui/Button';
 import { IconDownload, IconRefresh, IconTrash } from '@/components/ui/icons';
+import * as catalogRepository from '@/db/repositories/catalogRepository';
 import * as hiddenCategoriesRepository from '@/db/repositories/hiddenCategoriesRepository';
+import * as tmdbRepository from '@/db/repositories/tmdbRepository';
 import { generateAdvancedDiagnostic } from '@/services/diagnostics/advancedPlaylistDiagnosticService';
 import { generateDiagnosticReport } from '@/services/diagnostics/catalogDiagnosticService';
+import { clearSmartRankingCache } from '@/services/ranking/smartRankingService';
 import { useAuthStore } from '@/stores/authStore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useFilterStore } from '@/stores/filterStore';
@@ -62,6 +65,8 @@ export default function SettingsPage() {
   const [advMessage, setAdvMessage] = useState<string | null>(null);
   const [historyCleared, setHistoryCleared] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [cacheMessage, setCacheMessage] = useState<string | null>(null);
+  const [storageLabel, setStorageLabel] = useState<string | null>(null);
 
   const countries = useMemo(
     () =>
@@ -78,6 +83,16 @@ export default function SettingsPage() {
   useEffect(() => {
     void refreshHidden();
   }, [refreshHidden]);
+
+  useEffect(() => {
+    if (navigator.storage?.estimate === undefined) return;
+    void navigator.storage.estimate().then(({ usage, quota }) => {
+      if (usage === undefined || quota === undefined || quota <= 0) return;
+      setStorageLabel(
+        `${(usage / (1024 * 1024)).toFixed(1)} Mo utilises sur ${(quota / (1024 * 1024)).toFixed(0)} Mo disponibles`,
+      );
+    });
+  }, []);
 
   const handleUnhide = async (entry: HiddenCategoryEntry) => {
     await unhideCategory(entry.section, entry.categoryId);
@@ -286,6 +301,47 @@ export default function SettingsPage() {
           </Button>
         </div>
         {historyCleared && <p className="mt-3 text-xs text-fg-muted">Historique effacé.</p>}
+      </Card>
+
+      <Card title="Stockage et caches">
+        <p className="text-xs text-fg-muted">
+          {storageLabel ?? 'Le stockage local contient le catalogue, les reprises et les caches.'}
+        </p>
+        <p className="mt-2 text-[11px] leading-relaxed text-fg-faint">
+          Sur iPhone et iPad, iOS peut purger le stockage d'une PWA rarement utilisee. Une resynchronisation
+          reconstruit le catalogue sans toucher au compte fournisseur.
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              void tmdbRepository.clearTmdbCache().then(() => setCacheMessage('Cache TMDB vide.'));
+            }}
+          >
+            Vider le cache TMDB
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              void catalogRepository
+                .clearSeriesDetailsCache()
+                .then(() => setCacheMessage('Cache des episodes vide.'));
+            }}
+          >
+            Reinitialiser les episodes
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => {
+              void clearSmartRankingCache().then(() =>
+                setCacheMessage("Top 10 reinitialise. Il sera recalcule au prochain accueil."),
+              );
+            }}
+          >
+            Recalculer le Top 10
+          </Button>
+        </div>
+        {cacheMessage !== null && <p className="mt-3 text-xs text-fg-muted">{cacheMessage}</p>}
       </Card>
     </main>
   );

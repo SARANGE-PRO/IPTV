@@ -86,7 +86,8 @@ export default function SeriesDetailPage() {
 
   const seriesYear = series?.releaseDate != null ? Number.parseInt(series.releaseDate.slice(0, 4), 10) : null;
   const tmdb = useTmdbMetadata('series', series?.name ?? null, Number.isFinite(seriesYear) ? seriesYear : null);
-  const posterUrl = tmdbPoster(tmdb?.posterPath ?? null) ?? series?.posterUrl ?? null;
+  const tmdbPosterUrl = tmdbPoster(tmdb?.posterPath ?? null);
+  const posterUrl = tmdbPosterUrl ?? series?.posterUrl ?? null;
   const overview = tmdb?.overview ?? series?.plot ?? null;
   const rating = tmdb?.voteAverage ?? series?.rating ?? null;
   const genres = tmdb !== null && tmdb.genres.length > 0 ? tmdb.genres.join(' · ') : (series?.genre ?? null);
@@ -143,7 +144,7 @@ export default function SeriesDetailPage() {
           <VideoPlayer
             src={src}
             startAt={startAt}
-            poster={series?.posterUrl ?? null}
+            poster={posterUrl}
             onProgress={(pos, dur) =>
               saveProgress({
                 type: 'episode',
@@ -152,7 +153,7 @@ export default function SeriesDetailPage() {
                 positionSec: pos,
                 durationSec: dur,
                 label: `${series?.name ?? 'Série'} · S${playingEp.seasonNumber}E${playingEp.episodeNumber}`,
-                posterUrl: series?.posterUrl ?? null,
+                posterUrl,
               })
             }
             onEnded={() => void markFinished('episode', playingEp.id)}
@@ -166,6 +167,7 @@ export default function SeriesDetailPage() {
           <div className="mb-6 flex animate-fade-in gap-5">
             <PosterImage
               src={posterUrl}
+              fallbackSrc={tmdbPosterUrl !== null ? (series.posterUrl ?? null) : null}
               alt={series.name}
               className="aspect-[2/3] w-28 shrink-0 rounded-2xl sm:w-36"
             />

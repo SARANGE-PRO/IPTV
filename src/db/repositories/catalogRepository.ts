@@ -1,4 +1,4 @@
-import type { Table } from 'dexie';
+import Dexie, { type Collection, type Table } from 'dexie';
 import { db } from '@/db/database';
 import type { BoolNum, Category, LiveChannel, Movie, Section, Series, SeriesDetails } from '@/types/models';
 import type { ChannelTheme } from '@/utils/channelTheme';
@@ -68,6 +68,7 @@ export async function getLiveChannelsByIds(ids: string[]): Promise<LiveChannel[]
 export type LiveFilter =
   | { kind: 'all' }
   | { kind: 'french' }
+  | { kind: 'frenchTheme'; theme: ChannelTheme }
   | { kind: 'uhd' }
   | { kind: 'theme'; theme: ChannelTheme };
 
@@ -75,6 +76,8 @@ function liveCollection(filter: LiveFilter) {
   switch (filter.kind) {
     case 'french':
       return db.xtream_live_streams.where('isFrench').equals(1);
+    case 'frenchTheme':
+      return db.xtream_live_streams.where('[theme+isFrench]').equals([filter.theme, 1]);
     case 'uhd':
       return db.xtream_live_streams.where('isUhd').equals(1);
     case 'theme':
@@ -91,6 +94,24 @@ export function getLiveChannelsPage(filter: LiveFilter, offset: number, limit: n
 
 export function countLiveChannels(filter: LiveFilter): Promise<number> {
   return liveCollection(filter).count();
+}
+
+/** Voisins d'une chaine dans sa categorie, via l'index compose v4. */
+export async function getLiveChannelNeighbors(
+  categoryId: string,
+  sortOrder: number,
+): Promise<{ previous: LiveChannel | null; next: LiveChannel | null }> {
+  const index = db.xtream_live_streams.where('[categoryId+sortOrder]');
+  const [previous, next] = await Promise.all([
+    index
+      .between([categoryId, Dexie.minKey], [categoryId, sortOrder], true, false)
+      .reverse()
+      .first(),
+    index
+      .between([categoryId, sortOrder], [categoryId, Dexie.maxKey], false, true)
+      .first(),
+  ]);
+  return { previous: previous ?? null, next: next ?? null };
 }
 
 // --- Films ------------------------------------------------------------------------
@@ -117,6 +138,20 @@ export function getRecentMovies(limit: number): Promise<Movie[]> {
   return db.xtream_vod_streams.orderBy('addedAt').reverse().limit(limit).toArray();
 }
 
+export function getTopRatedMovies(limit: number): Promise<Movie[]> {
+  return db.xtream_vod_streams.orderBy('rating').reverse().limit(limit).toArray();
+}
+
+export function getFrenchMovies(limit: number, order: 'recent' | 'rating' = 'recent'): Promise<Movie[]> {
+  const index = order === 'rating' ? '[isFrench+rating]' : '[isFrench+addedAt]';
+  return db.xtream_vod_streams
+    .where(index)
+    .between([1, Dexie.minKey], [1, Dexie.maxKey])
+    .reverse()
+    .limit(limit)
+    .toArray();
+}
+
 // --- Series -------------------------------------------------------------------------
 
 export function replaceSeries(series: Series[]): Promise<void> {
@@ -141,6 +176,20 @@ export function getRecentSeries(limit: number): Promise<Series[]> {
   return db.xtream_series.orderBy('lastModifiedAt').reverse().limit(limit).toArray();
 }
 
+export function getTopRatedSeries(limit: number): Promise<Series[]> {
+  return db.xtream_series.orderBy('rating').reverse().limit(limit).toArray();
+}
+
+export function getFrenchSeries(limit: number, order: 'recent' | 'rating' = 'recent'): Promise<Series[]> {
+  const index = order === 'rating' ? '[isFrench+rating]' : '[isFrench+lastModifiedAt]';
+  return db.xtream_series
+    .where(index)
+    .between([1, Dexie.minKey], [1, Dexie.maxKey])
+    .reverse()
+    .limit(limit)
+    .toArray();
+}
+
 export async function putSeriesDetails(details: SeriesDetails): Promise<void> {
   await db.xtream_series_details.put(details);
 }
@@ -151,6 +200,10 @@ export function getSeriesDetails(seriesId: string): Promise<SeriesDetails | unde
 
 export async function deleteSeriesDetails(seriesId: string): Promise<void> {
   await db.xtream_series_details.delete(seriesId);
+}
+
+export async function clearSeriesDetailsCache(): Promise<void> {
+  await db.xtream_series_details.clear();
 }
 
 // --- Global -----------------------------------------------------------------------------
@@ -257,12 +310,68 @@ export function countFrenchItems(section: Section): Promise<number> {
 
 // --- Pagination (gros catalogue : jamais de getAll global) --------------------------
 
-export function getMoviesPage(categoryId: string, offset: number, limit: number): Promise<Movie[]> {
-  return db.xtream_vod_streams.where('categoryId').equals(categoryId).offset(offset).limit(limit).toArray();
+export type CatalogSort = 'recommended' | 'recent' | 'rating' | 'year' | 'title';
+
+function page<T>(collection: Collection<T, string>, offset: number, limit: number): Promise<T[]> {
+  return collection.offset(offset).limit(limit).toArray();
 }
 
-export function getSeriesPage(categoryId: string, offset: number, limit: number): Promise<Series[]> {
-  return db.xtream_series.where('categoryId').equals(categoryId).offset(offset).limit(limit).toArray();
+export function getMoviesPage(
+  categoryId: string,
+  offset: number,
+  limit: number,
+  sort: CatalogSort = 'recommended',
+): Promise<Movie[]> {
+  if (sort === 'title') {
+    return page(
+      db.xtream_vod_streams
+        .where('[categoryId+normalizedName]')
+        .between([categoryId, Dexie.minKey], [categoryId, Dexie.maxKey]),
+      offset,
+      limit,
+    );
+  }
+  if (sort === 'recent' || sort === 'rating' || sort === 'year') {
+    const field = sort === 'recent' ? 'addedAt' : sort;
+    return page(
+      db.xtream_vod_streams
+        .where(`[categoryId+${field}]`)
+        .between([categoryId, Dexie.minKey], [categoryId, Dexie.maxKey])
+        .reverse(),
+      offset,
+      limit,
+    );
+  }
+  return page(db.xtream_vod_streams.where('categoryId').equals(categoryId), offset, limit);
+}
+
+export function getSeriesPage(
+  categoryId: string,
+  offset: number,
+  limit: number,
+  sort: CatalogSort = 'recommended',
+): Promise<Series[]> {
+  if (sort === 'title') {
+    return page(
+      db.xtream_series
+        .where('[categoryId+normalizedName]')
+        .between([categoryId, Dexie.minKey], [categoryId, Dexie.maxKey]),
+      offset,
+      limit,
+    );
+  }
+  if (sort === 'recent' || sort === 'rating') {
+    const field = sort === 'recent' ? 'lastModifiedAt' : 'rating';
+    return page(
+      db.xtream_series
+        .where(`[categoryId+${field}]`)
+        .between([categoryId, Dexie.minKey], [categoryId, Dexie.maxKey])
+        .reverse(),
+      offset,
+      limit,
+    );
+  }
+  return page(db.xtream_series.where('categoryId').equals(categoryId), offset, limit);
 }
 
 export function countByCategory(section: Section, categoryId: string): Promise<number> {

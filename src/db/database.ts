@@ -84,6 +84,18 @@ export class IptvDatabase extends Dexie {
     this.version(3).stores({
       xtream_live_streams: 'id, categoryId, name, isFrench, theme, isUhd, *searchTokens',
     });
+
+    // v4 : tris bornes et zapping sans materialiser les gros catalogues.
+    // Migration additive uniquement : les champs sont deja presents sur les
+    // lignes normalisees, IndexedDB construit les nouveaux index sur place.
+    this.version(4).stores({
+      xtream_live_streams:
+        'id, categoryId, name, isFrench, theme, isUhd, [categoryId+sortOrder], [theme+isFrench], *searchTokens',
+      xtream_vod_streams:
+        'id, categoryId, name, addedAt, rating, year, isFrench, [categoryId+normalizedName], [categoryId+addedAt], [categoryId+rating], [categoryId+year], [isFrench+addedAt], [isFrench+rating], *searchTokens',
+      xtream_series:
+        'id, categoryId, name, lastModifiedAt, rating, isFrench, [categoryId+normalizedName], [categoryId+lastModifiedAt], [categoryId+rating], [isFrench+lastModifiedAt], [isFrench+rating], *searchTokens',
+    });
   }
 }
 

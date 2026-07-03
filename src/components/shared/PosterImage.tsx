@@ -12,16 +12,21 @@ import { secureImageSrc } from '@/utils/secureUrl';
  */
 export function PosterImage({
   src,
+  fallbackSrc,
   alt,
   className,
 }: {
   src: string | null;
+  fallbackSrc?: string | null;
   alt: string;
   className?: string;
 }) {
-  const safeSrc = secureImageSrc(src);
-  const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  const show = safeSrc !== null && safeSrc !== failedSrc;
+  const candidates = [secureImageSrc(src), secureImageSrc(fallbackSrc)]
+    .filter((value): value is string => value !== null)
+    .filter((value, index, all) => all.indexOf(value) === index);
+  const [failed, setFailed] = useState<Set<string>>(() => new Set());
+  const safeSrc = candidates.find((candidate) => !failed.has(candidate)) ?? null;
+  const show = safeSrc !== null;
 
   if (!show) return <Monogram name={alt} className={cn('text-lg', className)} />;
   return (
@@ -33,7 +38,9 @@ export function PosterImage({
         loading="lazy"
         decoding="async"
         referrerPolicy="no-referrer"
-        onError={() => setFailedSrc(safeSrc)}
+        onError={() => {
+          if (safeSrc !== null) setFailed((previous) => new Set(previous).add(safeSrc));
+        }}
         className="h-full w-full object-cover"
       />
     </div>

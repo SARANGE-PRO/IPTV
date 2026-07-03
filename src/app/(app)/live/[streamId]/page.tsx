@@ -21,6 +21,10 @@ export default function LiveWatchPage() {
   const showVlcButton = useUiSettingsStore((s) => s.showVlcButton);
   const router = useRouter();
   const [channel, setChannel] = useState<LiveChannel | null | undefined>(undefined);
+  const [neighbors, setNeighbors] = useState<{ previous: LiveChannel | null; next: LiveChannel | null }>({
+    previous: null,
+    next: null,
+  });
 
   useEffect(() => {
     let active = true;
@@ -31,6 +35,17 @@ export default function LiveWatchPage() {
       active = false;
     };
   }, [streamId]);
+
+  useEffect(() => {
+    if (channel === null || channel === undefined) return;
+    let active = true;
+    void catalogRepository.getLiveChannelNeighbors(channel.categoryId, channel.sortOrder).then((result) => {
+      if (active) setNeighbors(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, [channel]);
 
   useEffect(() => {
     if (channel !== null && channel !== undefined) {
@@ -65,6 +80,30 @@ export default function LiveWatchPage() {
         src !== null && (
           <div className="space-y-4">
             <VideoPlayer src={src} live />
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                disabled={neighbors.previous === null}
+                onClick={() => {
+                  if (neighbors.previous !== null) router.push(`/live/${neighbors.previous.id}`);
+                }}
+                className="min-w-0 rounded-xl bg-ink-800 px-4 py-3 text-left text-xs text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg disabled:opacity-35"
+              >
+                <span className="block text-[10px] uppercase tracking-wider text-fg-faint">Precedente</span>
+                <span className="mt-1 block truncate">{neighbors.previous?.name ?? 'Indisponible'}</span>
+              </button>
+              <button
+                type="button"
+                disabled={neighbors.next === null}
+                onClick={() => {
+                  if (neighbors.next !== null) router.push(`/live/${neighbors.next.id}`);
+                }}
+                className="min-w-0 rounded-xl bg-ink-800 px-4 py-3 text-right text-xs text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg disabled:opacity-35"
+              >
+                <span className="block text-[10px] uppercase tracking-wider text-fg-faint">Suivante</span>
+                <span className="mt-1 block truncate">{neighbors.next?.name ?? 'Indisponible'}</span>
+              </button>
+            </div>
             {showVlcButton && <ExternalPlayer streamUrl={src} label="Regarder dans VLC" />}
           </div>
         )

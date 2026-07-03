@@ -28,6 +28,7 @@ const PROGRESS_INTERVAL_MS = 4000;
 
 /** Si la passerelle transcode (proxy maison + ffmpeg), on ne bloque plus les MKV. */
 const TRANSCODE_GATEWAY = process.env.NEXT_PUBLIC_MEDIA_GATEWAY_TRANSCODE === '1';
+const MEDIA_GATEWAY_CONFIGURED = (process.env.NEXT_PUBLIC_MEDIA_GATEWAY_URL?.trim() ?? '') !== '';
 
 /** Conteneurs qu'aucun navigateur ne decode nativement (transcodage requis). */
 const UNSUPPORTED_CONTAINER = /^(mkv|avi|wmv|flv|mpg|mpeg|vob|divx|m2ts|ts)$/i;
@@ -123,9 +124,17 @@ export function VideoPlayer({
       onEndedRef.current?.();
     };
     const handleError = () => {
+      const needsHomeGateway =
+        MEDIA_GATEWAY_CONFIGURED &&
+        /^http:\/\//i.test(src) &&
+        typeof window !== 'undefined' &&
+        window.location.protocol === 'https:';
       fail(
-        'Flux indisponible : connexion refusée par le serveur (CDN anti-datacenter ou limite de connexions) ' +
-          'ou flux hors service. Réessaie, ou teste un autre flux.',
+        needsHomeGateway
+          ? 'Passerelle maison inaccessible. Sur le PC, double-clique infra/media-gateway/start-windows.bat, ' +
+              'garde la fenêtre ZiBTV ouverte et désactive la mise en veille.'
+          : 'Flux indisponible : connexion refusée par le serveur, limite de connexions atteinte ou flux hors service. ' +
+              'Réessaie, ou teste un autre flux.',
       );
     };
 

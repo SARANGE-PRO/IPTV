@@ -109,6 +109,7 @@ export interface XtreamVodInfo {
     name?: string;
     o_name?: string;
     movie_image?: string;
+    cover?: string;
     tmdb_id?: NumLike;
     releasedate?: string;
     youtube_trailer?: string;

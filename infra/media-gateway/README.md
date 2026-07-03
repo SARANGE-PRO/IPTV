@@ -2,9 +2,11 @@
 
 ## Windows : utilisation quotidienne
 
-Double-clique uniquement sur `start-windows.bat`, puis garde la fenêtre
-**ZiBTV - GARDER CETTE FENETRE OUVERTE** ouverte. Le tunnel est démarré
-automatiquement si nécessaire. L’écran peut être éteint, mais le PC ne doit pas
+Double-clique uniquement sur `start-windows.bat`, accepte la demande UAC, puis
+garde la fenêtre **ZiBTV - GARDER CETTE FENETRE OUVERTE** ouverte. Le Funnel
+Tailscale public est vérifié et relancé automatiquement. Si Tailscale est
+déconnecté, le lanceur ouvre son interface et indique comment se reconnecter.
+L’écran peut être éteint, mais le PC ne doit pas
 être mis en veille : la veille coupe la passerelle et provoque
 `ERR_CONNECTION_CLOSED` dans l’application.
 

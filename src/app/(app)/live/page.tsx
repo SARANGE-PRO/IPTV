@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import type { LiveFilter } from '@/db/repositories/catalogRepository';
+import * as settingsRepository from '@/db/repositories/settingsRepository';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useLoadMore } from '@/hooks/useLoadMore';
 import { useCatalogStore } from '@/stores/catalogStore';
@@ -18,6 +19,7 @@ import { useFilterStore } from '@/stores/filterStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import type { LiveChannel } from '@/types/models';
 import type { ChannelTheme } from '@/utils/channelTheme';
+import { mainFrenchChannelScore } from '@/utils/channelPriority';
 import { formatCount } from '@/utils/format';
 
 /** Filtres rapides — remplacent la navigation rigide par categorie fournisseur. */
@@ -54,12 +56,17 @@ function toRepoFilter(id: FilterId): LiveFilter {
   if (id === 'france') return { kind: 'french' };
   if (id === 'uhd') return { kind: 'uhd' };
   if (id === 'all') return { kind: 'all' };
-  return { kind: 'theme', theme: id as ChannelTheme };
+  return { kind: 'frenchTheme', theme: id as ChannelTheme };
 }
 
-/** FR d'abord, puis ordre fournisseur. */
+/** Chaines FR principales, puis FR, puis ordre fournisseur. */
 function orderChannels(list: LiveChannel[]): LiveChannel[] {
-  return [...list].sort((a, b) => b.isFrench - a.isFrench || a.sortOrder - b.sortOrder);
+  return [...list].sort(
+    (a, b) =>
+      mainFrenchChannelScore(b) - mainFrenchChannelScore(a) ||
+      b.isFrench - a.isFrench ||
+      a.sortOrder - b.sortOrder,
+  );
 }
 
 function ChannelRow({ channel, onHide }: { channel: LiveChannel; onHide: () => void }) {
@@ -109,6 +116,18 @@ export default function LivePage() {
 
   const categoryOf = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories]);
   const notHidden = useCallback((c: LiveChannel) => !hidden.has(c.categoryId), [hidden]);
+
+  useEffect(() => {
+    let active = true;
+    void settingsRepository.getSetting<string>('lastLiveFilter').then((saved) => {
+      if (active && saved !== undefined && FILTERS.some((item) => item.id === saved)) {
+        setFilter(saved as FilterId);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   // Chargement du pool selon filtre / recherche.
   useEffect(() => {
@@ -232,6 +251,7 @@ export default function LivePage() {
             onClick={() => {
               setFilter(f.id);
               setQuery('');
+              void settingsRepository.setSetting('lastLiveFilter', f.id);
             }}
             disabled={searching}
             className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors ${

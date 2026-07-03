@@ -2,6 +2,14 @@
 REM ============================================================================
 REM  ZiBTV - LA SEULE FENETRE A GARDER OUVERTE POUR REGARDER HORS DE CHEZ SOI
 REM ============================================================================
+
+REM Tailscale sous Windows protege son API locale : elevation UAC automatique.
+fltmc >nul 2>nul
+if errorlevel 1 (
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+  exit /b
+)
+
 title ZiBTV - GARDER CETTE FENETRE OUVERTE
 cd /d "%~dp0"
 
@@ -23,9 +31,40 @@ if not defined PORT set "PORT=3000"
 if not defined VIDEO_CODEC set "VIDEO_CODEC=copy"
 if not defined TRANSCODE set "TRANSCODE=1"
 
-REM Le tunnel est relance automatiquement s'il n'est pas deja actif.
-tasklist /FI "IMAGENAME eq cloudflared.exe" 2>nul | find /I "cloudflared.exe" >nul
-if errorlevel 1 if exist "tunnel-token.txt" start "ZiBTV Tunnel" /min "%~dp0start-tunnel-windows.bat"
+REM La production Vercel utilise le Funnel Tailscale public de CE PC.
+set "TAILSCALE_EXE=%ProgramFiles%\Tailscale\tailscale.exe"
+set "TAILSCALE_IPN=%ProgramFiles%\Tailscale\tailscale-ipn.exe"
+if not exist "%TAILSCALE_EXE%" (
+  echo [ERREUR] Tailscale est absent. Installe-le depuis https://tailscale.com/download/windows
+  pause
+  exit /b 1
+)
+
+"%TAILSCALE_EXE%" status >nul 2>nul
+if errorlevel 1 (
+  echo.
+  echo [ACTION REQUISE] Tailscale est deconnecte.
+  if exist "%TAILSCALE_IPN%" start "" "%TAILSCALE_IPN%"
+  echo 1. Clique l'icone Tailscale pres de l'horloge.
+  echo 2. Clique Log in / Se connecter et valide dans le navigateur.
+  echo 3. Reviens ici puis appuie sur une touche.
+  pause
+  "%TAILSCALE_EXE%" status >nul 2>nul
+  if errorlevel 1 (
+    echo [ERREUR] Tailscale est toujours deconnecte. Reconnecte-le puis relance ce fichier.
+    pause
+    exit /b 1
+  )
+)
+
+echo Verification du Funnel Tailscale vers le port %PORT%...
+"%TAILSCALE_EXE%" funnel --bg --yes %PORT%
+if errorlevel 1 (
+  echo [ERREUR] Impossible d'activer le Funnel Tailscale.
+  echo Verifie la connexion Tailscale puis relance ce fichier en acceptant la fenetre UAC.
+  pause
+  exit /b 1
+)
 
 REM Un double-clic ne doit pas echouer si la passerelle tourne deja.
 set "GATEWAY_HEALTH="
@@ -34,7 +73,7 @@ if /I "%GATEWAY_HEALTH%"=="ok" (
   echo.
   echo  ================================================================
   echo   ZiBTV est DEJA ACTIF sur le port %PORT%.
-  echo   Le tunnel est lance. Tu peux fermer CETTE nouvelle fenetre.
+  echo   Le Funnel Tailscale est actif. Tu peux fermer CETTE nouvelle fenetre.
   echo   Ne mets pas le PC en veille pendant une lecture distante.
   echo  ================================================================
   echo.
@@ -58,6 +97,7 @@ if not defined FFMPEG_PATH (
 echo.
 echo  ================================================================
 echo   ZiBTV est ACTIF. Garde cette fenetre ouverte.
+echo   Funnel Tailscale public : actif.
 echo   Tu peux eteindre l'ecran, mais ne mets pas le PC en veille.
 echo   Pour arreter la lecture distante : ferme cette fenetre.
 echo  ================================================================

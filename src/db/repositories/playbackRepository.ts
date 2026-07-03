@@ -34,6 +34,30 @@ export function getRecentLiveChannels(limit: number): Promise<PlaybackEntry[]> {
     .toArray();
 }
 
+/** Historique recent borne, utilise pour les classements personnels locaux. */
+export function getRecentHistory(limit: number): Promise<PlaybackEntry[]> {
+  return db.playback_history.orderBy('updatedAt').reverse().limit(limit).toArray();
+}
+
+/** Series ayant au moins un episode commence, ordre de derniere lecture. */
+export async function getInProgressSeriesIds(limit: number): Promise<string[]> {
+  const rows = await db.playback_history
+    .orderBy('updatedAt')
+    .reverse()
+    .filter((entry) => entry.type === 'episode' && entry.finished === 0 && entry.seriesId !== null)
+    .limit(limit * 4)
+    .toArray();
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const row of rows) {
+    if (row.seriesId === null || seen.has(row.seriesId)) continue;
+    seen.add(row.seriesId);
+    ids.push(row.seriesId);
+    if (ids.length >= limit) break;
+  }
+  return ids;
+}
+
 /** Progression des episodes d'une serie, indexee par id d'episode. */
 export async function getSeriesEpisodeProgress(
   seriesId: string,

@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { BrandLogo } from '@/components/shared/BrandLogo';
+import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { MediaCard } from '@/components/shared/MediaCard';
 import { PosterImage } from '@/components/shared/PosterImage';
@@ -12,8 +13,11 @@ import { IconFilm, IconHeart, IconRefresh, IconSeries, IconTv } from '@/componen
 import { useAuthStore } from '@/stores/authStore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
+import { useFilterStore } from '@/stores/filterStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
-import type { PlaybackEntry } from '@/types/models';
+import * as catalogRepository from '@/db/repositories/catalogRepository';
+import { getMovieTop10 } from '@/services/ranking/smartRankingService';
+import type { LiveChannel, Movie, PlaybackEntry, Series } from '@/types/models';
 import { formatCount } from '@/utils/format';
 
 function hrefForEntry(entry: PlaybackEntry): string {
@@ -28,6 +32,24 @@ const SECTION_CARDS = [
   { href: '/series', label: 'Séries', icon: IconSeries, key: 'series' as const, noun: 'séries' },
 ];
 
+interface DiscoveryRails {
+  topMovies: Movie[];
+  frenchMovies: Movie[];
+  recentMovies: Movie[];
+  frenchSeries: Series[];
+  recentSeries: Series[];
+  liveSports: LiveChannel[];
+}
+
+const EMPTY_RAILS: DiscoveryRails = {
+  topMovies: [],
+  frenchMovies: [],
+  recentMovies: [],
+  frenchSeries: [],
+  recentSeries: [],
+  liveSports: [],
+};
+
 export default function HomePage() {
   const credentials = useAuthStore((s) => s.credentials);
   const sections = useCatalogStore((s) => s.sections);
@@ -39,6 +61,10 @@ export default function HomePage() {
   const liveFavs = useFavoritesStore((s) => s.ids.live.size);
   const vodFavs = useFavoritesStore((s) => s.ids.vod.size);
   const seriesFavs = useFavoritesStore((s) => s.ids.series.size);
+  const hiddenLive = useFilterStore((s) => s.hidden.live);
+  const hiddenVod = useFilterStore((s) => s.hidden.vod);
+  const hiddenSeries = useFilterStore((s) => s.hidden.series);
+  const [discovery, setDiscovery] = useState<DiscoveryRails>(EMPTY_RAILS);
 
   useEffect(() => {
     void hydrateRails();
@@ -47,6 +73,47 @@ export default function HomePage() {
   const hasCatalog =
     sections.live.itemCount + sections.vod.itemCount + sections.series.itemCount > 0;
   const totalFavs = liveFavs + vodFavs + seriesFavs;
+
+  useEffect(() => {
+    if (!hasCatalog) {
+      setDiscovery(EMPTY_RAILS);
+      return;
+    }
+    let active = true;
+    void Promise.all([
+      getMovieTop10(10),
+      catalogRepository.getFrenchMovies(18),
+      catalogRepository.getRecentMovies(18),
+      catalogRepository.getFrenchSeries(18),
+      catalogRepository.getRecentSeries(18),
+      catalogRepository.getLiveChannelsPage({ kind: 'frenchTheme', theme: 'sport' }, 0, 12),
+    ]).then(([topMovies, frenchMovies, recentMovies, frenchSeries, recentSeries, liveSports]) => {
+      if (!active) return;
+      const topIds = new Set(topMovies.map((movie) => movie.id));
+      const recentIds = new Set(recentMovies.map((movie) => movie.id));
+      setDiscovery({
+        topMovies: topMovies.filter((movie) => !hiddenVod.has(movie.categoryId)),
+        frenchMovies: frenchMovies
+          .filter((movie) => !hiddenVod.has(movie.categoryId) && !topIds.has(movie.id) && !recentIds.has(movie.id))
+          .slice(0, 12),
+        recentMovies: recentMovies.filter((movie) => !hiddenVod.has(movie.categoryId)),
+        frenchSeries: frenchSeries.filter((series) => !hiddenSeries.has(series.categoryId)),
+        recentSeries: recentSeries.filter((series) => !hiddenSeries.has(series.categoryId)),
+        liveSports: liveSports.filter((channel) => !hiddenLive.has(channel.categoryId)),
+      });
+    });
+    return () => {
+      active = false;
+    };
+  }, [
+    hasCatalog,
+    hiddenLive,
+    hiddenVod,
+    hiddenSeries,
+    sections.live.itemCount,
+    sections.vod.itemCount,
+    sections.series.itemCount,
+  ]);
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
@@ -111,6 +178,65 @@ export default function HomePage() {
                 className="h-9 w-9 shrink-0 rounded-lg"
               />
               <span className="min-w-0 truncate text-xs text-fg">{entry.label ?? 'Chaîne'}</span>
+            </Link>
+          ))}
+        </Rail>
+      )}
+
+      {discovery.topMovies.length > 0 && (
+        <Rail title="Top 10 cette semaine" action={<Link href="/movies" className="text-xs text-fg-faint hover:text-fg">Voir les films</Link>}>
+          {discovery.topMovies.map((movie, index) => (
+            <MediaCard
+              key={movie.id}
+              className="w-32 shrink-0"
+              href={`/movies/${movie.id}`}
+              title={movie.name}
+              posterUrl={movie.posterUrl}
+              subtitle={movie.rating !== null ? `★ ${movie.rating.toFixed(1)}` : movie.year?.toString()}
+              badge={`#${index + 1}`}
+            />
+          ))}
+        </Rail>
+      )}
+
+      {discovery.frenchMovies.length > 0 && (
+        <Rail title="Films FR a decouvrir">
+          {discovery.frenchMovies.map((movie) => (
+            <MediaCard key={movie.id} className="w-32 shrink-0" href={`/movies/${movie.id}`} title={movie.name} posterUrl={movie.posterUrl} subtitle={movie.year?.toString()} />
+          ))}
+        </Rail>
+      )}
+
+      {discovery.recentMovies.length > 0 && (
+        <Rail title="Films recemment ajoutes">
+          {discovery.recentMovies.map((movie) => (
+            <MediaCard key={movie.id} className="w-32 shrink-0" href={`/movies/${movie.id}`} title={movie.name} posterUrl={movie.posterUrl} subtitle={movie.rating !== null ? `★ ${movie.rating.toFixed(1)}` : null} />
+          ))}
+        </Rail>
+      )}
+
+      {discovery.frenchSeries.length > 0 && (
+        <Rail title="Series FR">
+          {discovery.frenchSeries.map((series) => (
+            <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={series.name} posterUrl={series.posterUrl} subtitle={series.rating !== null ? `★ ${series.rating.toFixed(1)}` : series.releaseDate?.slice(0, 4)} />
+          ))}
+        </Rail>
+      )}
+
+      {discovery.recentSeries.length > 0 && (
+        <Rail title="Series recemment ajoutees">
+          {discovery.recentSeries.map((series) => (
+            <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={series.name} posterUrl={series.posterUrl} subtitle={series.releaseDate?.slice(0, 4)} />
+          ))}
+        </Rail>
+      )}
+
+      {discovery.liveSports.length > 0 && (
+        <Rail title="Sport en direct" action={<Link href="/live" className="text-xs text-fg-faint hover:text-fg">Tout le Live</Link>}>
+          {discovery.liveSports.map((channel) => (
+            <Link key={channel.id} href={`/live/${channel.id}`} className="w-36 shrink-0 rounded-xl bg-ink-800 p-3 transition-colors hover:bg-ink-700">
+              <ChannelLogo channel={channel} className="mx-auto h-16 w-16" />
+              <span className="mt-2 block truncate text-center text-xs text-fg">{channel.name}</span>
             </Link>
           ))}
         </Rail>

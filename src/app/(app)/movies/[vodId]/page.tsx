@@ -32,6 +32,8 @@ export default function MovieDetailPage() {
   const [movie, setMovie] = useState<Movie | null | undefined>(undefined);
   const [progress, setProgress] = useState<PlaybackEntry | null>(null);
   const [plot, setPlot] = useState<string | null>(null);
+  const [xtreamPoster, setXtreamPoster] = useState<string | null>(null);
+  const [xtreamBackdrop, setXtreamBackdrop] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [startAt, setStartAt] = useState(0);
 
@@ -55,7 +57,11 @@ export default function MovieDetailPage() {
     void xtreamApi
       .getVodInfo(credentials, vodId)
       .then((info) => {
-        if (active) setPlot(info.info?.plot ?? info.info?.description ?? null);
+        if (!active) return;
+        setPlot(info.info?.plot ?? info.info?.description ?? null);
+        setXtreamPoster(info.info?.movie_image ?? info.info?.cover ?? null);
+        const backdrop = info.info?.backdrop_path;
+        setXtreamBackdrop(Array.isArray(backdrop) ? (backdrop[0] ?? null) : (backdrop ?? null));
       })
       .catch(() => {
         // silencieux : le detail reste utilisable sans synopsis
@@ -66,8 +72,10 @@ export default function MovieDetailPage() {
   }, [credentials, vodId]);
 
   const tmdb = useTmdbMetadata('movie', movie?.name ?? null, movie?.year ?? null);
-  const posterUrl = tmdbPoster(tmdb?.posterPath ?? null) ?? movie?.posterUrl ?? null;
-  const backdropUrl = tmdbBackdrop(tmdb?.backdropPath ?? null);
+  const tmdbPosterUrl = tmdbPoster(tmdb?.posterPath ?? null);
+  const posterFallbackUrl = xtreamPoster ?? movie?.posterUrl ?? null;
+  const posterUrl = tmdbPosterUrl ?? posterFallbackUrl;
+  const backdropUrl = tmdbBackdrop(tmdb?.backdropPath ?? null) ?? xtreamBackdrop;
   const overview = tmdb?.overview ?? plot;
   const rating = tmdb?.voteAverage ?? movie?.rating ?? null;
 
@@ -124,7 +132,7 @@ export default function MovieDetailPage() {
               positionSec: pos,
               durationSec: dur,
               label: movie.name,
-              posterUrl: movie.posterUrl,
+                posterUrl,
             })
           }
           onEnded={() => void markFinished('vod', vodId)}
@@ -134,7 +142,12 @@ export default function MovieDetailPage() {
           <div className="flex animate-fade-in flex-col gap-6 sm:flex-row">
             <div className="w-40 shrink-0 sm:w-52">
               <div className="relative">
-                <PosterImage src={posterUrl} alt={movie.name} className="aspect-[2/3] w-full rounded-2xl" />
+                <PosterImage
+                  src={posterUrl}
+                  fallbackSrc={tmdbPosterUrl !== null ? posterFallbackUrl : null}
+                  alt={movie.name}
+                  className="aspect-[2/3] w-full rounded-2xl"
+                />
                 {ratio !== null && ratio > 0 && (
                   <div className="absolute inset-x-0 bottom-0 h-1 rounded-b-2xl bg-black/50">
                     <div className="h-full bg-accent" style={{ width: `${Math.min(ratio * 100, 100)}%` }} />

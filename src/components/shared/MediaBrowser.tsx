@@ -9,6 +9,7 @@ import { IconChevronDown } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
+import type { CatalogSort } from '@/db/repositories/catalogRepository';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useLoadMore } from '@/hooks/useLoadMore';
 import { useCatalogStore } from '@/stores/catalogStore';
@@ -19,9 +20,27 @@ import { formatCount } from '@/utils/format';
 
 export interface BrowserItem {
   id: string;
+  categoryId: string;
   name: string;
   posterUrl: string | null;
   isFrench: BoolNum;
+  rating?: number | null;
+  year?: number | null;
+  addedAt?: number | null;
+  lastModifiedAt?: number | null;
+  releaseDate?: string | null;
+}
+
+export interface QuickFilterDefinition {
+  id: string;
+  label: string;
+  /** Si present, le chip ouvre la meilleure categorie correspondante. */
+  categoryKeywords?: string[];
+}
+
+export interface SortOption {
+  id: CatalogSort;
+  label: string;
 }
 
 interface MediaBrowserProps<T extends BrowserItem> {
@@ -30,13 +49,35 @@ interface MediaBrowserProps<T extends BrowserItem> {
   title: string;
   itemNoun: string;
   hrefFor: (item: T) => string;
-  fetchPage: (categoryId: string, offset: number, limit: number) => Promise<T[]>;
+  fetchPage: (categoryId: string, offset: number, limit: number, sort: CatalogSort) => Promise<T[]>;
   searchItems: (query: string, limit: number) => Promise<T[]>;
+  quickFilters?: QuickFilterDefinition[];
+  fetchQuickFilter?: (filterId: string, limit: number) => Promise<T[]>;
+  sortOptions?: SortOption[];
   subtitleFor?: (item: T) => string | null;
 }
 
 const PAGE_SIZE = 60;
 const SEARCH_LIMIT = 60;
+const SMART_LIMIT = 120;
+
+const DEFAULT_SORT_OPTIONS: SortOption[] = [
+  { id: 'recommended', label: 'Recommande' },
+  { id: 'recent', label: 'Recemment ajoute' },
+  { id: 'rating', label: 'Mieux note' },
+  { id: 'title', label: 'Titre' },
+];
+
+function sortBoundedItems<T extends BrowserItem>(items: T[], sort: CatalogSort): T[] {
+  if (sort === 'recommended') return items;
+  return [...items].sort((a, b) => {
+    if (sort === 'rating') return (b.rating ?? -1) - (a.rating ?? -1);
+    if (sort === 'year') return (b.year ?? Number.parseInt(b.releaseDate?.slice(0, 4) ?? '0', 10)) -
+      (a.year ?? Number.parseInt(a.releaseDate?.slice(0, 4) ?? '0', 10));
+    if (sort === 'recent') return (b.addedAt ?? b.lastModifiedAt ?? 0) - (a.addedAt ?? a.lastModifiedAt ?? 0);
+    return a.name.localeCompare(b.name, 'fr');
+  });
+}
 
 /** Navigateur generique VOD/Series : categories priorisees FR + grille paginee Dexie. */
 export function MediaBrowser<T extends BrowserItem>({
@@ -47,6 +88,9 @@ export function MediaBrowser<T extends BrowserItem>({
   hrefFor,
   fetchPage,
   searchItems,
+  quickFilters = [],
+  fetchQuickFilter,
+  sortOptions = DEFAULT_SORT_OPTIONS,
   subtitleFor,
 }: MediaBrowserProps<T>) {
   const slice = useCatalogStore((s) => s.sections[section]);
@@ -61,6 +105,11 @@ export function MediaBrowser<T extends BrowserItem>({
   const [endReached, setEndReached] = useState(false);
   const [count, setCount] = useState<number | null>(null);
   const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<CatalogSort>('recommended');
+  const [activeChip, setActiveChip] = useState<string | null>(null);
+  const [activeQuick, setActiveQuick] = useState<string | null>(null);
+  const [smartItems, setSmartItems] = useState<T[]>([]);
+  const [smartLoading, setSmartLoading] = useState(false);
   const debouncedQuery = useDebounce(query.trim(), 300);
   const [results, setResults] = useState<T[] | null>(null);
   const [searching, setSearching] = useState(false);
@@ -89,16 +138,16 @@ export function MediaBrowser<T extends BrowserItem>({
     }
   }, [categories, selectedId]);
 
-  // Premiere page a chaque changement de categorie.
+  // Premiere page a chaque changement de categorie/tri.
   useEffect(() => {
-    if (selectedId === null) return;
+    if (selectedId === null || activeQuick !== null) return;
     let active = true;
     offsetRef.current = 0;
     setItems([]);
     setEndReached(false);
     setCount(null);
     setLoading(true);
-    void fetchPage(selectedId, 0, PAGE_SIZE).then((first) => {
+    void fetchPage(selectedId, 0, PAGE_SIZE, sort).then((first) => {
       if (!active) return;
       setItems(first);
       offsetRef.current = first.length;
@@ -111,14 +160,35 @@ export function MediaBrowser<T extends BrowserItem>({
     return () => {
       active = false;
     };
-  }, [selectedId, section, fetchPage]);
+  }, [selectedId, section, fetchPage, sort, activeQuick]);
+
+  // Vues intelligentes bornees (FR, nouveautes, Top 10, tags qualite...).
+  useEffect(() => {
+    if (activeQuick === null || fetchQuickFilter === undefined) {
+      setSmartItems([]);
+      setSmartLoading(false);
+      return;
+    }
+    let active = true;
+    setSmartLoading(true);
+    void fetchQuickFilter(activeQuick, SMART_LIMIT)
+      .then((rows) => {
+        if (active) setSmartItems(rows.filter((item) => !hidden.has(item.categoryId)));
+      })
+      .finally(() => {
+        if (active) setSmartLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [activeQuick, fetchQuickFilter, hidden]);
 
   // Pages suivantes (sentinelle).
   const loadMore = () => {
-    if (loadingRef.current || endReached || selectedId === null) return;
+    if (loadingRef.current || endReached || selectedId === null || activeQuick !== null) return;
     loadingRef.current = true;
     setLoading(true);
-    void fetchPage(selectedId, offsetRef.current, PAGE_SIZE).then((page) => {
+    void fetchPage(selectedId, offsetRef.current, PAGE_SIZE, sort).then((page) => {
       offsetRef.current += page.length;
       setItems((prev) => [...prev, ...page]);
       if (page.length < PAGE_SIZE) setEndReached(true);
@@ -138,18 +208,54 @@ export function MediaBrowser<T extends BrowserItem>({
     setSearching(true);
     void searchItems(debouncedQuery, SEARCH_LIMIT).then((r) => {
       if (active) {
-        setResults(r);
+        setResults(r.filter((item) => !hidden.has(item.categoryId)));
         setSearching(false);
       }
     });
     return () => {
       active = false;
     };
-  }, [debouncedQuery, searchItems]);
+  }, [debouncedQuery, searchItems, hidden]);
 
-  const shown = results ?? items;
-  const sentinelRef = useLoadMore(loadMore, results === null && !endReached && items.length > 0);
+  const baseItems = activeQuick !== null ? smartItems : items;
+  const shown = useMemo(
+    () => sortBoundedItems(results ?? baseItems, sort),
+    [results, baseItems, sort],
+  );
+  const sentinelRef = useLoadMore(
+    loadMore,
+    results === null && activeQuick === null && !endReached && items.length > 0,
+  );
   const catalogEmpty = slice.categories.length === 0 && slice.status !== 'loading';
+
+  const visibleQuickFilters = useMemo(
+    () =>
+      quickFilters.filter(
+        (quick) =>
+          quick.categoryKeywords === undefined ||
+          categories.some((category) =>
+            quick.categoryKeywords?.some((keyword) => category.normalizedName.includes(keyword)),
+          ),
+      ),
+    [quickFilters, categories],
+  );
+
+  const activateQuick = (quick: QuickFilterDefinition) => {
+    setQuery('');
+    setResults(null);
+    setActiveChip(quick.id);
+    if (quick.categoryKeywords !== undefined) {
+      const category = categories.find((candidate) =>
+        quick.categoryKeywords?.some((keyword) => candidate.normalizedName.includes(keyword)),
+      );
+      if (category !== undefined) {
+        setActiveQuick(null);
+        setSelectedId(category.id);
+      }
+      return;
+    }
+    setActiveQuick(quick.id);
+  };
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
@@ -176,10 +282,38 @@ export function MediaBrowser<T extends BrowserItem>({
             <IconChevronDown className="h-4 w-4 shrink-0 text-fg-faint" />
           </button>
           <CountrySelect value={country} countries={countries} onChange={setCountry} />
+          <select
+            aria-label="Trier les contenus"
+            value={sort}
+            onChange={(event) => setSort(event.target.value as CatalogSort)}
+            className="h-10 max-w-44 rounded-xl border border-ink-600 bg-ink-800 px-3 text-xs text-fg outline-none"
+          >
+            {sortOptions.map((option) => (
+              <option key={option.id} value={option.id}>{option.label}</option>
+            ))}
+          </select>
         </div>
       </div>
 
-      {results === null && count !== null && (
+      {visibleQuickFilters.length > 0 && (
+        <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
+          {visibleQuickFilters.map((quick) => (
+            <button
+              key={quick.id}
+              onClick={() => activateQuick(quick)}
+              className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                activeChip === quick.id
+                  ? 'bg-accent text-white'
+                  : 'bg-ink-800 text-fg-muted hover:text-fg'
+              }`}
+            >
+              {quick.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {results === null && activeQuick === null && count !== null && (
         <p className="mt-3 text-xs text-fg-faint">
           {formatCount(count)} {itemNoun}
         </p>
@@ -189,6 +323,11 @@ export function MediaBrowser<T extends BrowserItem>({
           {results.length >= SEARCH_LIMIT
             ? `${SEARCH_LIMIT}+ résultats — affine ta recherche`
             : `${results.length} résultat${results.length > 1 ? 's' : ''}`}
+        </p>
+      )}
+      {results === null && activeQuick !== null && (
+        <p className="mt-3 text-xs text-fg-faint">
+          {smartItems.length} selection{smartItems.length > 1 ? 's' : ''} sur un pool borne et indexe
         </p>
       )}
 
@@ -212,7 +351,7 @@ export function MediaBrowser<T extends BrowserItem>({
                 favorite={{ type: favoriteType, itemId: item.id }}
               />
             ))}
-            {(loading || searching) &&
+            {(loading || searching || smartLoading) &&
               shown.length === 0 &&
               Array.from({ length: 12 }, (_, i) => (
                 <Skeleton key={i} className="aspect-[2/3] rounded-xl" />
@@ -224,14 +363,14 @@ export function MediaBrowser<T extends BrowserItem>({
               <EmptyState title="Aucun résultat" hint="Essaie un autre titre ou vérifie l’orthographe." />
             </div>
           )}
-          {results === null && !loading && items.length === 0 && selected !== null && (
+          {results === null && !loading && !smartLoading && shown.length === 0 && selected !== null && (
             <div className="mt-6">
               <EmptyState title="Catégorie vide" />
             </div>
           )}
 
-          {results === null && <div ref={sentinelRef} className="h-10" />}
-          {loading && items.length > 0 && (
+          {results === null && activeQuick === null && <div ref={sentinelRef} className="h-10" />}
+          {loading && activeQuick === null && items.length > 0 && (
             <p className="py-4 text-center text-xs text-fg-faint">Chargement…</p>
           )}
         </>
@@ -242,7 +381,11 @@ export function MediaBrowser<T extends BrowserItem>({
         onClose={() => setPanelOpen(false)}
         categories={categories}
         selectedId={selectedId}
-        onSelect={setSelectedId}
+        onSelect={(id) => {
+          setActiveChip(null);
+          setActiveQuick(null);
+          setSelectedId(id);
+        }}
         section={section}
       />
     </main>
