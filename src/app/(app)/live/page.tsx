@@ -19,30 +19,46 @@ import { useFilterStore } from '@/stores/filterStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import type { LiveChannel } from '@/types/models';
 import type { ChannelTheme } from '@/utils/channelTheme';
-import { mainFrenchChannelScore } from '@/utils/channelPriority';
+import { compareLiveChannels, isFootballChannel, isMainFrenchChannel } from '@/utils/channelPriority';
 import { formatCount } from '@/utils/format';
 
-/** Filtres rapides — remplacent la navigation rigide par categorie fournisseur. */
-type QuickFilter =
-  | { id: 'france'; label: 'France' }
-  | { id: 'favorites'; label: 'Favoris' }
-  | { id: 'recent'; label: 'Récents' }
-  | { id: 'uhd'; label: '4K/UHD' }
-  | { id: 'all'; label: 'Tous' }
-  | { id: ChannelTheme; label: string };
+/**
+ * Filtres rapides Live — l'entree principale (remplace la navigation rigide par
+ * categorie fournisseur). France prioritaire par defaut ; les autres pays
+ * restent accessibles via "International" sans polluer l'experience.
+ */
+type FilterId =
+  | 'france'
+  | 'main'
+  | 'favorites'
+  | 'recent'
+  | 'sport'
+  | 'foot'
+  | 'news'
+  | 'cinema'
+  | 'entertainment'
+  | 'kids'
+  | 'doc'
+  | 'music'
+  | 'uhd'
+  | 'international'
+  | 'all';
 
-const FILTERS: QuickFilter[] = [
+const FILTERS: { id: FilterId; label: string }[] = [
   { id: 'france', label: 'France' },
+  { id: 'main', label: 'Principales' },
   { id: 'favorites', label: 'Favoris' },
   { id: 'recent', label: 'Récents' },
   { id: 'sport', label: 'Sport' },
+  { id: 'foot', label: 'Foot' },
   { id: 'news', label: 'News' },
   { id: 'cinema', label: 'Cinéma' },
   { id: 'entertainment', label: 'Divertissement' },
   { id: 'kids', label: 'Enfants' },
-  { id: 'music', label: 'Musique' },
   { id: 'doc', label: 'Doc' },
+  { id: 'music', label: 'Musique' },
   { id: 'uhd', label: '4K/UHD' },
+  { id: 'international', label: 'International' },
   { id: 'all', label: 'Tous' },
 ];
 
@@ -50,24 +66,29 @@ const STEP = 60;
 const PAGE = 200;
 const CAP = 4000; // filtres bornes : jamais les 55k en memoire
 
-type FilterId = QuickFilter['id'];
+/** Filtres servis par pagination Dexie (jamais tout le catalogue en RAM). */
+const PAGINATED: FilterId[] = ['all', 'international'];
 
-function toRepoFilter(id: FilterId): LiveFilter {
-  if (id === 'france') return { kind: 'french' };
+function paginatedFilter(id: FilterId): LiveFilter {
+  return id === 'international' ? { kind: 'nonFrench' } : { kind: 'all' };
+}
+
+/** Filtre "borne" : on charge jusqu'a CAP puis on trie/affine cote client. */
+function boundedBaseFilter(id: FilterId): LiveFilter {
+  if (id === 'france' || id === 'main') return { kind: 'french' };
   if (id === 'uhd') return { kind: 'uhd' };
-  if (id === 'all') return { kind: 'all' };
+  if (id === 'foot') return { kind: 'frenchTheme', theme: 'sport' };
   return { kind: 'frenchTheme', theme: id as ChannelTheme };
 }
 
-/** Chaines FR principales, puis FR, puis ordre fournisseur. */
-function orderChannels(list: LiveChannel[]): LiveChannel[] {
-  return [...list].sort(
-    (a, b) =>
-      mainFrenchChannelScore(b) - mainFrenchChannelScore(a) ||
-      b.isFrench - a.isFrench ||
-      a.sortOrder - b.sortOrder,
-  );
+function boundedPredicate(id: FilterId): (channel: LiveChannel) => boolean {
+  if (id === 'main') return isMainFrenchChannel;
+  if (id === 'foot') return isFootballChannel;
+  return () => true;
 }
+
+/** Tri intelligent : principales FR -> FR par theme -> reste -> ordre fournisseur. */
+const orderChannels = (list: LiveChannel[]): LiveChannel[] => [...list].sort(compareLiveChannels);
 
 function ChannelRow({ channel, onHide }: { channel: LiveChannel; onHide: () => void }) {
   return (
@@ -83,7 +104,7 @@ function ChannelRow({ channel, onHide }: { channel: LiveChannel; onHide: () => v
         aria-label="Masquer la catégorie de cette chaîne"
         title="Masquer la catégorie"
         onClick={onHide}
-        className="shrink-0 rounded p-1.5 text-fg-faint opacity-0 hover:text-accent group-hover:opacity-100"
+        className="shrink-0 rounded p-2 text-fg-faint transition-opacity hover:text-accent md:opacity-0 md:group-hover:opacity-100"
       >
         <IconEyeOff className="h-4 w-4" />
       </button>
@@ -169,22 +190,26 @@ export default function LivePage() {
         }
         return;
       }
-      // 'all' : pagination Dexie (jamais tout en memoire).
-      if (filter === 'all') {
-        const first = (await catalogRepository.getLiveChannelsPage({ kind: 'all' }, 0, PAGE)).filter(notHidden);
+      // Filtres pagines (Tous / International) : pagination Dexie, jamais tout en RAM.
+      if (PAGINATED.includes(filter)) {
+        const repoFilter = paginatedFilter(filter);
+        const first = (await catalogRepository.getLiveChannelsPage(repoFilter, 0, PAGE)).filter(notHidden);
         offsetRef.current = PAGE;
         exhaustedRef.current = first.length < PAGE;
-        void catalogRepository.countLiveChannels({ kind: 'all' }).then((n) => active && setCount(n));
+        void catalogRepository.countLiveChannels(repoFilter).then((n) => active && setCount(n));
         if (active) setPool(orderChannels(first));
         return;
       }
-      // Filtres bornes (france / theme / uhd) : charge jusqu'a CAP puis tri FR-first.
-      const repoFilter = toRepoFilter(filter);
-      const loaded = (await catalogRepository.getLiveChannelsPage(repoFilter, 0, CAP)).filter(notHidden);
-      void catalogRepository.countLiveChannels(repoFilter).then((n) => active && setCount(n));
+      // Filtres bornes (france / principales / theme / foot / uhd) : charge jusqu'a
+      // CAP, affine cote client puis tri intelligent.
+      const repoFilter = boundedBaseFilter(filter);
+      const predicate = boundedPredicate(filter);
+      const raw = await catalogRepository.getLiveChannelsPage(repoFilter, 0, CAP);
+      const loaded = raw.filter(notHidden).filter(predicate);
       if (active) {
         setPool(orderChannels(loaded));
-        setCapped(loaded.length >= CAP);
+        setCount(loaded.length);
+        setCapped(raw.length >= CAP);
       }
     };
 
@@ -196,14 +221,15 @@ export default function LivePage() {
     };
   }, [filter, searching, debouncedQuery, favLiveIds, recentChannels, notHidden]);
 
-  // Charge plus : fenetre (pool) + pagination Dexie pour 'all'.
+  // Charge plus : fenetre (pool) + pagination Dexie pour les filtres pagines.
   const loadMore = useCallback(() => {
     if (loadingRef.current) return;
-    const needMorePool = !searching && filter === 'all' && visible >= pool.length && !exhaustedRef.current;
+    const paginated = !searching && PAGINATED.includes(filter);
+    const needMorePool = paginated && visible >= pool.length && !exhaustedRef.current;
     if (needMorePool) {
       loadingRef.current = true;
       void catalogRepository
-        .getLiveChannelsPage({ kind: 'all' }, offsetRef.current, PAGE)
+        .getLiveChannelsPage(paginatedFilter(filter), offsetRef.current, PAGE)
         .then((page) => {
           const kept = page.filter(notHidden);
           offsetRef.current += PAGE;
@@ -217,14 +243,15 @@ export default function LivePage() {
     if (visible < pool.length) setVisible((v) => v + STEP);
   }, [searching, filter, visible, pool.length, notHidden]);
 
-  const canLoadMore = visible < pool.length || (filter === 'all' && !searching && !exhaustedRef.current);
+  const canLoadMore =
+    visible < pool.length || (PAGINATED.includes(filter) && !searching && !exhaustedRef.current);
   const sentinelRef = useLoadMore(loadMore, canLoadMore && !loading);
 
   const shown = pool.slice(0, visible);
   const catalogEmpty = categories.length === 0 && slice.status !== 'loading';
 
   return (
-    <main className="mx-auto w-full max-w-4xl px-4 py-6 md:px-8">
+    <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8">
       <h1 className="text-2xl font-semibold tracking-tight text-fg">Live TV</h1>
 
       <div className="mt-4">
@@ -243,7 +270,7 @@ export default function LivePage() {
         </div>
       </div>
 
-      {/* Filtres rapides */}
+      {/* Filtres rapides — entree principale, faciles a toucher sur iPhone. */}
       <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none]">
         {FILTERS.map((f) => (
           <button
@@ -254,7 +281,7 @@ export default function LivePage() {
               void settingsRepository.setSetting('lastLiveFilter', f.id);
             }}
             disabled={searching}
-            className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors ${
+            className={`shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition-colors ${
               !searching && filter === f.id
                 ? 'bg-accent text-white'
                 : 'bg-ink-800 text-fg-muted hover:text-fg disabled:opacity-40'
@@ -281,16 +308,18 @@ export default function LivePage() {
           />
         </div>
       ) : (
-        <div className="mt-3 flex flex-col">
-          {loading && shown.length === 0
-            ? Array.from({ length: 10 }, (_, i) => <Skeleton key={i} className="mb-2 h-14 rounded-xl" />)
-            : shown.map((c) => (
-                <ChannelRow
-                  key={c.id}
-                  channel={c}
-                  onHide={() => void hideCategory('live', c.categoryId, categoryOf.get(c.categoryId) ?? c.name)}
-                />
-              ))}
+        <div className="mt-3">
+          <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4 lg:grid-cols-3">
+            {loading && shown.length === 0
+              ? Array.from({ length: 12 }, (_, i) => <Skeleton key={i} className="mb-2 h-14 rounded-xl" />)
+              : shown.map((c) => (
+                  <ChannelRow
+                    key={c.id}
+                    channel={c}
+                    onHide={() => void hideCategory('live', c.categoryId, categoryOf.get(c.categoryId) ?? c.name)}
+                  />
+                ))}
+          </div>
 
           {!loading && shown.length === 0 && (
             <div className="mt-4">

@@ -2,10 +2,10 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { MediaCard } from '@/components/shared/MediaCard';
-import { PosterImage } from '@/components/shared/PosterImage';
 import { cn } from '@/lib/cn';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import { useFavoritesStore } from '@/stores/favoritesStore';
@@ -92,7 +92,7 @@ export default function FavoritesPage() {
                 href={`/live/${c.id}`}
                 className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-ink-800"
               >
-                <PosterImage src={c.logoUrl} alt={c.name} className="h-10 w-10 shrink-0 rounded-lg" />
+                <ChannelLogo channel={c} className="h-10 w-10 shrink-0" />
                 <span className="min-w-0 flex-1 truncate text-sm text-fg">{c.name}</span>
                 <FavoriteButton type="live" itemId={c.id} />
               </Link>

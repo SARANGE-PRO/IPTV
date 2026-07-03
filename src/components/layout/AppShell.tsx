@@ -72,21 +72,32 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <div className="pb-24 pt-safe md:pb-8">{children}</div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-700 bg-ink-900/90 pb-safe backdrop-blur md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-ink-700 bg-ink-900/95 pb-safe backdrop-blur md:hidden">
         <div className="flex items-stretch justify-around">
-          {NAV.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              className={cn(
-                'flex min-w-0 flex-1 flex-col items-center gap-1 py-2.5 text-[10px]',
-                isActive(href) ? 'text-accent' : 'text-fg-muted',
-              )}
-            >
-              <Icon className="h-5 w-5" />
-              <span className="truncate">{label}</span>
-            </Link>
-          ))}
+          {NAV.map(({ href, label, icon: Icon }) => {
+            const active = isActive(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-current={active ? 'page' : undefined}
+                className={cn(
+                  'flex min-w-0 flex-1 flex-col items-center gap-1 py-2 text-[10px] transition-colors',
+                  active ? 'text-accent' : 'text-fg-muted active:text-fg',
+                )}
+              >
+                <span
+                  className={cn(
+                    'flex h-8 w-12 items-center justify-center rounded-full transition-colors',
+                    active && 'bg-accent/15',
+                  )}
+                >
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className="max-w-full truncate">{label}</span>
+              </Link>
+            );
+          })}
         </div>
       </nav>
     </div>

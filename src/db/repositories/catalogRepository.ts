@@ -68,6 +68,7 @@ export async function getLiveChannelsByIds(ids: string[]): Promise<LiveChannel[]
 export type LiveFilter =
   | { kind: 'all' }
   | { kind: 'french' }
+  | { kind: 'nonFrench' }
   | { kind: 'frenchTheme'; theme: ChannelTheme }
   | { kind: 'uhd' }
   | { kind: 'theme'; theme: ChannelTheme };
@@ -76,6 +77,8 @@ function liveCollection(filter: LiveFilter) {
   switch (filter.kind) {
     case 'french':
       return db.xtream_live_streams.where('isFrench').equals(1);
+    case 'nonFrench':
+      return db.xtream_live_streams.where('isFrench').equals(0);
     case 'frenchTheme':
       return db.xtream_live_streams.where('[theme+isFrench]').equals([filter.theme, 1]);
     case 'uhd':

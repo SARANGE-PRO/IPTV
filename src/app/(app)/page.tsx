@@ -16,6 +16,7 @@ import { useFavoritesStore } from '@/stores/favoritesStore';
 import { useFilterStore } from '@/stores/filterStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
+import * as playbackRepository from '@/db/repositories/playbackRepository';
 import { getMovieTop10 } from '@/services/ranking/smartRankingService';
 import type { LiveChannel, Movie, PlaybackEntry, Series } from '@/types/models';
 import { formatCount } from '@/utils/format';
@@ -36,6 +37,7 @@ interface DiscoveryRails {
   topMovies: Movie[];
   frenchMovies: Movie[];
   recentMovies: Movie[];
+  resumeSeries: Series[];
   frenchSeries: Series[];
   recentSeries: Series[];
   liveSports: LiveChannel[];
@@ -45,10 +47,14 @@ const EMPTY_RAILS: DiscoveryRails = {
   topMovies: [],
   frenchMovies: [],
   recentMovies: [],
+  resumeSeries: [],
   frenchSeries: [],
   recentSeries: [],
   liveSports: [],
 };
+
+/** Seuil de credibilite : sous ce nombre d'entrees, le Top 10 recommande est masque. */
+const TOP10_MIN = 5;
 
 export default function HomePage() {
   const credentials = useAuthStore((s) => s.credentials);
@@ -80,14 +86,21 @@ export default function HomePage() {
       return;
     }
     let active = true;
+    const loadResumeSeries = async (): Promise<Series[]> => {
+      const ids = await playbackRepository.getInProgressSeriesIds(12);
+      if (ids.length === 0) return [];
+      const byId = new Map((await catalogRepository.getSeriesByIds(ids)).map((series) => [series.id, series]));
+      return ids.map((id) => byId.get(id)).filter((series): series is Series => series !== undefined);
+    };
     void Promise.all([
       getMovieTop10(10),
       catalogRepository.getFrenchMovies(18),
       catalogRepository.getRecentMovies(18),
+      loadResumeSeries(),
       catalogRepository.getFrenchSeries(18),
       catalogRepository.getRecentSeries(18),
       catalogRepository.getLiveChannelsPage({ kind: 'frenchTheme', theme: 'sport' }, 0, 12),
-    ]).then(([topMovies, frenchMovies, recentMovies, frenchSeries, recentSeries, liveSports]) => {
+    ]).then(([topMovies, frenchMovies, recentMovies, resumeSeries, frenchSeries, recentSeries, liveSports]) => {
       if (!active) return;
       const topIds = new Set(topMovies.map((movie) => movie.id));
       const recentIds = new Set(recentMovies.map((movie) => movie.id));
@@ -97,6 +110,7 @@ export default function HomePage() {
           .filter((movie) => !hiddenVod.has(movie.categoryId) && !topIds.has(movie.id) && !recentIds.has(movie.id))
           .slice(0, 12),
         recentMovies: recentMovies.filter((movie) => !hiddenVod.has(movie.categoryId)),
+        resumeSeries: resumeSeries.filter((series) => !hiddenSeries.has(series.categoryId)),
         frenchSeries: frenchSeries.filter((series) => !hiddenSeries.has(series.categoryId)),
         recentSeries: recentSeries.filter((series) => !hiddenSeries.has(series.categoryId)),
         liveSports: liveSports.filter((channel) => !hiddenLive.has(channel.categoryId)),
@@ -183,8 +197,8 @@ export default function HomePage() {
         </Rail>
       )}
 
-      {discovery.topMovies.length > 0 && (
-        <Rail title="Top 10 cette semaine" action={<Link href="/movies" className="text-xs text-fg-faint hover:text-fg">Voir les films</Link>}>
+      {discovery.topMovies.length >= TOP10_MIN && (
+        <Rail title="Top 10 recommandé" action={<Link href="/movies" className="text-xs text-fg-faint hover:text-fg">Voir les films</Link>}>
           {discovery.topMovies.map((movie, index) => (
             <MediaCard
               key={movie.id}
@@ -200,7 +214,7 @@ export default function HomePage() {
       )}
 
       {discovery.frenchMovies.length > 0 && (
-        <Rail title="Films FR a decouvrir">
+        <Rail title="Films FR à découvrir">
           {discovery.frenchMovies.map((movie) => (
             <MediaCard key={movie.id} className="w-32 shrink-0" href={`/movies/${movie.id}`} title={movie.name} posterUrl={movie.posterUrl} subtitle={movie.year?.toString()} />
           ))}
@@ -208,15 +222,23 @@ export default function HomePage() {
       )}
 
       {discovery.recentMovies.length > 0 && (
-        <Rail title="Films recemment ajoutes">
+        <Rail title="Films récemment ajoutés">
           {discovery.recentMovies.map((movie) => (
             <MediaCard key={movie.id} className="w-32 shrink-0" href={`/movies/${movie.id}`} title={movie.name} posterUrl={movie.posterUrl} subtitle={movie.rating !== null ? `★ ${movie.rating.toFixed(1)}` : null} />
           ))}
         </Rail>
       )}
 
+      {discovery.resumeSeries.length > 0 && (
+        <Rail title="Séries à reprendre" action={<Link href="/series" className="text-xs text-fg-faint hover:text-fg">Voir les séries</Link>}>
+          {discovery.resumeSeries.map((series) => (
+            <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={series.name} posterUrl={series.posterUrl} subtitle={series.releaseDate?.slice(0, 4)} />
+          ))}
+        </Rail>
+      )}
+
       {discovery.frenchSeries.length > 0 && (
-        <Rail title="Series FR">
+        <Rail title="Séries FR">
           {discovery.frenchSeries.map((series) => (
             <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={series.name} posterUrl={series.posterUrl} subtitle={series.rating !== null ? `★ ${series.rating.toFixed(1)}` : series.releaseDate?.slice(0, 4)} />
           ))}
@@ -224,7 +246,7 @@ export default function HomePage() {
       )}
 
       {discovery.recentSeries.length > 0 && (
-        <Rail title="Series recemment ajoutees">
+        <Rail title="Séries récemment ajoutées">
           {discovery.recentSeries.map((series) => (
             <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={series.name} posterUrl={series.posterUrl} subtitle={series.releaseDate?.slice(0, 4)} />
           ))}

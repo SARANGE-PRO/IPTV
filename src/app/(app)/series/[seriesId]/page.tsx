@@ -7,6 +7,7 @@ import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { PosterImage } from '@/components/shared/PosterImage';
 import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
+import { Button } from '@/components/ui/Button';
 import { IconArrowLeft, IconPlay } from '@/components/ui/icons';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { cn } from '@/lib/cn';
@@ -100,6 +101,19 @@ export default function SeriesDetailPage() {
     [details, season],
   );
 
+  // Prochaine reprise : l'episode en cours le plus recemment regarde.
+  const resumeEpisode = useMemo(() => {
+    if (details === null || details === undefined) return null;
+    let best: { ep: Episode; at: number } | null = null;
+    for (const ep of details.episodes) {
+      const prog = epProgress.get(ep.id);
+      if (prog !== undefined && prog.finished === 0 && prog.positionSec > 30) {
+        if (best === null || prog.updatedAt > best.at) best = { ep, at: prog.updatedAt };
+      }
+    }
+    return best?.ep ?? null;
+  }, [details, epProgress]);
+
   const playEpisode = (ep: Episode) => {
     const prog = epProgress.get(ep.id);
     setStartAt(prog !== undefined && prog.finished === 0 && prog.positionSec > 30 ? prog.positionSec : 0);
@@ -189,6 +203,14 @@ export default function SeriesDetailPage() {
                   <span className="text-fg-muted">Avec </span>
                   {tmdb.cast.slice(0, 5).map((c) => c.name).join(', ')}
                 </p>
+              )}
+              {resumeEpisode !== null && (
+                <div className="mt-4">
+                  <Button size="sm" onClick={() => playEpisode(resumeEpisode)}>
+                    <IconPlay className="mr-2 h-4 w-4" />
+                    Reprendre S{resumeEpisode.seasonNumber}E{resumeEpisode.episodeNumber}
+                  </Button>
+                </div>
               )}
             </div>
           </div>

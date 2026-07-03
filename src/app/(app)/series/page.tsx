@@ -19,6 +19,7 @@ const subtitleFor = (s: Series) =>
 const QUICK_FILTERS: QuickFilterDefinition[] = [
   { id: 'fr', label: 'FR' },
   { id: 'top10', label: 'Top 10' },
+  { id: 'popular', label: 'Mieux notées' },
   { id: 'new', label: 'Recemment ajoutees' },
   { id: 'progress', label: 'En cours' },
   { id: 'netflix', label: 'Netflix', categoryKeywords: ['netflix'] },
@@ -39,6 +40,7 @@ const SORT_OPTIONS: SortOption[] = [
 async function fetchQuickFilter(id: string, limit: number): Promise<Series[]> {
   if (id === 'fr') return catalogRepository.getFrenchSeries(limit);
   if (id === 'top10') return getSeriesTop10(10);
+  if (id === 'popular') return catalogRepository.getTopRatedSeries(limit);
   if (id === 'new') return catalogRepository.getRecentSeries(limit);
   if (id === 'progress') {
     const ids = await playbackRepository.getInProgressSeriesIds(limit);

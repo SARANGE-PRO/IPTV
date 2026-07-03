@@ -273,10 +273,10 @@ export function MediaBrowser<T extends BrowserItem>({
             inputMode="search"
           />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setPanelOpen(true)}
-            className="flex h-10 max-w-56 items-center gap-2 rounded-xl border border-ink-600 bg-ink-800 px-3 text-sm text-fg"
+            className="flex h-10 min-w-0 flex-1 items-center gap-2 rounded-xl border border-ink-600 bg-ink-800 px-3 text-sm text-fg sm:max-w-56 sm:flex-none"
           >
             <span className="truncate">{selected?.name ?? 'Catégories'}</span>
             <IconChevronDown className="h-4 w-4 shrink-0 text-fg-faint" />
@@ -286,7 +286,7 @@ export function MediaBrowser<T extends BrowserItem>({
             aria-label="Trier les contenus"
             value={sort}
             onChange={(event) => setSort(event.target.value as CatalogSort)}
-            className="h-10 max-w-44 rounded-xl border border-ink-600 bg-ink-800 px-3 text-xs text-fg outline-none"
+            className="h-10 min-w-0 flex-1 rounded-xl border border-ink-600 bg-ink-800 px-3 text-xs text-fg outline-none sm:max-w-44 sm:flex-none"
           >
             {sortOptions.map((option) => (
               <option key={option.id} value={option.id}>{option.label}</option>
@@ -301,7 +301,7 @@ export function MediaBrowser<T extends BrowserItem>({
             <button
               key={quick.id}
               onClick={() => activateQuick(quick)}
-              className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors ${
+              className={`shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition-colors ${
                 activeChip === quick.id
                   ? 'bg-accent text-white'
                   : 'bg-ink-800 text-fg-muted hover:text-fg'

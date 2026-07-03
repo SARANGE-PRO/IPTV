@@ -7,12 +7,18 @@ export function SplashIntro() {
   const [show, setShow] = useState(false);
 
   useEffect(() => {
+    // Respecte prefers-reduced-motion : aucune intro animee (evite tout
+    // decalage/mouvement au lancement pour les utilisateurs sensibles).
+    const reduced =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
     try {
       if (sessionStorage.getItem('zibSplashSeen') === '1') return;
       sessionStorage.setItem('zibSplashSeen', '1');
     } catch {
       // sessionStorage indispo : on montre quand même une fois ce montage
     }
+    if (reduced) return;
     setShow(true);
     const timer = setTimeout(() => setShow(false), 3600);
     return () => clearTimeout(timer);
