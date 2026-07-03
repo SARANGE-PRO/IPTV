@@ -110,14 +110,43 @@ export default function LiveWatchPage() {
       ) : (
         src !== null && (
           <div className="space-y-4">
-            <VideoPlayer
-              src={src}
-              live
-              transcode={liveExt === 'ts'}
-              contentType="live"
-              container={liveExt}
-              onError={() => setFailed(true)}
-            />
+            <div className="relative overflow-hidden rounded-2xl">
+              <VideoPlayer
+                src={src}
+                live
+                transcode={liveExt === 'ts'}
+                contentType="live"
+                container={liveExt}
+                onError={() => setFailed(true)}
+              />
+              {/* Titre en surimpression (verre depoli). */}
+              <div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/60 to-transparent p-3">
+                <span className="glass inline-block max-w-[70%] truncate rounded-lg px-2.5 py-1 text-xs font-medium text-fg">
+                  {channel != null ? displayChannelName(channel.name) : 'Chaîne'}
+                </span>
+              </div>
+              {/* Zapping prec/suiv en overlay (immersif). */}
+              {neighbors.previous !== null && (
+                <button
+                  type="button"
+                  aria-label="Chaîne précédente"
+                  onClick={() => neighbors.previous && router.push(`/live/${neighbors.previous.id}`)}
+                  className="glass absolute left-2 top-1/2 z-10 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full text-fg/90 transition-transform active:scale-90"
+                >
+                  <IconArrowLeft className="h-5 w-5" />
+                </button>
+              )}
+              {neighbors.next !== null && (
+                <button
+                  type="button"
+                  aria-label="Chaîne suivante"
+                  onClick={() => neighbors.next && router.push(`/live/${neighbors.next.id}`)}
+                  className="glass absolute right-2 top-1/2 z-10 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full text-fg/90 transition-transform active:scale-90"
+                >
+                  <IconArrowLeft className="h-5 w-5 rotate-180" />
+                </button>
+              )}
+            </div>
             <NowPlaying credentials={credentials} streamId={streamId} />
             {versions.length > 1 && (
               <div>

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { BrandLogo } from '@/components/shared/BrandLogo';
 import { ChannelLogo } from '@/components/shared/ChannelLogo';
+import { NextMatchBanner } from '@/components/live/NextMatchBanner';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { MediaCard } from '@/components/shared/MediaCard';
 import { PosterImage } from '@/components/shared/PosterImage';
@@ -184,6 +185,8 @@ export default function HomePage() {
         <IconSearch className="h-5 w-5" />
         Rechercher une chaîne, un film, une série…
       </Link>
+
+      {hasCatalog && <NextMatchBanner credentials={credentials} />}
 
       {!hasCatalog && (
         <div className="mt-8">
