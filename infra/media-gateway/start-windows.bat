@@ -1,29 +1,54 @@
 @echo off
 REM ============================================================================
-REM  Passerelle media ZiBTV — lancement local (Windows)
-REM  Prerequis : Node 18+  et  ffmpeg  ( winget install Gyan.FFmpeg )
-REM  Double-clique ce fichier pour demarrer le proxy sur le port 3000.
+REM  ZiBTV - LA SEULE FENETRE A GARDER OUVERTE POUR REGARDER HORS DE CHEZ SOI
 REM ============================================================================
-
-REM --- Origine HTTP de ton serveur Xtream (host + port, SANS chemin final) ---
-set "UPSTREAM_ORIGIN=http://absuqvet.top"
-
-REM --- Port local ecoute par la passerelle (a rediriger depuis la box) -------
-set "PORT=3000"
-
-REM --- Transcodage : copy = remux leger (Safari lit H.264 + HEVC).
-REM     Mets libx264 si tu veux la compat Chrome/Firefox sur du HEVC (CPU +). -
-set "VIDEO_CODEC=copy"
-set "TRANSCODE=1"
-
-REM Chemin ffmpeg installe via winget (Gyan.FFmpeg). Si tu mets a jour ffmpeg,
-REM ajuste le numero de version dans le chemin, ou laisse vide si ffmpeg est sur le PATH.
-set "FFMPEG_PATH=C:\Users\anged\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.1.2-full_build\bin\ffmpeg.exe"
-
+title ZiBTV - GARDER CETTE FENETRE OUVERTE
 cd /d "%~dp0"
+
+REM Les valeurs privees sont dans .env (ignore par Git), jamais dans ce script.
+if not exist ".env" (
+  echo [ERREUR] Configuration locale absente : infra\media-gateway\.env
+  echo Copie .env.example vers .env puis renseigne UPSTREAM_ORIGIN.
+  pause
+  exit /b 1
+)
+for /f "usebackq eol=# tokens=1,* delims==" %%A in (".env") do set "%%A=%%B"
+
+if not defined UPSTREAM_ORIGIN (
+  echo [ERREUR] UPSTREAM_ORIGIN est absent de .env.
+  pause
+  exit /b 1
+)
+if not defined PORT set "PORT=3000"
+if not defined VIDEO_CODEC set "VIDEO_CODEC=copy"
+if not defined TRANSCODE set "TRANSCODE=1"
+
+REM Trouve ffmpeg automatiquement : PATH, puis installation Winget.
+if not defined FFMPEG_PATH (
+  where ffmpeg.exe >nul 2>nul && set "FFMPEG_PATH=ffmpeg.exe"
+)
+if not defined FFMPEG_PATH (
+  for /f "delims=" %%F in ('where /r "%LOCALAPPDATA%\Microsoft\WinGet\Packages" ffmpeg.exe 2^>nul') do if not defined FFMPEG_PATH set "FFMPEG_PATH=%%F"
+)
+if not defined FFMPEG_PATH (
+  echo [ERREUR] ffmpeg est introuvable. Installe-le avec : winget install Gyan.FFmpeg
+  pause
+  exit /b 1
+)
+
+REM Le tunnel est relance automatiquement s'il n'est pas deja actif.
+tasklist /FI "IMAGENAME eq cloudflared.exe" 2>nul | find /I "cloudflared.exe" >nul
+if errorlevel 1 if exist "tunnel-token.txt" start "ZiBTV Tunnel" /min "%~dp0start-tunnel-windows.bat"
+
 echo.
-echo  Passerelle sur http://localhost:%PORT%   (Ctrl+C pour arreter)
-echo  Test sante :  http://localhost:%PORT%/_health   =^> doit afficher : ok
+echo  ================================================================
+echo   ZiBTV est ACTIF. Garde cette fenetre ouverte.
+echo   Tu peux eteindre l'ecran, mais ne mets pas le PC en veille.
+echo   Pour arreter la lecture distante : ferme cette fenetre.
+echo  ================================================================
+echo   Sante locale : http://localhost:%PORT%/_health
 echo.
 node server.mjs
+echo.
+echo [ARRET] La passerelle ZiBTV n'est plus active.
 pause

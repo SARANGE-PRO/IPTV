@@ -1,5 +1,17 @@
 # Passerelle média auto-hébergée (maison)
 
+## Windows : utilisation quotidienne
+
+Double-clique uniquement sur `start-windows.bat`, puis garde la fenêtre
+**ZiBTV - GARDER CETTE FENETRE OUVERTE** ouverte. Le tunnel est démarré
+automatiquement si nécessaire. L’écran peut être éteint, mais le PC ne doit pas
+être mis en veille : la veille coupe la passerelle et provoque
+`ERR_CONNECTION_CLOSED` dans l’application.
+
+La configuration privée se trouve dans `.env` et `tunnel-token.txt`, tous deux
+ignorés par Git. Aucun serveur réel, identifiant ou token ne doit être ajouté
+aux fichiers suivis.
+
 Résout les deux blocages des providers IPTV grand public :
 
 1. **CDN qui bloque les IP datacenter** (Cloudflare/Vercel/VPS → HTTP 456). Ici

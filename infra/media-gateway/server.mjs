@@ -125,7 +125,10 @@ function targetFor(req) {
     const sig = incoming.searchParams.get('_s');
     // Autorise si hote d'origine OU signature valide (segment reecrit par nous).
     const allow = isAllowed(target);
-    const viaSig = !allow && sig !== null && sig === sign(raw);
+    // Une signature identifie aussi un segment HLS de meme origine. Sans ce
+    // marqueur, un segment .ts signe mais same-origin serait pris pour un flux
+    // Live direct et transcode a tort.
+    const viaSig = sig !== null && sig === sign(raw);
     return { target, trusted: allow || viaSig, viaSig };
   }
   const target = new URL(`${incoming.pathname}${incoming.search}`, upstreamOrigin);
@@ -151,15 +154,20 @@ async function fetchAllowed(target, init, trusted, maxRedirects = 5) {
 }
 
 /** Remux/transcode le flux upstream (stdin) vers du fMP4 (stdout) lisible en <video>. */
-function transcodeToFragmentedMp4(sourceStream, res) {
+function transcodeToFragmentedMp4(sourceStream, res, live = false) {
   const args = [
     '-hide_banner', '-loglevel', 'error', '-nostdin',
-    '-fflags', '+genpts', '-i', 'pipe:0',
+    // Live : flags basse latence (démarrage + zapping plus rapides).
+    ...(live
+      ? ['-fflags', 'nobuffer+genpts', '-flags', 'low_delay', '-probesize', '1000000', '-analyzeduration', '1000000']
+      : ['-fflags', '+genpts']),
+    '-i', 'pipe:0',
     '-map', '0:v:0', '-map', '0:a:0?',
     '-c:v', VIDEO_CODEC,
     ...(VIDEO_CODEC === 'libx264' ? ['-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p'] : []),
     '-c:a', 'aac', '-b:a', '160k', '-ac', '2',
-    '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
+    ...(live ? ['-flush_packets', '1'] : []),
+    '-movflags', 'frag_keyframe+empty_moov+default_base_moof' + (live ? '' : '+faststart'),
     '-f', 'mp4', 'pipe:1',
   ];
   const ff = spawn(FFMPEG, args, { stdio: ['pipe', 'pipe', 'pipe'] });
@@ -245,7 +253,7 @@ const server = http.createServer(async (req, res) => {
       (UNSUPPORTED_EXT.test(originalStr) || UNSUPPORTED_EXT.test(urlStr) || UNSUPPORTED_CT.test(contentType) || isDirectTs);
 
     if (needsTranscode) {
-      return void transcodeToFragmentedMp4(Readable.fromWeb(response.body), res);
+      return void transcodeToFragmentedMp4(Readable.fromWeb(response.body), res, isDirectTs);
     }
 
     for (const name of [

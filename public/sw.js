@@ -10,7 +10,9 @@
  * manifest). Navigation : reseau d'abord, fallback page offline.
  */
 
-const CACHE = 'zibtv-shell-v2';
+// Incremente quand une icone/ressource precachee change : les PWA deja
+// installees ne doivent pas conserver l'ancienne identite visuelle.
+const CACHE = 'zibtv-shell-v3';
 const OFFLINE_URL = '/offline.html';
 const PRECACHE = [
   '/offline.html',

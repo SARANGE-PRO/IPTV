@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect } from 'react';
+import { BrandLogo } from '@/components/shared/BrandLogo';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { MediaCard } from '@/components/shared/MediaCard';
 import { PosterImage } from '@/components/shared/PosterImage';
@@ -49,6 +50,11 @@ export default function HomePage() {
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
+      <BrandLogo
+        className="mb-6 md:hidden"
+        markClassName="h-9 w-9"
+        textClassName="text-xl"
+      />
       <h1 className="pt-2 text-3xl font-semibold tracking-tight text-fg">Accueil</h1>
 
       {!hasCatalog && (

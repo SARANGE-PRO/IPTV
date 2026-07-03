@@ -10,7 +10,7 @@ const upstream = http.createServer((req, res) => {
     res.end('#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="/keys/key.bin"\n#EXTINF:4,\nseg.ts\n');
     return;
   }
-  if (req.url === '/seg.ts' && req.headers.range === 'bytes=0-3') {
+  if (req.url === '/live/seg.ts' && req.headers.range === 'bytes=0-3') {
     res.writeHead(206, {
       'accept-ranges': 'bytes',
       'content-range': 'bytes 0-3/8',
@@ -60,10 +60,12 @@ try {
   assert.match(manifest, /%2Fkeys%2Fkey\.bin/);
   assert.match(manifest, /%2Fseg\.ts/);
 
-  const segment = await fetch(
-    `http://127.0.0.1:${gatewayPort}/_fetch?url=${encodeURIComponent(`${upstreamOrigin}/seg.ts`)}`,
-    { headers: { range: 'bytes=0-3' } },
-  );
+  const segmentUrl = manifest
+    .split(/\r?\n/)
+    .find((line) => line.includes('%2Fseg.ts'));
+  assert.ok(segmentUrl, 'Le segment HLS doit etre reecrit et signe.');
+  const localSegmentUrl = segmentUrl.replace('https://media.test', `http://127.0.0.1:${gatewayPort}`);
+  const segment = await fetch(localSegmentUrl, { headers: { range: 'bytes=0-3' } });
   assert.equal(segment.status, 206);
   assert.equal(segment.headers.get('content-range'), 'bytes 0-3/8');
   assert.equal(await segment.text(), 'DATA');

@@ -13,12 +13,13 @@ export const metadata: Metadata = {
   formatDetection: { telephone: false },
   icons: {
     icon: [
-      { url: '/brand/zibtv-icon.svg', sizes: 'any', type: 'image/svg+xml' },
-      { url: '/icons/icon-32.png', sizes: '32x32', type: 'image/png' },
-      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+      { url: '/brand/zibtv-icon.svg?v=3', sizes: 'any', type: 'image/svg+xml' },
+      { url: '/icons/icon-32.png?v=3', sizes: '32x32', type: 'image/png' },
+      { url: '/icons/icon-192.png?v=3', sizes: '192x192', type: 'image/png' },
+      { url: '/icons/icon-512.png?v=3', sizes: '512x512', type: 'image/png' },
     ],
-    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+    shortcut: [{ url: '/brand/zibtv-icon.svg?v=3', type: 'image/svg+xml' }],
+    apple: [{ url: '/apple-touch-icon.png?v=3', sizes: '180x180', type: 'image/png' }],
   },
 };
 

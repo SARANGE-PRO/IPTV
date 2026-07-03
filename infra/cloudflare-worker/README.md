@@ -58,7 +58,7 @@ L'URL publique est alors `https://zibtv-gateway.pages.dev`.
 
 ## Limite connue : CDN qui bloque les IP datacenter (HTTP 456)
 
-Diagnostic constaté sur le provider `absuqvet.top` :
+Diagnostic constaté sur un provider IPTV HTTP :
 
 - l'API `player_api.php` répond **200** à Cloudflare (le panel n'est pas bloqué) ;
 - une requête de film redirige (302) vers un **CDN tokenisé sur une autre IP**
