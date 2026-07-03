@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { createHmac, randomBytes } from 'node:crypto';
 import http from 'node:http';
 import { Readable } from 'node:stream';
 
@@ -38,8 +39,19 @@ const TRANSCODE = process.env.TRANSCODE !== '0';
 const FFMPEG = process.env.FFMPEG_PATH?.trim() || 'ffmpeg';
 const VIDEO_CODEC = process.env.VIDEO_CODEC?.trim() || 'copy';
 
+// Signature HMAC : la passerelle proxifie un hote NON allowliste uniquement si
+// l'URL porte une signature valide, donc uniquement les URLs qu'ELLE a
+// reecrites dans une playlist issue de l'origine de confiance (segments HLS sur
+// des CDN dont l'IP change). Empeche tout SSRF vers un hote arbitraire.
+const SIGN_SECRET = process.env.SIGN_SECRET?.trim() || randomBytes(24).toString('hex');
+function sign(rawUrl) {
+  return createHmac('sha256', SIGN_SECRET).update(rawUrl).digest('hex').slice(0, 20);
+}
+
 const UNSUPPORTED_EXT = /\.(mkv|avi|wmv|flv|vob|mpg|mpeg|m2ts|divx|ogm)(?:$|[?#])/i;
-const UNSUPPORTED_CT = /matroska|x-msvideo|x-ms-wmv|x-flv|mp2t|avi|divx/i;
+// NB : pas de mp2t ici — les segments .ts d'un flux HLS doivent passer tels
+// quels (c'est le lecteur qui reassemble le HLS), jamais transcodes un a un.
+const UNSUPPORTED_CT = /matroska|x-msvideo|x-ms-wmv|x-flv|avi|divx/i;
 
 // Proxy longue duree : une deconnexion client (le lecteur se ferme / zappe)
 // provoque EPIPE/ECONNRESET. Ces erreurs reseau ne doivent JAMAIS tuer le
@@ -76,7 +88,8 @@ function publicOrigin(req) {
   return `${proto}://${host}`;
 }
 function gatewayUrl(url, origin) {
-  return `${origin}/_fetch?url=${encodeURIComponent(url.toString())}`;
+  const raw = url.toString();
+  return `${origin}/_fetch?url=${encodeURIComponent(raw)}&_s=${sign(raw)}`;
 }
 function rewriteReference(raw, base, origin) {
   try {
@@ -108,15 +121,21 @@ function targetFor(req) {
   if (incoming.pathname === '/_fetch') {
     const raw = incoming.searchParams.get('url');
     if (!raw) throw new Error('URL cible absente.');
-    return new URL(raw);
+    const target = new URL(raw);
+    const sig = incoming.searchParams.get('_s');
+    // Autorise si hote d'origine OU signature valide (segment reecrit par nous).
+    const trusted = isAllowed(target) || (sig !== null && sig === sign(raw));
+    return { target, trusted };
   }
-  return new URL(`${incoming.pathname}${incoming.search}`, upstreamOrigin);
+  const target = new URL(`${incoming.pathname}${incoming.search}`, upstreamOrigin);
+  return { target, trusted: isAllowed(target) };
 }
-async function fetchAllowed(target, init, maxRedirects = 5) {
-  // 1er saut : hote allowliste obligatoire. Sauts de redirection suivants :
-  // n'importe quel http/https (ils proviennent de TON serveur de confiance,
-  // ex. CDN tokenise dont l'IP change) — sans rouvrir la porte au SSRF.
-  if (!isAllowed(target)) throw new Error(`Hote non autorise: ${target.host}`);
+async function fetchAllowed(target, init, trusted, maxRedirects = 5) {
+  // 1er saut : hote allowliste OU URL signee (segment d'une playlist de
+  // confiance). Sauts de redirection suivants : n'importe quel http/https
+  // (ils proviennent de TON serveur de confiance) — sans SSRF vers un hote
+  // arbitraire non signe.
+  if (!trusted && !isAllowed(target)) throw new Error(`Hote non autorise: ${target.host}`);
   let current = target;
   for (let i = 0; i <= maxRedirects; i += 1) {
     if (i > 0 && !isHttp(current)) throw new Error(`Redirection non http(s): ${current.host}`);
@@ -186,8 +205,8 @@ const server = http.createServer(async (req, res) => {
   });
 
   try {
-    const target = targetFor(req);
-    if (!isAllowed(target)) {
+    const { target, trusted } = targetFor(req);
+    if (!trusted) {
       clearTimeout(headerTimer);
       return void res.writeHead(403, { 'content-type': 'text/plain' }).end('Hote non autorise.');
     }
@@ -197,7 +216,11 @@ const server = http.createServer(async (req, res) => {
     const range = req.headers.range;
     if (typeof range === 'string') headers.set('range', range);
 
-    const { response, finalUrl } = await fetchAllowed(target, { method: req.method, headers, signal: aborter.signal });
+    const { response, finalUrl } = await fetchAllowed(
+      target,
+      { method: req.method, headers, signal: aborter.signal },
+      trusted,
+    );
     clearTimeout(headerTimer);
 
     const contentType = response.headers.get('content-type') ?? '';
