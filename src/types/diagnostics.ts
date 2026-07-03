@@ -13,7 +13,7 @@
  * applique et verifie ces regles avant export.
  */
 
-export type Section = 'live' | 'vod' | 'series';
+import type { Section } from './models';
 
 export interface CategoryStat {
   /** Libelle de categorie, deja nettoye (aucune donnee sensible). */
