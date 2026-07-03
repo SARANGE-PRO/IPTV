@@ -69,9 +69,11 @@ PC de bureau. Nécessite un domaine géré dans Cloudflare (gratuit).
 
 ## Notes
 
-- **Codec vidéo** : `VIDEO_CODEC=copy` (défaut) = remux léger, parfait pour
-  **iPhone/iPad** (Safari décode H.264 **et** HEVC). Pour Chrome/Firefox sur du
-  HEVC, passe à `VIDEO_CODEC=libx264` (plus gourmand en CPU).
+- **Codec vidéo** : `VIDEO_CODEC=libx264` (défaut) = ré-encodage H.264 8-bit, **lu
+  de façon fiable par iPhone/iPad**. Les MKV en **HEVC/x265 10-bit** (très courants)
+  échouent avec un simple remux sur Safari (`MediaError 4`) — d'où le ré-encodage.
+  Coût CPU (~temps réel) ; si ton catalogue est déjà en H.264, `VIDEO_CODEC=copy`
+  est plus léger. Encodeur matériel (`h264_nvenc`/`qsv`/`amf`) possible si dispo.
 - **Seek** : en transcodage la lecture est progressive (l'avance rapide peut être
   limitée). Le passthrough (MP4/HLS natif, sans passerelle) garde le seek complet.
 - **Veille** : plus besoin d'y penser sous Windows — `start-windows.bat` bloque la

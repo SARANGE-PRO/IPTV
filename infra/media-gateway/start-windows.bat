@@ -28,7 +28,7 @@ if not defined UPSTREAM_ORIGIN (
   exit /b 1
 )
 if not defined PORT set "PORT=3000"
-if not defined VIDEO_CODEC set "VIDEO_CODEC=copy"
+if not defined VIDEO_CODEC set "VIDEO_CODEC=libx264"
 if not defined TRANSCODE set "TRANSCODE=1"
 
 REM La production Vercel utilise le Funnel Tailscale public de CE PC.

@@ -33,11 +33,14 @@ const allowedHosts = new Set([
 // Un serveur Xtream reste souvent muet/hostile aux User-Agent navigateur.
 const UPSTREAM_UA = process.env.UPSTREAM_USER_AGENT?.trim() || 'VLC/3.0.20 LibVLC/3.0.20';
 
-// Transcodage : actif par defaut. Video "copy" (remux, tres leger — Safari lit
-// H.264 ET HEVC) ; passer VIDEO_CODEC=libx264 pour une compat navigateur totale.
+// Transcodage : actif par defaut. Video en libx264 (H.264 8-bit) par defaut :
+// c'est le SEUL codec lu de façon fiable par Safari iOS dans un <video>. Le MKV
+// est souvent en HEVC/x265 10-bit -> un simple remux (copy) echoue sur iPhone
+// (MediaError 4). Mettre VIDEO_CODEC=copy si TON catalogue est deja en H.264
+// (remux plus leger en CPU), ou un encodeur materiel (h264_nvenc/qsv/amf) si dispo.
 const TRANSCODE = process.env.TRANSCODE !== '0';
 const FFMPEG = process.env.FFMPEG_PATH?.trim() || 'ffmpeg';
-const VIDEO_CODEC = process.env.VIDEO_CODEC?.trim() || 'copy';
+const VIDEO_CODEC = process.env.VIDEO_CODEC?.trim() || 'libx264';
 
 // Signature HMAC : la passerelle proxifie un hote NON allowliste uniquement si
 // l'URL porte une signature valide, donc uniquement les URLs qu'ELLE a
@@ -167,7 +170,9 @@ function transcodeToFragmentedMp4(sourceStream, res, live = false) {
     ...(VIDEO_CODEC === 'libx264' ? ['-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p'] : []),
     '-c:a', 'aac', '-b:a', '160k', '-ac', '2',
     ...(live ? ['-flush_packets', '1'] : []),
-    '-movflags', 'frag_keyframe+empty_moov+default_base_moof' + (live ? '' : '+faststart'),
+    // fMP4 fragmente (moov en tete). PAS de +faststart : invalide sur une sortie
+    // en pipe non-seekable, ca produisait un flux illisible par Safari.
+    '-movflags', 'frag_keyframe+empty_moov+default_base_moof',
     '-f', 'mp4', 'pipe:1',
   ];
   const ff = spawn(FFMPEG, args, { stdio: ['pipe', 'pipe', 'pipe'] });
