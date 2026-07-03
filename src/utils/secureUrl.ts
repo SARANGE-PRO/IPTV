@@ -17,16 +17,18 @@ const MEDIA_GATEWAY_URL = process.env.NEXT_PUBLIC_MEDIA_GATEWAY_URL?.trim().repl
 /**
  * Flux video : HTTP -> passerelle HTTPS ; HTTPS/relatif inchange.
  *
- * `options.gateway` (defaut true) : quand false, on FORCE le direct (upgrade
- * TLS best-effort) sans router par la passerelle. Utile pour le contenu deja
- * lisible nativement (MP4/HLS) : il ne doit pas casser si la passerelle est
- * eteinte, et le telephone (IP residentielle/mobile) atteint le CDN sans elle.
+ * Le serveur Xtream est HTTP-only : sur une page HTTPS (Vercel), un flux HTTP
+ * est bloque (mixed-content) et un simple upgrade `http->https` echoue (le
+ * serveur ne parle pas TLS). La passerelle est donc le SEUL relais fiable — on
+ * y route TOUJOURS le flux HTTP quand elle est configuree. C'est elle qui
+ * decide, par ressource, entre passthrough (MP4/segments HLS), reecriture
+ * (playlist m3u8) et remux/transcodage (MKV/HEVC, live .ts).
+ *
+ * NB : une precedente version bypassait la passerelle pour le contenu "natif"
+ * (MP4/HLS) en tablant sur un HTTPS direct du CDN — invalide pour un Xtream
+ * HTTP-only, ce qui cassait toute la VOD et le Live Safari. Ne pas reintroduire.
  */
-export function secureMediaUrl(
-  value: string | null | undefined,
-  options: { gateway?: boolean } = {},
-): string | null {
-  const { gateway = true } = options;
+export function secureMediaUrl(value: string | null | undefined): string | null {
   if (value === null || value === undefined) return null;
   const url = value.trim();
   if (url === '') return null;
@@ -34,14 +36,13 @@ export function secureMediaUrl(
   if (!/^http:\/\//i.test(url)) return url;
 
   // Page HTTP (localhost/dev) : aucune contrainte mixed-content -> lecture
-  // DIRECTE depuis l'IP du client. C'est le seul chemin fiable pour les
-  // providers dont le CDN bloque les IP datacenter (passerelle -> 456).
+  // DIRECTE depuis l'IP du client (le CDN accepte l'IP residentielle).
   const onHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
   if (!onHttpsPage) return url;
 
-  // Page HTTPS : mixed-content -> passerelle si demandee ET configuree, sinon
-  // upgrade TLS best-effort (echoue proprement si le serveur n'a pas de HTTPS).
-  if (gateway && MEDIA_GATEWAY_URL !== '') {
+  // Page HTTPS : passerelle si configuree, sinon upgrade TLS best-effort
+  // (echoue proprement si le serveur n'a pas de vrai HTTPS).
+  if (MEDIA_GATEWAY_URL !== '') {
     return `${MEDIA_GATEWAY_URL}/_fetch?url=${encodeURIComponent(url)}`;
   }
   return url.replace(/^http:\/\//i, 'https://');

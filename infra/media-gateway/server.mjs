@@ -158,6 +158,14 @@ async function fetchAllowed(target, init, trusted, maxRedirects = 5) {
 
 /** Remux/transcode le flux upstream (stdin) vers du fMP4 (stdout) lisible en <video>. */
 function transcodeToFragmentedMp4(sourceStream, res, live = false) {
+  // Live (.ts direct) : REMUX video en `copy` — le flux Live est quasi toujours
+  // en H.264, deja lisible par Chrome/Edge. Copy = quasi zero CPU et une seule
+  // connexion continue (respecte max_connections:1). Un libx264 temps reel sur
+  // le Live saturait le CPU -> stalls -> timeout du lecteur (regression 9c3a789).
+  // Safari lit le Live en HLS m3u8 (segments passthrough), pas par ce chemin.
+  // VOD non-native (MKV/HEVC) : on garde VIDEO_CODEC (libx264 par defaut) car le
+  // conteneur peut etre du HEVC/10-bit que Safari refuse en <video>.
+  const videoCodec = live ? 'copy' : VIDEO_CODEC;
   const args = [
     '-hide_banner', '-loglevel', 'error', '-nostdin',
     // Live : flags basse latence (démarrage + zapping plus rapides).
@@ -166,8 +174,8 @@ function transcodeToFragmentedMp4(sourceStream, res, live = false) {
       : ['-fflags', '+genpts']),
     '-i', 'pipe:0',
     '-map', '0:v:0', '-map', '0:a:0?',
-    '-c:v', VIDEO_CODEC,
-    ...(VIDEO_CODEC === 'libx264' ? ['-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p'] : []),
+    '-c:v', videoCodec,
+    ...(videoCodec === 'libx264' ? ['-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p'] : []),
     '-c:a', 'aac', '-b:a', '160k', '-ac', '2',
     ...(live ? ['-flush_packets', '1'] : []),
     // fMP4 fragmente (moov en tete). PAS de +faststart : invalide sur une sortie
