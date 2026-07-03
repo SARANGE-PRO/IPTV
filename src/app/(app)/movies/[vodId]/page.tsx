@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/Button';
 import { IconArrowLeft, IconPlay } from '@/components/ui/icons';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import * as playbackRepository from '@/db/repositories/playbackRepository';
+import { resolveDuration, parseDurationToSeconds } from '@/services/player/mediaDurationService';
+import { progressRatio, shouldOfferResume } from '@/services/player/resumePlaybackService';
 import { tmdbBackdrop, tmdbPoster } from '@/services/tmdb/tmdbImage';
 import * as xtreamApi from '@/services/xtream/xtreamApi';
 import { buildVodStreamUrl } from '@/services/xtream/xtreamUrls';
@@ -35,6 +37,7 @@ export default function MovieDetailPage() {
   const [plot, setPlot] = useState<string | null>(null);
   const [xtreamPoster, setXtreamPoster] = useState<string | null>(null);
   const [xtreamBackdrop, setXtreamBackdrop] = useState<string | null>(null);
+  const [xtreamDurationSecs, setXtreamDurationSecs] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [startAt, setStartAt] = useState(0);
 
@@ -63,6 +66,9 @@ export default function MovieDetailPage() {
         setXtreamPoster(info.info?.movie_image ?? info.info?.cover ?? null);
         const backdrop = info.info?.backdrop_path;
         setXtreamBackdrop(Array.isArray(backdrop) ? (backdrop[0] ?? null) : (backdrop ?? null));
+        setXtreamDurationSecs(
+          parseDurationToSeconds(info.info?.duration_secs ?? info.info?.duration ?? null),
+        );
       })
       .catch(() => {
         // silencieux : le detail reste utilisable sans synopsis
@@ -88,11 +94,15 @@ export default function MovieDetailPage() {
     [credentials, movie],
   );
 
-  const canResume = progress !== null && progress.finished === 0 && progress.positionSec > 30;
-  const ratio =
-    progress !== null && progress.durationSec !== null && progress.durationSec > 0
-      ? progress.positionSec / progress.durationSec
-      : null;
+  // Duree de repli (Xtream puis TMDB) quand le player n'expose pas de duree fiable.
+  const fallbackDuration = resolveDuration({
+    xtreamSeconds: xtreamDurationSecs,
+    tmdbSeconds: tmdb?.runtimeMinutes != null ? tmdb.runtimeMinutes * 60 : null,
+  }).seconds;
+  const effResumeDuration = progress?.durationSec ?? fallbackDuration;
+  const canResume =
+    progress !== null && progress.finished === 0 && shouldOfferResume(progress.positionSec, effResumeDuration);
+  const ratio = progress !== null ? progressRatio(progress.positionSec, effResumeDuration) : null;
 
   const play = (from: number) => {
     setStartAt(from);
@@ -127,6 +137,7 @@ export default function MovieDetailPage() {
         <VideoPlayer
           src={src}
           startAt={startAt}
+          duration={fallbackDuration}
           poster={backdropUrl ?? posterUrl}
           onProgress={(pos, dur) =>
             saveProgress({
@@ -186,6 +197,11 @@ export default function MovieDetailPage() {
                   <IconPlay className="mr-2 h-4 w-4" />
                   {canResume && progress !== null ? `Reprendre (${formatClock(progress.positionSec)})` : 'Lire'}
                 </Button>
+                {canResume && (
+                  <Button size="lg" variant="secondary" onClick={() => play(0)}>
+                    Recommencer
+                  </Button>
+                )}
                 {showVlcButton && src !== null && <ExternalPlayer streamUrl={src} label="Lire dans VLC" />}
               </div>
             </div>

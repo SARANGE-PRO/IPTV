@@ -1,9 +1,11 @@
 import * as catalogRepository from '@/db/repositories/catalogRepository';
+import * as playbackRepository from '@/db/repositories/playbackRepository';
 import { normalizeShortEpg } from '@/services/epg/epgNormalizer';
 import { groupChannels } from '@/services/live/channelGroupingService';
 import { detectLanguage } from '@/services/media/languageDetectionService';
 import * as xtreamApi from '@/services/xtream/xtreamApi';
 import type { DeepDiagnostic, DeepMediaStats, LanguageCounts } from '@/types/deepDiagnostics';
+import type { MediaExtension } from '@/types/playbackCapabilities';
 import { mainFrenchChannelScore } from '@/utils/channelPriority';
 import type { XtreamCredentials } from '@/types/xtream';
 
@@ -18,6 +20,16 @@ const YEAR = /\b(?:19|20)\d{2}\b/;
 
 function emptyLanguages(): LanguageCounts {
   return { VF: 0, VOSTFR: 0, MULTI: 0, EN: 0, ES: 0, DE: 0, IT: 0, PT: 0, AR: 0, OTHER: 0 };
+}
+
+function emptyFormats(): Record<MediaExtension, number> {
+  return { mp4: 0, m3u8: 0, mkv: 0, ts: 0, avi: 0, other: 0 };
+}
+
+function bucketContainer(ext: string | null): MediaExtension {
+  const e = ext?.toLowerCase() ?? '';
+  if (e === 'mp4' || e === 'm3u8' || e === 'mkv' || e === 'ts' || e === 'avi') return e;
+  return 'other';
 }
 
 export async function generateDeepDiagnostic(
@@ -39,12 +51,16 @@ export async function generateDeepDiagnostic(
     withYearInTitle: 0,
     languages: emptyLanguages(),
   };
+  const movieFormats = emptyFormats();
+  let moviesWithContainer = 0;
   await catalogRepository.scanMovies(CAP, (m) => {
     movies.total += 1;
     if (m.posterUrl !== null && m.posterUrl !== '') movies.withImage += 1;
     if (m.isFrench === 1) movies.french += 1;
     if (YEAR.test(m.name)) movies.withYearInTitle += 1;
     movies.languages[detectLanguage(m.name, vodCatName.get(m.categoryId) ?? null)] += 1;
+    if (m.containerExtension !== null && m.containerExtension !== '') moviesWithContainer += 1;
+    movieFormats[bucketContainer(m.containerExtension)] += 1;
   });
   movies.withoutImage = movies.total - movies.withImage;
 
@@ -83,10 +99,20 @@ export async function generateDeepDiagnostic(
     }
   }
 
+  // Historique local recent (reprises) — jamais de lien de flux.
+  const history = await playbackRepository.getRecentHistory(200);
+
   return {
     generatedAtLabel,
     anonymized: true,
     scannedCap: CAP,
+    playback: {
+      movieFormats,
+      moviesWithContainer,
+      historyEntries: history.length,
+      historyWithDuration: history.filter((h) => h.durationSec !== null && h.durationSec > 0).length,
+      historyFinished: history.filter((h) => h.finished === 1).length,
+    },
     live: {
       totalFrenchStreams: frPool.length,
       logicalChannels: groups.length,

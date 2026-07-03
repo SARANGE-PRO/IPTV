@@ -1,8 +1,19 @@
 import type { MediaLanguage } from '@/types/mediaLanguage';
+import type { MediaExtension } from '@/types/playbackCapabilities';
 
 /** Rapport de diagnostic complet IPTV — anonymise, jamais de lien de flux. */
 
 export type LanguageCounts = Record<MediaLanguage, number>;
+
+export interface PlaybackStats {
+  /** Distribution des conteneurs de films (mp4/mkv/ts…). */
+  movieFormats: Record<MediaExtension, number>;
+  moviesWithContainer: number;
+  /** Historique local recent (reprises). */
+  historyEntries: number;
+  historyWithDuration: number;
+  historyFinished: number;
+}
 
 export interface DeepMediaStats {
   total: number;
@@ -31,4 +42,5 @@ export interface DeepDiagnostic {
   live: DeepLiveStats;
   movies: DeepMediaStats;
   series: DeepMediaStats;
+  playback: PlaybackStats;
 }

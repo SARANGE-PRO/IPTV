@@ -162,6 +162,7 @@ export default function SeriesDetailPage() {
           <VideoPlayer
             src={src}
             startAt={startAt}
+            duration={playingEp.durationSecs}
             poster={posterUrl}
             onProgress={(pos, dur) =>
               saveProgress({

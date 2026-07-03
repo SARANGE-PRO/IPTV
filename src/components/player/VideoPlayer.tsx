@@ -4,6 +4,8 @@ import type Hls from 'hls.js';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/cn';
+import { nativeDurationSeconds } from '@/services/player/mediaDurationService';
+import { isSeekable } from '@/services/player/playbackCapabilityService';
 import { secureImageSrc, secureMediaUrl } from '@/utils/secureUrl';
 
 /**
@@ -17,6 +19,8 @@ export interface VideoPlayerProps {
   poster?: string | null;
   live?: boolean;
   startAt?: number;
+  /** Duree totale de repli (Xtream/TMDB) quand le player n'expose pas de duree. */
+  duration?: number | null;
   onProgress?: (positionSec: number, durationSec: number | null) => void;
   onEnded?: () => void;
   className?: string;
@@ -45,6 +49,7 @@ export function VideoPlayer({
   poster,
   live = false,
   startAt = 0,
+  duration = null,
   onProgress,
   onEnded,
   className,
@@ -54,6 +59,7 @@ export function VideoPlayer({
   const [status, setStatus] = useState<PlayerStatus>('loading');
   const [message, setMessage] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [limitedSeek, setLimitedSeek] = useState(false);
   const streamUrl = secureMediaUrl(src);
   const posterUrl = secureImageSrc(poster);
 
@@ -65,6 +71,9 @@ export function VideoPlayer({
   startAtRef.current = startAt;
   const liveRef = useRef(live);
   liveRef.current = live;
+  const durationRef = useRef(duration);
+  durationRef.current = duration;
+  const resumedRef = useRef(false);
   const lastSentRef = useRef(0);
 
   useEffect(() => {
@@ -76,6 +85,8 @@ export function VideoPlayer({
 
     setStatus('loading');
     setMessage(null);
+    setLimitedSeek(false);
+    resumedRef.current = false;
 
     const fail = (msg: string) => {
       if (!cancelled) {
@@ -105,17 +116,34 @@ export function VideoPlayer({
       const now = Date.now();
       if (!force && now - lastSentRef.current < PROGRESS_INTERVAL_MS) return;
       lastSentRef.current = now;
-      const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : null;
-      onProgressRef.current?.(video.currentTime, duration);
+      // Duree effective : native fiable sinon repli Xtream/TMDB (jamais Infinity/NaN/0).
+      const effectiveDuration = nativeDurationSeconds(video.duration) ?? durationRef.current ?? null;
+      onProgressRef.current?.(video.currentTime, effectiveDuration);
     };
 
-    const handleLoadedMetadata = () => {
-      if (!liveRef.current && startAtRef.current > 0 && startAtRef.current < video.duration - 5) {
-        video.currentTime = startAtRef.current;
+    // Evalue la seekability (lazy) et applique la reprise UNE fois si possible.
+    // Appelee a loadedmetadata ET canplay (les plages seekable arrivent tard).
+    const evaluateSeek = () => {
+      if (liveRef.current || cancelled) return;
+      const seekable = isSeekable(video);
+      setLimitedSeek(!seekable);
+      if (resumedRef.current || !seekable || startAtRef.current <= 0) return;
+      const effDur = nativeDurationSeconds(video.duration) ?? durationRef.current;
+      if (effDur === null || startAtRef.current < effDur - 5) {
+        resumedRef.current = true;
+        try {
+          video.currentTime = startAtRef.current;
+        } catch {
+          // Le flux refuse le seek : on ne boucle pas, lecture depuis le debut.
+        }
       }
     };
+
+    const handleLoadedMetadata = () => evaluateSeek();
     const handleReady = () => {
-      if (!cancelled) setStatus('ready');
+      if (cancelled) return;
+      setStatus('ready');
+      evaluateSeek();
     };
     const handleTimeUpdate = () => sendProgress(false);
     const handlePause = () => sendProgress(true);
@@ -145,6 +173,14 @@ export function VideoPlayer({
     video.addEventListener('pause', handlePause);
     video.addEventListener('ended', handleEnded);
     video.addEventListener('error', handleError);
+
+    // Flush robuste de la progression : fermeture/retour d'onglet, navigation.
+    const flushProgress = () => sendProgress(true);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') sendProgress(true);
+    };
+    window.addEventListener('pagehide', flushProgress);
+    document.addEventListener('visibilitychange', handleVisibility);
 
     const isHls = /\.m3u8(?:$|[?#])/i.test(streamUrl);
     const canNativeHls = video.canPlayType('application/vnd.apple.mpegurl') !== '';
@@ -205,6 +241,8 @@ export function VideoPlayer({
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('ended', handleEnded);
       video.removeEventListener('error', handleError);
+      window.removeEventListener('pagehide', flushProgress);
+      document.removeEventListener('visibilitychange', handleVisibility);
       if (hlsRef.current !== null) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -215,27 +253,34 @@ export function VideoPlayer({
   }, [streamUrl, attempt]);
 
   return (
-    <div className={cn('relative overflow-hidden rounded-2xl bg-black', className)}>
-      <video
-        ref={videoRef}
-        controls
-        playsInline
-        autoPlay
-        poster={posterUrl ?? undefined}
-        className="aspect-video w-full bg-black"
-      />
-      {status === 'loading' && (
-        <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
-          <span className="h-8 w-8 animate-spin rounded-full border-2 border-ink-500 border-t-accent" />
-        </div>
-      )}
-      {status === 'error' && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/85 px-6 text-center">
-          <p className="text-sm leading-relaxed text-fg">{message}</p>
-          <Button size="sm" variant="secondary" onClick={() => setAttempt((a) => a + 1)}>
-            Réessayer
-          </Button>
-        </div>
+    <div>
+      <div className={cn('relative overflow-hidden rounded-2xl bg-black', className)}>
+        <video
+          ref={videoRef}
+          controls
+          playsInline
+          autoPlay
+          poster={posterUrl ?? undefined}
+          className="aspect-video w-full bg-black"
+        />
+        {status === 'loading' && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
+            <span className="h-8 w-8 animate-spin rounded-full border-2 border-ink-500 border-t-accent" />
+          </div>
+        )}
+        {status === 'error' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/85 px-6 text-center">
+            <p className="text-sm leading-relaxed text-fg">{message}</p>
+            <Button size="sm" variant="secondary" onClick={() => setAttempt((a) => a + 1)}>
+              Réessayer
+            </Button>
+          </div>
+        )}
+      </div>
+      {limitedSeek && !live && status !== 'error' && (
+        <p className="mt-2 text-[11px] text-fg-faint">
+          Ce flux ne permet pas toujours une reprise précise (lecture progressive).
+        </p>
       )}
     </div>
   );
