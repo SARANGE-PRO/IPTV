@@ -12,7 +12,8 @@ import { cleanTitle } from '@/utils/titleCleaner';
 const DECORATIVE =
   /[²³¹ʰ-˿ᴀ-ᶿⱠ-Ɀ⁰-₟①-⓿■-◿☀-➿]/g;
 
-function stripDecorative(raw: string): string {
+/** Retire les decorations unicode (ᴿᴬᵂ ⁶⁰ᶠᵖˢ ᴴᴰ ⱽᴵᴾ ⁴ᴷ ▶…) — partage. */
+export function stripDecorative(raw: string): string {
   return raw.replace(DECORATIVE, '').replace(/\s{2,}/g, ' ').trim();
 }
 

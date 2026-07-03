@@ -37,9 +37,11 @@ const SECTION_CARDS = [
 interface DiscoveryRails {
   topMovies: Movie[];
   frenchMovies: Movie[];
+  popularMovies: Movie[];
   recentMovies: Movie[];
   resumeSeries: Series[];
   frenchSeries: Series[];
+  topSeries: Series[];
   recentSeries: Series[];
   liveSports: LiveChannel[];
 }
@@ -47,9 +49,11 @@ interface DiscoveryRails {
 const EMPTY_RAILS: DiscoveryRails = {
   topMovies: [],
   frenchMovies: [],
+  popularMovies: [],
   recentMovies: [],
   resumeSeries: [],
   frenchSeries: [],
+  topSeries: [],
   recentSeries: [],
   liveSports: [],
 };
@@ -97,26 +101,60 @@ export default function HomePage() {
       getMovieTop10(10),
       catalogRepository.getFrenchMovies(18),
       catalogRepository.getRecentMovies(18),
+      catalogRepository.getTopRatedMovies(18),
       loadResumeSeries(),
       catalogRepository.getFrenchSeries(18),
       catalogRepository.getRecentSeries(18),
+      catalogRepository.getTopRatedSeries(18),
       catalogRepository.getLiveChannelsPage({ kind: 'frenchTheme', theme: 'sport' }, 0, 12),
-    ]).then(([topMovies, frenchMovies, recentMovies, resumeSeries, frenchSeries, recentSeries, liveSports]) => {
-      if (!active) return;
-      const topIds = new Set(topMovies.map((movie) => movie.id));
-      const recentIds = new Set(recentMovies.map((movie) => movie.id));
-      setDiscovery({
-        topMovies: topMovies.filter((movie) => !hiddenVod.has(movie.categoryId)),
-        frenchMovies: frenchMovies
-          .filter((movie) => !hiddenVod.has(movie.categoryId) && !topIds.has(movie.id) && !recentIds.has(movie.id))
-          .slice(0, 12),
-        recentMovies: recentMovies.filter((movie) => !hiddenVod.has(movie.categoryId)),
-        resumeSeries: resumeSeries.filter((series) => !hiddenSeries.has(series.categoryId)),
-        frenchSeries: frenchSeries.filter((series) => !hiddenSeries.has(series.categoryId)),
-        recentSeries: recentSeries.filter((series) => !hiddenSeries.has(series.categoryId)),
-        liveSports: liveSports.filter((channel) => !hiddenLive.has(channel.categoryId)),
-      });
-    });
+    ]).then(
+      ([
+        topMovies,
+        frenchMovies,
+        recentMovies,
+        popularMovies,
+        resumeSeries,
+        frenchSeries,
+        recentSeries,
+        topSeries,
+        liveSports,
+      ]) => {
+        if (!active) return;
+        const topIds = new Set(topMovies.map((movie) => movie.id));
+        const recentIds = new Set(recentMovies.map((movie) => movie.id));
+        const frenchMovieIds = new Set(frenchMovies.map((movie) => movie.id));
+        const frenchSeriesIds = new Set(frenchSeries.map((series) => series.id));
+        const recentSeriesIds = new Set(recentSeries.map((series) => series.id));
+        setDiscovery({
+          topMovies: topMovies.filter((movie) => !hiddenVod.has(movie.categoryId)),
+          frenchMovies: frenchMovies
+            .filter((movie) => !hiddenVod.has(movie.categoryId) && !topIds.has(movie.id) && !recentIds.has(movie.id))
+            .slice(0, 12),
+          popularMovies: popularMovies
+            .filter(
+              (movie) =>
+                !hiddenVod.has(movie.categoryId) &&
+                !topIds.has(movie.id) &&
+                !recentIds.has(movie.id) &&
+                !frenchMovieIds.has(movie.id),
+            )
+            .slice(0, 12),
+          recentMovies: recentMovies.filter((movie) => !hiddenVod.has(movie.categoryId)),
+          resumeSeries: resumeSeries.filter((series) => !hiddenSeries.has(series.categoryId)),
+          frenchSeries: frenchSeries.filter((series) => !hiddenSeries.has(series.categoryId)),
+          recentSeries: recentSeries.filter((series) => !hiddenSeries.has(series.categoryId)),
+          topSeries: topSeries
+            .filter(
+              (series) =>
+                !hiddenSeries.has(series.categoryId) &&
+                !frenchSeriesIds.has(series.id) &&
+                !recentSeriesIds.has(series.id),
+            )
+            .slice(0, 12),
+          liveSports: liveSports.filter((channel) => !hiddenLive.has(channel.categoryId)),
+        });
+      },
+    );
     return () => {
       active = false;
     };
@@ -230,6 +268,14 @@ export default function HomePage() {
         </Rail>
       )}
 
+      {discovery.popularMovies.length > 0 && (
+        <Rail title="Films populaires" action={<Link href="/movies" className="text-xs text-fg-faint hover:text-fg">Voir les films</Link>}>
+          {discovery.popularMovies.map((movie) => (
+            <MediaCard key={movie.id} className="w-32 shrink-0" href={`/movies/${movie.id}`} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} subtitle={movie.rating !== null ? `★ ${movie.rating.toFixed(1)}` : null} />
+          ))}
+        </Rail>
+      )}
+
       {discovery.resumeSeries.length > 0 && (
         <Rail title="Séries à reprendre" action={<Link href="/series" className="text-xs text-fg-faint hover:text-fg">Voir les séries</Link>}>
           {discovery.resumeSeries.map((series) => (
@@ -250,6 +296,14 @@ export default function HomePage() {
         <Rail title="Séries récemment ajoutées">
           {discovery.recentSeries.map((series) => (
             <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={displayTitle(series.name)} posterUrl={series.posterUrl} subtitle={series.releaseDate?.slice(0, 4)} />
+          ))}
+        </Rail>
+      )}
+
+      {discovery.topSeries.length > 0 && (
+        <Rail title="Séries mieux notées" action={<Link href="/series" className="text-xs text-fg-faint hover:text-fg">Voir les séries</Link>}>
+          {discovery.topSeries.map((series) => (
+            <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={displayTitle(series.name)} posterUrl={series.posterUrl} subtitle={series.rating !== null ? `★ ${series.rating.toFixed(1)}` : series.releaseDate?.slice(0, 4)} />
           ))}
         </Rail>
       )}

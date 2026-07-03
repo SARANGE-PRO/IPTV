@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -7,11 +8,14 @@ import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { IconArrowLeft } from '@/components/ui/icons';
+import { cn } from '@/lib/cn';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
+import { findChannelVersions } from '@/services/live/channelGroupingService';
 import { buildLiveStreamUrl } from '@/services/xtream/xtreamUrls';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
+import type { ChannelVersion } from '@/types/liveGrouping';
 import type { LiveChannel } from '@/types/models';
 import { displayChannelName } from '@/utils/displayTitle';
 
@@ -26,6 +30,7 @@ export default function LiveWatchPage() {
     previous: null,
     next: null,
   });
+  const [versions, setVersions] = useState<ChannelVersion[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -54,6 +59,22 @@ export default function LiveWatchPage() {
     }
   }, [channel, recordLiveWatch]);
 
+  // Variantes (HD/FHD/4K/RAW…) de la chaine — pool FR borne, uniquement pour les
+  // chaines FR (l'international reste "en vrac", sans selecteur).
+  useEffect(() => {
+    if (channel === null || channel === undefined || channel.isFrench !== 1) {
+      setVersions([]);
+      return;
+    }
+    let active = true;
+    void catalogRepository.getLiveChannelsPage({ kind: 'french' }, 0, 4000).then((pool) => {
+      if (active) setVersions(findChannelVersions(pool, channel));
+    });
+    return () => {
+      active = false;
+    };
+  }, [channel]);
+
   const src = credentials !== null ? buildLiveStreamUrl(credentials, streamId) : null;
 
   return (
@@ -81,6 +102,30 @@ export default function LiveWatchPage() {
         src !== null && (
           <div className="space-y-4">
             <VideoPlayer src={src} live />
+            {versions.length > 1 && (
+              <div>
+                <p className="mb-2 text-xs font-medium text-fg-muted">Autres versions</p>
+                <div className="flex flex-wrap gap-2">
+                  {versions.map((version) => (
+                    <Link
+                      key={version.channel.id}
+                      href={`/live/${version.channel.id}`}
+                      className={cn(
+                        'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                        version.channel.id === streamId
+                          ? 'bg-accent text-white'
+                          : 'bg-ink-800 text-fg-muted hover:text-fg',
+                      )}
+                    >
+                      {version.label}
+                    </Link>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] text-fg-faint">
+                  Une version ne fonctionne pas ? Essaie-en une autre.
+                </p>
+              </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"

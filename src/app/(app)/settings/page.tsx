@@ -10,6 +10,7 @@ import * as hiddenCategoriesRepository from '@/db/repositories/hiddenCategoriesR
 import * as tmdbRepository from '@/db/repositories/tmdbRepository';
 import { generateAdvancedDiagnostic } from '@/services/diagnostics/advancedPlaylistDiagnosticService';
 import { generateDiagnosticReport } from '@/services/diagnostics/catalogDiagnosticService';
+import { buildFrenchChannelListing } from '@/services/live/frenchChannelCatalog';
 import { clearSmartRankingCache } from '@/services/ranking/smartRankingService';
 import { useAuthStore } from '@/stores/authStore';
 import { useCatalogStore } from '@/stores/catalogStore';
@@ -64,6 +65,8 @@ export default function SettingsPage() {
   const [advRunning, setAdvRunning] = useState(false);
   const [advMessage, setAdvMessage] = useState<string | null>(null);
   const [historyCleared, setHistoryCleared] = useState(false);
+  const [frRunning, setFrRunning] = useState(false);
+  const [frMessage, setFrMessage] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   const [cacheMessage, setCacheMessage] = useState<string | null>(null);
   const [storageLabel, setStorageLabel] = useState<string | null>(null);
@@ -142,6 +145,29 @@ export default function SettingsPage() {
       setAdvMessage(err instanceof Error ? err.message : 'Erreur pendant le diagnostic avancé.');
     } finally {
       setAdvRunning(false);
+    }
+  };
+
+  const handleFrenchListing = async () => {
+    if (frRunning) return;
+    setFrRunning(true);
+    setFrMessage(null);
+    try {
+      const listing = await buildFrenchChannelListing();
+      const blob = new Blob([JSON.stringify(listing, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'chaines-fr-zibtv.json';
+      a.click();
+      URL.revokeObjectURL(url);
+      setFrMessage(
+        `${listing.logicalChannels} chaînes FR logiques · ${listing.multiVersionChannels} avec plusieurs versions · ${listing.channelsWithoutLogo} sans logo.`,
+      );
+    } catch {
+      setFrMessage('Impossible de générer le listing. Resynchronise le catalogue.');
+    } finally {
+      setFrRunning(false);
     }
   };
 
@@ -269,6 +295,20 @@ export default function SettingsPage() {
             ))}
           </div>
         )}
+      </Card>
+
+      <Card title="Télévision française">
+        <p className="text-xs leading-relaxed text-fg-muted">
+          Regroupe les chaînes FR (doublons HD/FHD/4K/RAW fusionnés) et exporte un listing anonymisé :
+          nom, nombre de versions, meilleure qualité, présence de logo. Aucun lien de flux.
+        </p>
+        <div className="mt-4">
+          <Button variant="secondary" onClick={() => void handleFrenchListing()} disabled={frRunning}>
+            <IconDownload className="mr-2 h-4 w-4" />
+            {frRunning ? 'Analyse…' : 'Exporter le listing FR'}
+          </Button>
+        </div>
+        {frMessage !== null && <p className="mt-3 text-xs text-fg-muted">{frMessage}</p>}
       </Card>
 
       <Card title="Diagnostic anonymisé">
