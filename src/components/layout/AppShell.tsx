@@ -17,6 +17,7 @@ import { useCatalogStore } from '@/stores/catalogStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import { useFilterStore } from '@/stores/filterStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
+import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 
 const NAV = [
   { href: '/', label: 'Accueil', icon: IconHome },
@@ -35,6 +36,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const hydrateRails = usePlaybackStore((s) => s.hydrateRails);
   const hydrateHidden = useFilterStore((s) => s.hydrateHidden);
   const hydrateDefaults = useFilterStore((s) => s.hydrateDefaults);
+  const hydrateUiSettings = useUiSettingsStore((s) => s.hydrate);
 
   useEffect(() => {
     void hydrateCatalog();
@@ -42,7 +44,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     void hydrateRails();
     void hydrateHidden();
     void hydrateDefaults();
-  }, [hydrateCatalog, hydrateFavorites, hydrateRails, hydrateHidden, hydrateDefaults]);
+    void hydrateUiSettings();
+  }, [hydrateCatalog, hydrateFavorites, hydrateRails, hydrateHidden, hydrateDefaults, hydrateUiSettings]);
 
   const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
 

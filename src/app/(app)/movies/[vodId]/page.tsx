@@ -17,6 +17,7 @@ import { buildVodStreamUrl } from '@/services/xtream/xtreamUrls';
 import { useTmdbMetadata } from '@/hooks/useTmdbMetadata';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
+import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { Movie, PlaybackEntry } from '@/types/models';
 import { formatClock } from '@/utils/format';
 
@@ -25,6 +26,7 @@ export default function MovieDetailPage() {
   const credentials = useAuthStore((s) => s.credentials);
   const saveProgress = usePlaybackStore((s) => s.saveProgress);
   const markFinished = usePlaybackStore((s) => s.markFinished);
+  const showVlcButton = useUiSettingsStore((s) => s.showVlcButton);
   const router = useRouter();
 
   const [movie, setMovie] = useState<Movie | null | undefined>(undefined);
@@ -162,11 +164,11 @@ export default function MovieDetailPage() {
                 </p>
               )}
               <div className="mt-6 flex flex-wrap items-start gap-3">
-                {src !== null && <ExternalPlayer streamUrl={src} label="Lire dans VLC" />}
-                <Button size="lg" variant="secondary" onClick={() => play(canResume && progress !== null ? progress.positionSec : 0)}>
+                <Button size="lg" onClick={() => play(canResume && progress !== null ? progress.positionSec : 0)}>
                   <IconPlay className="mr-2 h-4 w-4" />
-                  {canResume && progress !== null ? `Lecteur intégré (${formatClock(progress.positionSec)})` : 'Lecteur intégré'}
+                  {canResume && progress !== null ? `Reprendre (${formatClock(progress.positionSec)})` : 'Lire'}
                 </Button>
+                {showVlcButton && src !== null && <ExternalPlayer streamUrl={src} label="Lire dans VLC" />}
               </div>
             </div>
           </div>

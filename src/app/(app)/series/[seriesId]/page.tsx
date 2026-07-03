@@ -18,6 +18,7 @@ import { buildSeriesEpisodeUrl } from '@/services/xtream/xtreamUrls';
 import { useTmdbMetadata } from '@/hooks/useTmdbMetadata';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
+import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { Episode, PlaybackEntry, Series, SeriesDetails } from '@/types/models';
 import { formatClock } from '@/utils/format';
 
@@ -36,6 +37,7 @@ export default function SeriesDetailPage() {
   const credentials = useAuthStore((s) => s.credentials);
   const saveProgress = usePlaybackStore((s) => s.saveProgress);
   const markFinished = usePlaybackStore((s) => s.markFinished);
+  const showVlcButton = useUiSettingsStore((s) => s.showVlcButton);
   const router = useRouter();
 
   const [series, setSeries] = useState<Series | null | undefined>(undefined);
@@ -132,10 +134,12 @@ export default function SeriesDetailPage() {
 
       {playingEp !== null && src !== null ? (
         <div className="mb-6 space-y-4">
-          <ExternalPlayer
-            streamUrl={src}
-            label={`Lire S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`}
-          />
+          {showVlcButton && (
+            <ExternalPlayer
+              streamUrl={src}
+              label={`Lire S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`}
+            />
+          )}
           <VideoPlayer
             src={src}
             startAt={startAt}

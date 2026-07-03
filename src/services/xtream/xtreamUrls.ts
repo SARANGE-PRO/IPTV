@@ -29,11 +29,16 @@ function base(creds: XtreamCredentials): string {
   return creds.serverUrl.replace(/\/+$/, '');
 }
 
-/** Live : .m3u8 par defaut — HLS natif Safari iOS (le MPEG-TS brut n'y est pas lisible). */
+/**
+ * Live : flux .ts CONTINU par defaut (une seule connexion, transcode en fMP4
+ * par la passerelle). Evite le HLS multi-segments qui sature un compte
+ * max_connections:1 (chevauchement de connexions -> 458 -> coupures). En
+ * lecture native VLC, .ts se lit aussi directement.
+ */
 export function buildLiveStreamUrl(
   creds: XtreamCredentials,
   streamId: string,
-  extension: 'm3u8' | 'ts' = 'm3u8',
+  extension: 'm3u8' | 'ts' = 'ts',
 ): string {
   return `${base(creds)}/live/${seg(creds.username)}/${seg(creds.password)}/${seg(streamId)}.${extension}`;
 }

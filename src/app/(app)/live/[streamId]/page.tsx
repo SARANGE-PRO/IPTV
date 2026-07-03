@@ -11,12 +11,14 @@ import * as catalogRepository from '@/db/repositories/catalogRepository';
 import { buildLiveStreamUrl } from '@/services/xtream/xtreamUrls';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
+import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { LiveChannel } from '@/types/models';
 
 export default function LiveWatchPage() {
   const { streamId } = useParams<{ streamId: string }>();
   const credentials = useAuthStore((s) => s.credentials);
   const recordLiveWatch = usePlaybackStore((s) => s.recordLiveWatch);
+  const showVlcButton = useUiSettingsStore((s) => s.showVlcButton);
   const router = useRouter();
   const [channel, setChannel] = useState<LiveChannel | null | undefined>(undefined);
 
@@ -62,12 +64,8 @@ export default function LiveWatchPage() {
       ) : (
         src !== null && (
           <div className="space-y-4">
-            <ExternalPlayer streamUrl={src} label="Regarder dans VLC" />
-            <p className="text-xs leading-relaxed text-fg-faint">
-              Lecture native recommandée (tous codecs, depuis l’IP de ton appareil). Le lecteur
-              intégré ci-dessous ne marche que pour les flux compatibles navigateur.
-            </p>
             <VideoPlayer src={src} live />
+            {showVlcButton && <ExternalPlayer streamUrl={src} label="Regarder dans VLC" />}
           </div>
         )
       )}

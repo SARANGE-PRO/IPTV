@@ -124,11 +124,12 @@ function targetFor(req) {
     const target = new URL(raw);
     const sig = incoming.searchParams.get('_s');
     // Autorise si hote d'origine OU signature valide (segment reecrit par nous).
-    const trusted = isAllowed(target) || (sig !== null && sig === sign(raw));
-    return { target, trusted };
+    const allow = isAllowed(target);
+    const viaSig = !allow && sig !== null && sig === sign(raw);
+    return { target, trusted: allow || viaSig, viaSig };
   }
   const target = new URL(`${incoming.pathname}${incoming.search}`, upstreamOrigin);
-  return { target, trusted: isAllowed(target) };
+  return { target, trusted: isAllowed(target), viaSig: false };
 }
 async function fetchAllowed(target, init, trusted, maxRedirects = 5) {
   // 1er saut : hote allowliste OU URL signee (segment d'une playlist de
@@ -205,16 +206,22 @@ const server = http.createServer(async (req, res) => {
   });
 
   try {
-    const { target, trusted } = targetFor(req);
+    const { target, trusted, viaSig } = targetFor(req);
     if (!trusted) {
       clearTimeout(headerTimer);
       return void res.writeHead(403, { 'content-type': 'text/plain' }).end('Hote non autorise.');
     }
 
-    // UA player + Range (seek passthrough). On ne transmet PAS l'UA navigateur.
+    // Candidat au transcodage = film MKV/AVI OU flux live .ts DIRECT (pas un
+    // segment HLS signe). Pour ceux-la on n'envoie PAS de Range : le live .ts
+    // refuse le Range (405) et le transcode est progressif de toute facon.
+    const rawTarget = target.toString();
+    const transcodeCandidate = !viaSig && (UNSUPPORTED_EXT.test(rawTarget) || /\.ts(?:$|[?#])/i.test(rawTarget));
+
+    // UA player + Range (seek passthrough mp4). On ne transmet PAS l'UA navigateur.
     const headers = new Headers({ 'user-agent': UPSTREAM_UA, accept: '*/*' });
     const range = req.headers.range;
-    if (typeof range === 'string') headers.set('range', range);
+    if (typeof range === 'string' && !transcodeCandidate) headers.set('range', range);
 
     const { response, finalUrl } = await fetchAllowed(
       target,
@@ -227,12 +234,15 @@ const server = http.createServer(async (req, res) => {
     const urlStr = finalUrl.toString();
     const originalStr = target.toString(); // le CDN masque souvent l'extension apres redirection
     const isPlaylist = /mpegurl/i.test(contentType) || /\.m3u8(?:$|[?#])/i.test(urlStr);
+    // Flux live .ts DIRECT (une seule connexion continue) -> transcode ; mais un
+    // segment .ts HLS signe (viaSig) doit passer tel quel.
+    const isDirectTs = !viaSig && (/\.ts(?:$|[?#])/i.test(originalStr) || /mp2t/i.test(contentType));
     const needsTranscode =
       TRANSCODE &&
       req.method === 'GET' &&
       !isPlaylist &&
       response.body !== null &&
-      (UNSUPPORTED_EXT.test(originalStr) || UNSUPPORTED_EXT.test(urlStr) || UNSUPPORTED_CT.test(contentType));
+      (UNSUPPORTED_EXT.test(originalStr) || UNSUPPORTED_EXT.test(urlStr) || UNSUPPORTED_CT.test(contentType) || isDirectTs);
 
     if (needsTranscode) {
       return void transcodeToFragmentedMp4(Readable.fromWeb(response.body), res);

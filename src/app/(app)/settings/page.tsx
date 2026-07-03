@@ -12,6 +12,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useFilterStore } from '@/stores/filterStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
+import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { HiddenCategoryEntry, Section } from '@/types/models';
 import { formatCount } from '@/utils/format';
 
@@ -50,6 +51,8 @@ export default function SettingsPage() {
   const setDefaultLanguage = useFilterStore((s) => s.setDefaultLanguage);
   const unhideCategory = useFilterStore((s) => s.unhideCategory);
   const clearHistory = usePlaybackStore((s) => s.clearHistory);
+  const showVlcButton = useUiSettingsStore((s) => s.showVlcButton);
+  const setShowVlcButton = useUiSettingsStore((s) => s.setShowVlcButton);
   const router = useRouter();
 
   const [hiddenList, setHiddenList] = useState<HiddenCategoryEntry[]>([]);
@@ -207,6 +210,20 @@ export default function SettingsPage() {
                 </option>
               ))}
             </select>
+          </label>
+          <label className="flex items-center justify-between gap-3 pt-1">
+            <span className="text-xs font-medium text-fg-muted">
+              Afficher le bouton « Lire dans VLC »
+              <span className="mt-0.5 block text-[11px] font-normal text-fg-faint">
+                Lecture externe dans VLC (marche sans PC allumé). Masqué par défaut.
+              </span>
+            </span>
+            <input
+              type="checkbox"
+              checked={showVlcButton}
+              onChange={(e) => void setShowVlcButton(e.target.checked)}
+              className="h-5 w-5 shrink-0 rounded accent-accent"
+            />
           </label>
         </div>
       </Card>
