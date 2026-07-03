@@ -41,6 +41,16 @@ const VIDEO_CODEC = process.env.VIDEO_CODEC?.trim() || 'copy';
 const UNSUPPORTED_EXT = /\.(mkv|avi|wmv|flv|vob|mpg|mpeg|m2ts|divx|ogm)(?:$|[?#])/i;
 const UNSUPPORTED_CT = /matroska|x-msvideo|x-ms-wmv|x-flv|mp2t|avi|divx/i;
 
+// Proxy longue duree : une deconnexion client (le lecteur se ferme / zappe)
+// provoque EPIPE/ECONNRESET. Ces erreurs reseau ne doivent JAMAIS tuer le
+// process. On les avale ; toute autre erreur est loggee (sans URL) sans crash.
+process.on('uncaughtException', (err) => {
+  const code = err && err.code;
+  if (code === 'EPIPE' || code === 'ECONNRESET' || code === 'ERR_STREAM_PREMATURE_CLOSE') return;
+  console.error('[gateway] erreur:', code || (err && err.message) || 'inconnue');
+});
+process.on('unhandledRejection', () => {});
+
 function requiredUrl(name) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} est obligatoire.`);
@@ -139,9 +149,6 @@ function transcodeToFragmentedMp4(sourceStream, res) {
     // fMP4 en direct : pas de seek fiable -> on ne prometteur pas de Range.
     'accept-ranges': 'none',
   });
-  sourceStream.pipe(ff.stdin);
-  ff.stdout.pipe(res);
-  ff.stderr.on('data', () => {}); // ne journalise aucune URL
   const cleanup = () => {
     sourceStream.destroy?.();
     ff.kill('SIGKILL');
@@ -154,8 +161,16 @@ function transcodeToFragmentedMp4(sourceStream, res) {
   ff.on('close', () => {
     if (!res.writableEnded) res.end();
   });
+  // Gestion des deconnexions a chaque maillon (client, ffmpeg, upstream).
+  res.on('error', cleanup);
   res.once('close', cleanup);
+  ff.stdin.on('error', () => {}); // EPIPE si ffmpeg se ferme avant la fin de l'entree
+  ff.stdout.on('error', cleanup);
+  ff.stderr.on('data', () => {}); // ne journalise aucune URL
   sourceStream.on('error', cleanup);
+
+  sourceStream.pipe(ff.stdin);
+  ff.stdout.pipe(res);
 }
 
 const server = http.createServer(async (req, res) => {
@@ -219,7 +234,11 @@ const server = http.createServer(async (req, res) => {
     }
 
     res.writeHead(response.status);
-    Readable.fromWeb(response.body).pipe(res);
+    const body = Readable.fromWeb(response.body);
+    body.on('error', () => res.destroy());
+    res.on('error', () => body.destroy());
+    res.once('close', () => body.destroy());
+    body.pipe(res);
   } catch (error) {
     clearTimeout(headerTimer);
     if (res.headersSent) return void res.destroy();
