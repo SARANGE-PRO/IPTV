@@ -40,6 +40,7 @@ export default function MovieDetailPage() {
   const [xtreamDurationSecs, setXtreamDurationSecs] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [startAt, setStartAt] = useState(0);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -106,6 +107,7 @@ export default function MovieDetailPage() {
 
   const play = (from: number) => {
     setStartAt(from);
+    setFailed(false);
     setPlaying(true);
   };
 
@@ -134,23 +136,32 @@ export default function MovieDetailPage() {
       </div>
 
       {playing && src !== null && movie !== undefined ? (
-        <VideoPlayer
-          src={src}
-          startAt={startAt}
-          duration={fallbackDuration}
-          poster={backdropUrl ?? posterUrl}
-          onProgress={(pos, dur) =>
-            saveProgress({
-              type: 'vod',
-              itemId: vodId,
-              positionSec: pos,
-              durationSec: dur,
-              label: movie.name,
+        <div className="space-y-3">
+          <VideoPlayer
+            src={src}
+            startAt={startAt}
+            duration={fallbackDuration}
+            poster={backdropUrl ?? posterUrl}
+            onProgress={(pos, dur) =>
+              saveProgress({
+                type: 'vod',
+                itemId: vodId,
+                positionSec: pos,
+                durationSec: dur,
+                label: movie.name,
                 posterUrl,
-            })
-          }
-          onEnded={() => void markFinished('vod', vodId)}
-        />
+              })
+            }
+            onEnded={() => void markFinished('vod', vodId)}
+            onError={() => setFailed(true)}
+          />
+          {(showVlcButton || failed) && (
+            <ExternalPlayer
+              streamUrl={src}
+              label={failed ? 'Ça ne marche pas ici ? Ouvrir dans VLC' : 'Lire dans VLC'}
+            />
+          )}
+        </div>
       ) : (
         movie !== undefined && (
           <div className="flex animate-fade-in flex-col gap-6 sm:flex-row">

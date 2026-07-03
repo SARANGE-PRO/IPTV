@@ -48,6 +48,7 @@ export default function SeriesDetailPage() {
   const [season, setSeason] = useState<number | null>(null);
   const [playingEp, setPlayingEp] = useState<Episode | null>(null);
   const [startAt, setStartAt] = useState(0);
+  const [failed, setFailed] = useState(false);
   const [epProgress, setEpProgress] = useState<Map<string, PlaybackEntry>>(new Map());
 
   useEffect(() => {
@@ -119,6 +120,7 @@ export default function SeriesDetailPage() {
   const playEpisode = (ep: Episode) => {
     const prog = epProgress.get(ep.id);
     setStartAt(prog !== undefined && prog.finished === 0 && prog.positionSec > 30 ? prog.positionSec : 0);
+    setFailed(false);
     setPlayingEp(ep);
   };
 
@@ -153,10 +155,14 @@ export default function SeriesDetailPage() {
 
       {playingEp !== null && src !== null ? (
         <div className="mb-6 space-y-4">
-          {showVlcButton && (
+          {(showVlcButton || failed) && (
             <ExternalPlayer
               streamUrl={src}
-              label={`Lire S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`}
+              label={
+                failed
+                  ? 'Ça ne marche pas ici ? Ouvrir dans VLC'
+                  : `Lire S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`
+              }
             />
           )}
           <VideoPlayer
@@ -176,6 +182,7 @@ export default function SeriesDetailPage() {
               })
             }
             onEnded={() => void markFinished('episode', playingEp.id)}
+            onError={() => setFailed(true)}
           />
           <p className="mt-2 text-sm text-fg-muted">
             S{playingEp.seasonNumber}E{playingEp.episodeNumber} · {playingEp.title}

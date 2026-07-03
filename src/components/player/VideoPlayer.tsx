@@ -23,6 +23,8 @@ export interface VideoPlayerProps {
   duration?: number | null;
   onProgress?: (positionSec: number, durationSec: number | null) => void;
   onEnded?: () => void;
+  /** Appele quand la lecture echoue (permet de proposer un repli VLC). */
+  onError?: () => void;
   className?: string;
 }
 
@@ -32,7 +34,6 @@ const PROGRESS_INTERVAL_MS = 4000;
 
 /** Si la passerelle transcode (proxy maison + ffmpeg), on ne bloque plus les MKV. */
 const TRANSCODE_GATEWAY = process.env.NEXT_PUBLIC_MEDIA_GATEWAY_TRANSCODE === '1';
-const MEDIA_GATEWAY_CONFIGURED = (process.env.NEXT_PUBLIC_MEDIA_GATEWAY_URL?.trim() ?? '') !== '';
 
 /** Conteneurs qu'aucun navigateur ne decode nativement (transcodage requis). */
 const UNSUPPORTED_CONTAINER = /^(mkv|avi|wmv|flv|mpg|mpeg|vob|divx|m2ts|ts)$/i;
@@ -52,6 +53,7 @@ export function VideoPlayer({
   duration = null,
   onProgress,
   onEnded,
+  onError,
   className,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -68,6 +70,8 @@ export function VideoPlayer({
   onProgressRef.current = onProgress;
   const onEndedRef = useRef(onEnded);
   onEndedRef.current = onEnded;
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
   const startAtRef = useRef(startAt);
   startAtRef.current = startAt;
   const liveRef = useRef(live);
@@ -93,6 +97,7 @@ export function VideoPlayer({
       if (!cancelled) {
         setStatus('error');
         setMessage(msg);
+        onErrorRef.current?.();
       }
     };
 
@@ -153,17 +158,12 @@ export function VideoPlayer({
       onEndedRef.current?.();
     };
     const handleError = () => {
-      const needsHomeGateway =
-        MEDIA_GATEWAY_CONFIGURED &&
-        /^http:\/\//i.test(src) &&
-        typeof window !== 'undefined' &&
-        window.location.protocol === 'https:';
       fail(
-        needsHomeGateway
-          ? 'Passerelle maison inaccessible. Sur le PC, double-clique infra/media-gateway/start-windows.bat, ' +
-              'garde la fenêtre ZiBTV ouverte et désactive la mise en veille.'
-          : 'Flux indisponible : connexion refusée par le serveur, limite de connexions atteinte ou flux hors service. ' +
-              'Réessaie, ou teste un autre flux.',
+        liveRef.current
+          ? 'Lecture Live impossible dans ce navigateur (format non lu — fréquent sur iPhone/iPad —, flux hors ' +
+              'service, limite de connexions, ou passerelle arrêtée). Essaie une autre version, ou ouvre dans VLC.'
+          : 'Lecture impossible : format non lu par ce navigateur (ex. MKV sur iPhone), flux hors service ou ' +
+              'limite de connexions atteinte. Ouvre dans VLC, ou réessaie.',
       );
     };
 

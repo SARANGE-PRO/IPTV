@@ -19,6 +19,7 @@ import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { ChannelVersion } from '@/types/liveGrouping';
 import type { LiveChannel } from '@/types/models';
 import { displayChannelName } from '@/utils/displayTitle';
+import { supportsNativeHls } from '@/utils/playerSupport';
 
 export default function LiveWatchPage() {
   const { streamId } = useParams<{ streamId: string }>();
@@ -32,8 +33,13 @@ export default function LiveWatchPage() {
     next: null,
   });
   const [versions, setVersions] = useState<ChannelVersion[]>([]);
+  const [failed, setFailed] = useState(false);
+  // Safari (iPhone/iPad/macOS) : Live en HLS .m3u8 natif — il refuse le fMP4
+  // progressif de la passerelle. Chrome/Edge : .ts transcode (robuste).
+  const [liveExt] = useState<'m3u8' | 'ts'>(() => (supportsNativeHls() ? 'm3u8' : 'ts'));
 
   useEffect(() => {
+    setFailed(false);
     let active = true;
     void catalogRepository.getLiveChannelById(streamId).then((c) => {
       if (active) setChannel(c ?? null);
@@ -76,7 +82,9 @@ export default function LiveWatchPage() {
     };
   }, [channel]);
 
-  const src = credentials !== null ? buildLiveStreamUrl(credentials, streamId) : null;
+  // Player : extension selon le navigateur. VLC : toujours .ts (universel).
+  const src = credentials !== null ? buildLiveStreamUrl(credentials, streamId, liveExt) : null;
+  const vlcSrc = credentials !== null ? buildLiveStreamUrl(credentials, streamId, 'ts') : null;
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8">
@@ -102,7 +110,7 @@ export default function LiveWatchPage() {
       ) : (
         src !== null && (
           <div className="space-y-4">
-            <VideoPlayer src={src} live />
+            <VideoPlayer src={src} live onError={() => setFailed(true)} />
             <NowPlaying credentials={credentials} streamId={streamId} />
             {versions.length > 1 && (
               <div>
@@ -156,7 +164,12 @@ export default function LiveWatchPage() {
                 </span>
               </button>
             </div>
-            {showVlcButton && <ExternalPlayer streamUrl={src} label="Regarder dans VLC" />}
+            {(showVlcButton || failed) && vlcSrc !== null && (
+              <ExternalPlayer
+                streamUrl={vlcSrc}
+                label={failed ? 'Ça ne marche pas ici ? Ouvrir dans VLC' : 'Regarder dans VLC'}
+              />
+            )}
           </div>
         )
       )}
