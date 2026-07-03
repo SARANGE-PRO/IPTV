@@ -6,6 +6,7 @@ import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { MediaCard } from '@/components/shared/MediaCard';
+import { Button } from '@/components/ui/Button';
 import { IconSearch } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -32,16 +33,20 @@ export default function SearchPage() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [series, setSeries] = useState<Series[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     if (!searching) {
       setLive([]);
       setMovies([]);
       setSeries([]);
+      setError(false);
       return;
     }
     let active = true;
     setLoading(true);
+    setError(false);
     void Promise.all([
       catalogRepository.searchLiveChannels(debounced, 24),
       catalogRepository.searchMovies(debounced, 24),
@@ -53,15 +58,25 @@ export default function SearchPage() {
         setMovies(movieRows.filter((m) => !hiddenVod.has(m.categoryId)));
         setSeries(seriesRows.filter((s) => !hiddenSeries.has(s.categoryId)));
       })
+      .catch(() => {
+        if (!active) return;
+        // Echec (index Dexie indisponible) : on ne laisse pas de resultats
+        // perimes et on propose un retry explicite plutot qu'un ecran fige.
+        setLive([]);
+        setMovies([]);
+        setSeries([]);
+        setError(true);
+      })
       .finally(() => {
         if (active) setLoading(false);
       });
     return () => {
       active = false;
     };
-  }, [debounced, searching, hiddenLive, hiddenVod, hiddenSeries]);
+  }, [debounced, searching, hiddenLive, hiddenVod, hiddenSeries, retry]);
 
-  const noResult = searching && !loading && live.length === 0 && movies.length === 0 && series.length === 0;
+  const noResult =
+    searching && !loading && !error && live.length === 0 && movies.length === 0 && series.length === 0;
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
@@ -150,6 +165,20 @@ export default function SearchPage() {
             ))}
           </div>
         </section>
+      )}
+
+      {error && !loading && (
+        <div className="mt-8">
+          <EmptyState
+            title="Recherche momentanément indisponible"
+            hint="Une erreur est survenue pendant la recherche."
+            action={
+              <Button size="sm" variant="secondary" onClick={() => setRetry((r) => r + 1)}>
+                Réessayer
+              </Button>
+            }
+          />
+        </div>
       )}
 
       {noResult && (

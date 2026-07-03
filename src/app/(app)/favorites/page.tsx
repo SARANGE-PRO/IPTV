@@ -8,6 +8,7 @@ import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { MediaCard } from '@/components/shared/MediaCard';
 import { cn } from '@/lib/cn';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
+import * as favoritesRepository from '@/db/repositories/favoritesRepository';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import type { LiveChannel, Movie, Series } from '@/types/models';
 import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
@@ -20,11 +21,14 @@ const TABS: { type: Tab; label: string }[] = [
   { type: 'series', label: 'Séries' },
 ];
 
+type Sort = 'recent' | 'name';
+
 const byName = <T extends { name: string }>(items: T[]) =>
   [...items].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
 
 export default function FavoritesPage() {
   const [tab, setTab] = useState<Tab>('live');
+  const [sort, setSort] = useState<Sort>('recent');
   const ids = useFavoritesStore((s) => s.ids[tab]);
   const liveCount = useFavoritesStore((s) => s.ids.live.size);
   const vodCount = useFavoritesStore((s) => s.ids.vod.size);
@@ -36,29 +40,33 @@ export default function FavoritesPage() {
 
   useEffect(() => {
     let active = true;
-    const list = [...ids];
-    if (tab === 'live') {
-      void catalogRepository.getLiveChannelsByIds(list).then((r) => {
-        if (active) setLiveItems(byName(r));
-      });
-    } else if (tab === 'vod') {
-      void catalogRepository.getMoviesByIds(list).then((r) => {
-        if (active) setMovieItems(byName(r));
-      });
-    } else {
-      void catalogRepository.getSeriesByIds(list).then((r) => {
-        if (active) setSeriesItems(byName(r));
-      });
-    }
+    // Entrees triees par date d'ajout (recent -> ancien) : source de l'ordre
+    // "Récent". getXByIds ne garantit pas l'ordre, on le reimpose via rank.
+    void favoritesRepository.getFavoritesByType(tab).then(async (entries) => {
+      const orderedIds = entries.map((e) => e.itemId);
+      const rank = new Map(orderedIds.map((id, i) => [id, i] as const));
+      const recent = <T extends { id: string }>(items: T[]): T[] =>
+        [...items].sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+      if (tab === 'live') {
+        const r = await catalogRepository.getLiveChannelsByIds(orderedIds);
+        if (active) setLiveItems(recent(r));
+      } else if (tab === 'vod') {
+        const r = await catalogRepository.getMoviesByIds(orderedIds);
+        if (active) setMovieItems(recent(r));
+      } else {
+        const r = await catalogRepository.getSeriesByIds(orderedIds);
+        if (active) setSeriesItems(recent(r));
+      }
+    });
     return () => {
       active = false;
     };
   }, [tab, ids]);
 
-  const isEmpty =
-    (tab === 'live' && liveItems.length === 0) ||
-    (tab === 'vod' && movieItems.length === 0) ||
-    (tab === 'series' && seriesItems.length === 0);
+  // Vide = aucun favori de ce type (source de verite : le Set du store),
+  // pas "items pas encore chargés" — evite le flash d'ecran vide au switch d'onglet.
+  const isEmpty = counts[tab] === 0;
+  const ordered = <T extends { name: string }>(items: T[]): T[] => (sort === 'name' ? byName(items) : items);
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8">
@@ -79,6 +87,29 @@ export default function FavoritesPage() {
         ))}
       </div>
 
+      {!isEmpty && (
+        <div className="mt-4 flex items-center gap-2 text-xs">
+          <span className="text-fg-faint">Trier :</span>
+          {(
+            [
+              { key: 'recent', label: 'Récent' },
+              { key: 'name', label: 'A→Z' },
+            ] as const
+          ).map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setSort(key)}
+              className={cn(
+                'rounded-full px-3 py-1 font-medium transition-colors',
+                sort === key ? 'bg-ink-700 text-fg' : 'text-fg-muted hover:text-fg',
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="mt-6">
         {isEmpty ? (
           <EmptyState
@@ -87,7 +118,7 @@ export default function FavoritesPage() {
           />
         ) : tab === 'live' ? (
           <div className="flex flex-col">
-            {liveItems.map((c) => (
+            {ordered(liveItems).map((c) => (
               <Link
                 key={c.id}
                 href={`/live/${c.id}`}
@@ -102,7 +133,7 @@ export default function FavoritesPage() {
         ) : (
           <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
             {tab === 'vod'
-              ? movieItems.map((m) => (
+              ? ordered(movieItems).map((m) => (
                   <MediaCard
                     key={m.id}
                     href={`/movies/${m.id}`}
@@ -112,7 +143,7 @@ export default function FavoritesPage() {
                     favorite={{ type: 'vod', itemId: m.id }}
                   />
                 ))
-              : seriesItems.map((s) => (
+              : ordered(seriesItems).map((s) => (
                   <MediaCard
                     key={s.id}
                     href={`/series/${s.id}`}
