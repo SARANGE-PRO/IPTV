@@ -101,11 +101,15 @@ export default {
         return new Response('Hote non autorise.', { status: 403, headers: cors });
       }
 
+      // Beaucoup de serveurs Xtream renvoient 456 pour un User-Agent de
+      // navigateur (ils n'autorisent que des players). On envoie donc un UA
+      // de player (VLC par defaut, surchargeable via UPSTREAM_USER_AGENT) et
+      // on ne transmet PAS l'UA du navigateur. Range conserve pour le seek.
       const requestHeaders = new Headers();
-      for (const name of ['accept', 'accept-language', 'range', 'user-agent']) {
-        const value = request.headers.get(name);
-        if (value) requestHeaders.set(name, value);
-      }
+      requestHeaders.set('user-agent', env.UPSTREAM_USER_AGENT?.trim() || 'VLC/3.0.20 LibVLC/3.0.20');
+      requestHeaders.set('accept', '*/*');
+      const range = request.headers.get('range');
+      if (range) requestHeaders.set('range', range);
       const { response, finalUrl } = await fetchAllowed(
         target,
         { method: request.method, headers: requestHeaders },
