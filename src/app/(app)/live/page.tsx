@@ -472,7 +472,7 @@ export default function LivePage() {
                         </button>
                       )}
                     </div>
-                    <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4 lg:grid-cols-3">
+                    <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4">
                       {sec.slice(0, SECTION_CAP).map((g) => (
                         <ChannelGroupRow
                           key={g.key}
@@ -490,7 +490,7 @@ export default function LivePage() {
         </div>
       ) : (
         <div className="mt-3">
-          <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4 lg:grid-cols-3">
+          <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4">
             {loading && (grouped ? shownGroups.length : shown.length) === 0
               ? Array.from({ length: 12 }, (_, i) => <Skeleton key={i} className="mb-2 h-14 rounded-xl" />)
               : grouped

@@ -47,7 +47,14 @@ export function secureMediaUrl(
   return url.replace(/^http:\/\//i, 'https://');
 }
 
-/** Image : HTTPS uniquement (jamais la passerelle). HTTP -> null (monogramme). */
+/**
+ * Image : jamais la passerelle (elle est reservee a la video). Un logo HTTP est
+ * "upgrade" en HTTPS best-effort : sur une page HTTPS, le navigateur bloque
+ * l'image HTTP (mixed-content), donc la garder en HTTP = zero logo. La plupart
+ * des hotes de logos (souvent le serveur Xtream lui-meme) repondent en HTTPS ;
+ * si ce n'est pas le cas, l'image echoue proprement -> fallback monogramme
+ * (onError + brokenImageMemory). Aucune requete ne passe par la passerelle.
+ */
 export function secureImageSrc(value: string | null | undefined): string | null {
   if (value === null || value === undefined) return null;
   const url = value.trim();
@@ -55,6 +62,7 @@ export function secureImageSrc(value: string | null | undefined): string | null 
   if (url.startsWith('//')) return `https:${url}`;
   if (/^https:\/\//i.test(url)) return url;
   if (/^(data|blob):/i.test(url)) return url;
-  // HTTP ou schema relatif inconnu : pas de reseau, fallback monogramme.
+  if (/^http:\/\//i.test(url)) return url.replace(/^http:\/\//i, 'https://');
+  // Schema relatif/inconnu : pas de reseau, fallback monogramme.
   return null;
 }

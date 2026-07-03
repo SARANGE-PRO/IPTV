@@ -112,7 +112,7 @@ export default function SearchPage() {
       {live.length > 0 && (
         <section className="mt-8">
           <h2 className="mb-3 text-sm font-semibold text-fg">Chaînes ({live.length})</h2>
-          <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4 lg:grid-cols-3">
+          <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4">
             {live.map((c) => (
               <div key={c.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-ink-800">
                 <Link href={`/live/${c.id}`} className="flex min-w-0 flex-1 items-center gap-3">
