@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { ReminderButton } from '@/components/notifications/ReminderButton';
 import { cn } from '@/lib/cn';
 import type { SportEvent } from '@/services/live/sportEventsService';
 
@@ -101,6 +102,8 @@ export function SportHero({ events }: { events: SportEvent[] }) {
             </svg>
             Regarder
           </Link>
+
+          <ReminderButton event={ev} />
 
           {featured.length > 1 && (
             <div className="ml-auto flex gap-1.5">

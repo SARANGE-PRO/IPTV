@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { NotificationsCard } from '@/components/settings/NotificationsCard';
 import { TrackDiagnosticPanel } from '@/components/settings/TrackDiagnosticPanel';
 import { CountrySelect } from '@/components/shared/CountrySelect';
 import { Button } from '@/components/ui/Button';
@@ -415,6 +416,8 @@ export default function SettingsPage() {
         {diagMessage !== null && <p className="mt-3 text-xs text-fg-muted">{diagMessage}</p>}
         {advMessage !== null && <p className="mt-1 text-xs text-fg-muted">{advMessage}</p>}
       </Card>
+
+      <NotificationsCard />
 
       <TrackDiagnosticPanel credentials={credentials} />
 

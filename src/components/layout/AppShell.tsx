@@ -16,6 +16,7 @@ import {
   IconTv,
 } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
+import { useReminderScheduler } from '@/hooks/useReminderScheduler';
 import { requestPersistentStorage } from '@/lib/persistStorage';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
@@ -41,6 +42,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const hydrateHidden = useFilterStore((s) => s.hydrateHidden);
   const hydrateDefaults = useFilterStore((s) => s.hydrateDefaults);
   const hydrateUiSettings = useUiSettingsStore((s) => s.hydrate);
+
+  // Planifie les rappels d'evenements (notif premier plan + rattrapage).
+  useReminderScheduler();
 
   useEffect(() => {
     void hydrateCatalog();

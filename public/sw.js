@@ -45,6 +45,45 @@ function isCacheableAsset(url) {
   );
 }
 
+// --- Notifications / rappels --------------------------------------------------
+// Clic sur une notification : focus l'onglet PWA existant (ou en ouvre un) et
+// navigue vers la cible (ex. la chaine de l'evenement).
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      for (const client of clients) {
+        if ('focus' in client) {
+          if ('navigate' in client) client.navigate(target).catch(() => {});
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(target);
+    }),
+  );
+});
+
+// Web Push (serveur futur, opt-in) : payload JSON { title, body, url }. Sans
+// serveur push configure, cet ecouteur ne se declenche jamais — inoffensif.
+self.addEventListener('push', (event) => {
+  let payload = {};
+  try {
+    payload = event.data ? event.data.json() : {};
+  } catch {
+    payload = {};
+  }
+  const title = payload.title || 'ZiBTV';
+  const options = {
+    body: payload.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: payload.tag,
+    data: { url: payload.url || '/' },
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   if (request.method !== 'GET') return;

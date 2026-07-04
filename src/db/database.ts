@@ -8,6 +8,7 @@ import type {
   MediaType,
   Movie,
   PlaybackEntry,
+  Reminder,
   SearchIndexEntry,
   Section,
   Series,
@@ -51,6 +52,7 @@ export class IptvDatabase extends Dexie {
   sync_metadata!: Table<SyncMetadataEntry, Section>;
   search_index!: Table<SearchIndexEntry, string>;
   epg_cache!: Table<EpgEntry, string>;
+  reminders!: Table<Reminder, string>;
 
   constructor() {
     super('iptv-pwa');
@@ -129,6 +131,12 @@ export class IptvDatabase extends Dexie {
           tx.table('sync_metadata').clear(),
         ]);
       });
+
+    // v7 : rappels utilisateur (evenements sport). Table additive, aucune
+    // migration de donnees existantes -> pas de resync necessaire.
+    this.version(7).stores({
+      reminders: 'id, startAt, notifiedAt',
+    });
   }
 }
 

@@ -239,3 +239,26 @@ export interface SearchIndexEntry {
   /** Postings compacts "type:id", ex. "vod:5021". */
   refs: string[];
 }
+
+// --- Rappels / notifications ---------------------------------------------------
+
+/**
+ * Rappel programme par l'utilisateur (ex. match a venir). Notifie AU PREMIER
+ * PLAN + rattrapage a l'ouverture (pas de push serveur -> pas de reveil app
+ * fermee sur iOS). `notifiedAt` non nul = deja notifie (evite les doublons).
+ */
+export interface Reminder {
+  /** Cle stable : `${kind}:${channelId}:${startAt}` — idempotent. */
+  id: string;
+  kind: 'sport';
+  title: string;
+  channelId: string | null;
+  channelName: string | null;
+  /** Debut de l'evenement (ms epoch). */
+  startAt: number;
+  /** Minutes d'avance pour la notification (ex. 10). */
+  leadMinutes: number;
+  /** Horodatage de la notification envoyee, sinon null (en attente). */
+  notifiedAt: number | null;
+  createdAt: number;
+}
