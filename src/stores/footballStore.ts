@@ -31,7 +31,9 @@ export const FOOTBALL_COMPETITIONS: CompetitionInfo[] = [
   { code: 'WC', name: 'Coupe du Monde', kind: 'international' },
 ];
 
-const DEFAULT_COMPETITIONS = ['FL1', 'CL'];
+// Coupe du Monde incluse par defaut : pertinente pendant l'ete (intersaison des
+// championnats). Hors periode, WC renvoie simplement 0 match (inoffensif).
+const DEFAULT_COMPETITIONS = ['WC', 'CL', 'FL1'];
 
 interface FootballState {
   competitions: string[];
