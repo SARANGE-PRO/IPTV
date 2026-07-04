@@ -35,7 +35,9 @@ export function DetailModal({ children }: { children: ReactNode }) {
       onClick={() => router.back()}
       className="fixed inset-0 z-50 animate-fade-in overflow-y-auto overscroll-contain bg-black/70 backdrop-blur-sm"
     >
-      <div className="flex min-h-full items-start justify-center sm:py-8">
+      {/* pt-safe : sur iPhone en PWA, sans marge le contenu (retour/favori) passe
+          sous l'encoche. Desktop : py-8 centre le modal. */}
+      <div className="flex min-h-full items-start justify-center pt-safe sm:py-8">
         <div
           onClick={(e) => e.stopPropagation()}
           className="relative w-full max-w-4xl animate-modal-rise overflow-hidden bg-ink-950 shadow-2xl shadow-black/60 sm:rounded-3xl sm:border sm:border-ink-700/60"

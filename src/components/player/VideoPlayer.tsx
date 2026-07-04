@@ -58,6 +58,8 @@ type WebkitVideo = HTMLVideoElement & {
   webkitSetPresentationMode?: (mode: 'inline' | 'picture-in-picture' | 'fullscreen') => void;
   webkitPresentationMode?: string;
   webkitShowPlaybackTargetPicker?: () => void;
+  /** Plein ecran video iOS (le seul fiable en PWA installee — hors typings standard). */
+  webkitEnterFullscreen?: () => void;
   /** Auto-PiP declaratif (Chrome 120+, Safari recent) — hors typings standard. */
   autoPictureInPicture?: boolean;
 };
@@ -113,6 +115,8 @@ export function VideoPlayer({
   const [failure, setFailure] = useState<PlaybackFailure | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [limitedSeek, setLimitedSeek] = useState(false);
+  const [pipCapable, setPipCapable] = useState(false);
+  const [airplayCapable, setAirplayCapable] = useState(false);
   // Flux HTTP -> passerelle HTTPS (Xtream HTTP-only + mixed-content). C'est la
   // passerelle qui choisit passthrough (MP4/segments) ou remux/transcodage
   // (MKV/HEVC, live .ts). Le drapeau `transcode` ne sert plus qu'a autoriser
@@ -418,6 +422,56 @@ export function VideoPlayer({
     return () => document.removeEventListener('visibilitychange', enterPip);
   }, [autoPip]);
 
+  useEffect(() => {
+    const v = videoRef.current as WebkitVideo | null;
+    const pipStd = typeof document !== 'undefined' && document.pictureInPictureEnabled === true;
+    const pipWebkit = v?.webkitSupportsPresentationMode?.('picture-in-picture') === true;
+    setPipCapable(pipStd || pipWebkit);
+    setAirplayCapable(typeof v?.webkitShowPlaybackTargetPicker === 'function');
+  }, []);
+
+  // Plein ecran : en PWA iOS installee, le bouton NATIF de la <video> est souvent
+  // inerte (clic sans effet) ; l'appel programmatique webkitEnterFullscreen (geste
+  // utilisateur) fonctionne. Ailleurs : requestFullscreen standard.
+  const enterFullscreen = () => {
+    const video = videoRef.current as WebkitVideo | null;
+    if (video === null) return;
+    try {
+      if (typeof video.webkitEnterFullscreen === 'function') {
+        video.webkitEnterFullscreen();
+        return;
+      }
+    } catch {
+      // bascule sur l'API standard
+    }
+    try {
+      if (typeof video.requestFullscreen === 'function') void video.requestFullscreen().catch(() => {});
+    } catch {
+      // plein ecran indisponible sur ce media/navigateur
+    }
+  };
+
+  const togglePip = async () => {
+    const video = videoRef.current as WebkitVideo | null;
+    if (video === null) return;
+    try {
+      if (typeof video.webkitSetPresentationMode === 'function' && document.pictureInPictureEnabled !== true) {
+        video.webkitSetPresentationMode(
+          video.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture',
+        );
+        return;
+      }
+      if (document.pictureInPictureElement !== null) await document.exitPictureInPicture();
+      else if (typeof video.requestPictureInPicture === 'function') await video.requestPictureInPicture();
+    } catch {
+      // PiP indisponible sur ce media/navigateur
+    }
+  };
+
+  const showAirplay = () => {
+    (videoRef.current as WebkitVideo | null)?.webkitShowPlaybackTargetPicker?.();
+  };
+
   return (
     <div>
       <div className={cn('relative overflow-hidden rounded-2xl bg-black', className)}>
@@ -453,6 +507,51 @@ export function VideoPlayer({
           </div>
         )}
       </div>
+      {/* Contrôles app SOUS le lecteur (jamais en surimpression -> ne bloquent pas
+          les contrôles natifs). Plein écran fiable en PWA iOS + PiP + AirPlay. */}
+      {status === 'ready' && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={enterFullscreen}
+            aria-label="Plein écran"
+            className="inline-flex items-center gap-1.5 rounded-lg bg-ink-800 px-3 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg"
+          >
+            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
+              <path d="M4 9V5a1 1 0 0 1 1-1h4M20 9V5a1 1 0 0 0-1-1h-4M4 15v4a1 1 0 0 0 1 1h4M20 15v4a1 1 0 0 1-1 1h-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Plein écran
+          </button>
+          {pipCapable && (
+            <button
+              type="button"
+              onClick={() => void togglePip()}
+              aria-label="Incrustation (Picture-in-Picture)"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-ink-800 px-3 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg"
+            >
+              <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
+                <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
+                <rect x="12" y="11" width="7" height="5" rx="1" fill="currentColor" />
+              </svg>
+              Incrustation
+            </button>
+          )}
+          {airplayCapable && (
+            <button
+              type="button"
+              onClick={showAirplay}
+              aria-label="Diffuser via AirPlay"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-ink-800 px-3 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg"
+            >
+              <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
+                <path d="M5 17H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                <path d="M12 14l5 6H7l5-6Z" fill="currentColor" />
+              </svg>
+              AirPlay
+            </button>
+          )}
+        </div>
+      )}
       {limitedSeek && !live && status !== 'error' && (
         <p className="mt-2 text-[11px] text-fg-faint">
           Ce flux ne permet pas toujours une reprise précise (lecture progressive).
