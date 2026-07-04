@@ -4,11 +4,13 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
 import { BrandLogo } from '@/components/shared/BrandLogo';
+import { CommandPalette } from '@/components/shared/CommandPalette';
 import { SyncProgress } from '@/components/layout/SyncProgress';
 import {
   IconFilm,
   IconHeart,
   IconHome,
+  IconSearch,
   IconSeries,
   IconSettings,
   IconTv,
@@ -56,7 +58,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-dvh md:pl-60">
       <aside className="glass fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-white/5 px-4 py-8 md:flex">
-        <BrandLogo className="mb-8 px-2" markClassName="h-8 w-8" textClassName="text-lg" />
+        <BrandLogo className="mb-6 px-2" markClassName="h-8 w-8" textClassName="text-lg" />
+        <button
+          type="button"
+          onClick={() => window.dispatchEvent(new Event('zib:command'))}
+          className="mb-4 flex items-center gap-2.5 rounded-xl border border-ink-600 bg-ink-800/70 px-3 py-2 text-sm text-fg-faint transition-colors hover:border-ink-500 hover:text-fg-muted"
+        >
+          <IconSearch className="h-4 w-4" />
+          <span className="flex-1 text-left">Rechercher</span>
+          <kbd className="rounded bg-ink-700 px-1.5 py-0.5 text-[10px] font-medium text-fg-muted">⌘K</kbd>
+        </button>
         <nav className="flex flex-col gap-1">
           {NAV.map(({ href, label, icon: Icon }) => (
             <Link
@@ -77,6 +88,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="pb-24 pt-safe md:pb-8">{children}</div>
 
       <SyncProgress />
+      <CommandPalette />
 
       <nav className="glass fixed inset-x-0 bottom-0 z-40 border-t border-white/5 pb-safe md:hidden">
         <div className="flex items-stretch justify-around">
