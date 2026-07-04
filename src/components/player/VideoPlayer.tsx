@@ -427,38 +427,6 @@ export function VideoPlayer({
           poster={posterUrl ?? undefined}
           className="aspect-video w-full bg-black"
         />
-        {status === 'ready' && (airplaySupported || pipSupported) && (
-          <div className="absolute right-2 top-2 flex gap-1.5">
-            {airplaySupported && (
-              <button
-                type="button"
-                onClick={showAirplay}
-                aria-label="AirPlay"
-                title="Diffuser (AirPlay)"
-                className="rounded-lg bg-black/60 p-2 text-white/90 transition-colors hover:bg-black/80"
-              >
-                <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
-                  <path d="M5 17H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                  <path d="M12 14l5 6H7l5-6Z" fill="currentColor" />
-                </svg>
-              </button>
-            )}
-            {pipSupported && (
-              <button
-                type="button"
-                onClick={() => void togglePip()}
-                aria-label="Picture-in-Picture"
-                title="Picture-in-Picture"
-                className="rounded-lg bg-black/60 p-2 text-white/90 transition-colors hover:bg-black/80"
-              >
-                <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
-                  <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
-                  <rect x="12" y="11" width="7" height="5" rx="1" fill="currentColor" />
-                </svg>
-              </button>
-            )}
-          </div>
-        )}
         {status === 'loading' && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
             <span className="h-8 w-8 animate-spin rounded-full border-2 border-ink-500 border-t-accent" />
@@ -483,6 +451,41 @@ export function VideoPlayer({
           </div>
         )}
       </div>
+      {/* Contrôles app SOUS le lecteur (jamais en surimpression) : sur iPhone,
+          AirPlay/PiP/plein écran natifs vivent en haut-droite de la <video> ; des
+          boutons en overlay les recouvraient et bloquaient le tap. */}
+      {status === 'ready' && (airplaySupported || pipSupported) && (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {airplaySupported && (
+            <button
+              type="button"
+              onClick={showAirplay}
+              aria-label="Diffuser via AirPlay"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-ink-800 px-3 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg"
+            >
+              <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
+                <path d="M5 17H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                <path d="M12 14l5 6H7l5-6Z" fill="currentColor" />
+              </svg>
+              AirPlay
+            </button>
+          )}
+          {pipSupported && (
+            <button
+              type="button"
+              onClick={() => void togglePip()}
+              aria-label="Picture-in-Picture"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-ink-800 px-3 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg"
+            >
+              <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
+                <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
+                <rect x="12" y="11" width="7" height="5" rx="1" fill="currentColor" />
+              </svg>
+              PiP
+            </button>
+          )}
+        </div>
+      )}
       {limitedSeek && !live && status !== 'error' && (
         <p className="mt-2 text-[11px] text-fg-faint">
           Ce flux ne permet pas toujours une reprise précise (lecture progressive).
