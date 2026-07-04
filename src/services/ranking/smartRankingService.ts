@@ -110,12 +110,27 @@ function curate<T extends Rankable>(
     if (existing === undefined || score > existing.score) bestByTitle.set(key, { item, score, solid });
   }
   const ranked = [...bestByTitle.values()].sort((a, b) => b.score - a.score);
-  const solid = ranked.filter((r) => r.solid).map((r) => r.item);
-  if (solid.length >= limit) return solid.slice(0, limit);
-  // Repli : complete avec les meilleurs restants (affiche presente) sans doublon.
-  const chosen = new Set(solid.map((i) => i.id));
-  const fill = ranked.filter((r) => !chosen.has(r.item.id)).map((r) => r.item);
-  return [...solid, ...fill].slice(0, limit);
+  const isFr = (r: { item: T }) => r.item.isFrench === 1;
+  // PRIORITE VF : « à la une » / Top 10 en français d'abord. Tiers successifs :
+  // (VF + solide) -> (VF) -> (solide non-FR) -> (reste). Repli gracieux si trop
+  // peu de VF pour remplir le quota.
+  const tiers = [
+    ranked.filter((r) => r.solid && isFr(r)),
+    ranked.filter((r) => !r.solid && isFr(r)),
+    ranked.filter((r) => r.solid && !isFr(r)),
+    ranked.filter((r) => !r.solid && !isFr(r)),
+  ];
+  const out: T[] = [];
+  const seen = new Set<string>();
+  for (const tier of tiers) {
+    for (const r of tier) {
+      if (seen.has(r.item.id)) continue;
+      seen.add(r.item.id);
+      out.push(r.item);
+      if (out.length >= limit) return out;
+    }
+  }
+  return out;
 }
 
 export async function getMovieTop10(limit = 10): Promise<Movie[]> {

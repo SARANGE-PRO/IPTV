@@ -320,11 +320,6 @@ export function MovieDetailView({ vodId }: { vodId: string }) {
                     {tmdb.runtimeMinutes} min
                   </span>
                 )}
-                {movie.containerExtension != null && (
-                  <span className="rounded-md bg-ink-700 px-2 py-0.5 text-[11px] font-medium text-fg-muted">
-                    {movie.containerExtension.toUpperCase()}
-                  </span>
-                )}
               </div>
               {tmdb !== null && tmdb.genres.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-1.5">

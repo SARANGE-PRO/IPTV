@@ -25,9 +25,9 @@ export function mediaBadges(rawName: string | null | undefined, container: strin
   if (/\b(multi|vff|truefrench|vf2|vfq|vfi)\b/.test(n)) badges.push({ label: 'MULTI', tone: 'lang' });
   else if (/\bvostfr\b/.test(n)) badges.push({ label: 'VOSTFR', tone: 'lang' });
 
-  const ext = container?.trim().toUpperCase();
-  if (ext !== undefined && ext !== '') badges.push({ label: ext, tone: 'format' });
-
+  // Le conteneur (MKV/MP4...) n'est PAS un badge : sans interet pour l'utilisateur
+  // et redondant. On l'ignore volontairement.
+  void container;
   return badges;
 }
 

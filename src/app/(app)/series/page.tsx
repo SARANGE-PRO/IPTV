@@ -14,11 +14,10 @@ const fetchPage = (categoryId: string, offset: number, limit: number, sort: cata
 const searchItems = (query: string, limit: number) => catalogRepository.searchSeries(query, limit);
 const hrefFor = (s: Series) => `/series/${s.id}`;
 const subtitleFor = (s: Series) => {
+  // Note affichee UNIQUEMENT en pastille sur la carte -> ici, seulement l'annee.
   const fallback = s.releaseDate != null ? Number.parseInt(s.releaseDate.slice(0, 4), 10) : null;
   const year = displayYear(s.name, Number.isFinite(fallback) ? fallback : null);
-  return [year !== null ? String(year) : null, s.rating !== null ? `★ ${s.rating.toFixed(1)}` : null]
-    .filter((value): value is string => value !== null)
-    .join(' · ');
+  return year !== null ? String(year) : null;
 };
 
 const QUICK_FILTERS: QuickFilterDefinition[] = [

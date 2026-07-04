@@ -13,10 +13,9 @@ const fetchPage = (categoryId: string, offset: number, limit: number, sort: cata
 const searchItems = (query: string, limit: number) => catalogRepository.searchMovies(query, limit);
 const hrefFor = (m: Movie) => `/movies/${m.id}`;
 const subtitleFor = (m: Movie) => {
+  // Note affichee UNIQUEMENT en pastille sur la carte -> ici, seulement l'annee.
   const year = displayYear(m.name, m.year);
-  return [year !== null ? String(year) : null, m.rating !== null ? `★ ${m.rating.toFixed(1)}` : null]
-    .filter((value): value is string => value !== null)
-    .join(' · ');
+  return year !== null ? String(year) : null;
 };
 
 const QUICK_FILTERS: QuickFilterDefinition[] = [
