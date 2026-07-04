@@ -4,8 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { ZibLogo } from '@/components/shared/ZibLogo';
 import { ChannelLogo } from '@/components/shared/ChannelLogo';
-import { SportEventsRail } from '@/components/live/SportEventsRail';
-import { SportHero } from '@/components/live/SportHero';
+import { FootballHeader } from '@/components/football/FootballHeader';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { MediaCard } from '@/components/shared/MediaCard';
 import { PosterImage } from '@/components/shared/PosterImage';
@@ -22,8 +21,6 @@ import * as playbackRepository from '@/services/data/playbackDataService';
 import { getMovieTop10, getSeriesTop10 } from '@/services/ranking/smartRankingService';
 import { loadTrending, type TrendingItem } from '@/services/discovery/trendingService';
 import { tmdbPoster } from '@/services/tmdb/tmdbImage';
-import { loadHomeSportEvents } from '@/services/live/externalSportEventsService';
-import type { SportEvent } from '@/services/live/sportEventsService';
 import type { LiveChannel, Movie, PlaybackEntry, Series } from '@/types/models';
 import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
 import { formatCount } from '@/utils/format';
@@ -82,7 +79,6 @@ export default function HomePage() {
   const hiddenVod = useFilterStore((s) => s.hidden.vod);
   const hiddenSeries = useFilterStore((s) => s.hidden.series);
   const [discovery, setDiscovery] = useState<DiscoveryRails>(EMPTY_RAILS);
-  const [sportEvents, setSportEvents] = useState<SportEvent[]>([]);
   const [trending, setTrending] = useState<{ movies: TrendingItem[]; series: TrendingItem[] }>({
     movies: [],
     series: [],
@@ -95,26 +91,6 @@ export default function HomePage() {
   const hasCatalog =
     sections.live.itemCount + sections.vod.itemCount + sections.series.itemCount > 0;
   const totalFavs = liveFavs + vodFavs + seriesFavs;
-  const majorEvents = sportEvents.filter((e) => e.major);
-
-  // Evenements sportifs a venir (foot + MMA) : scan EPG borne, cache 30 min.
-  useEffect(() => {
-    if (!hasCatalog || credentials === null) {
-      setSportEvents([]);
-      return;
-    }
-    let active = true;
-    void loadHomeSportEvents(credentials)
-      .then((events) => {
-        if (active) setSportEvents(events);
-      })
-      .catch(() => {
-        // EPG indispo : pas de rail sportif, jamais bloquant.
-      });
-    return () => {
-      active = false;
-    };
-  }, [hasCatalog, credentials]);
 
   // Tendances TMDB de la semaine mappees sur le catalogue VF (affiches HD TMDB).
   useEffect(() => {
@@ -243,8 +219,7 @@ export default function HomePage() {
         Rechercher une chaîne, un film, une série…
       </Link>
 
-      <SportHero events={sportEvents} />
-      <SportEventsRail events={sportEvents} title="À suivre en direct" />
+      <FootballHeader />
 
       {!hasCatalog && (
         <div className="mt-8">
@@ -450,10 +425,6 @@ export default function HomePage() {
             {totalFavs} favori{totalFavs > 1 ? 's' : ''}
           </span>
         </Link>
-      )}
-
-      {majorEvents.length > 0 && (
-        <SportEventsRail events={majorEvents} title="Grands événements sportifs" />
       )}
 
       {hasCatalog && (

@@ -9,6 +9,9 @@
 /** Cle TMDB — disponible uniquement cote serveur (Route Handlers). Etape 9. */
 export const TMDB_API_KEY = process.env.TMDB_API_KEY ?? '';
 
+/** Cle football-data.org — scores/matchs foot en direct (serveur uniquement). */
+export const FOOTBALL_API_KEY = process.env.FOOTBALL_API_KEY ?? '';
+
 /** Vrai si le code s'execute cote serveur (Node), faux dans le navigateur. */
 export const IS_SERVER = typeof window === 'undefined';
 

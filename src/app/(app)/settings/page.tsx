@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { FootballCard } from '@/components/settings/FootballCard';
 import { NotificationsCard } from '@/components/settings/NotificationsCard';
 import { TrackDiagnosticPanel } from '@/components/settings/TrackDiagnosticPanel';
 import { BrandMark } from '@/components/shared/BrandMark';
@@ -371,6 +372,8 @@ export default function SettingsPage() {
           </label>
         </div>
       </Card>
+
+      <FootballCard />
 
       <Card title={`Catégories masquées (${hiddenList.length})`}>
         {hiddenList.length === 0 ? (
