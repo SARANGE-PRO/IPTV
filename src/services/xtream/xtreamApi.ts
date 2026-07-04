@@ -69,3 +69,9 @@ export function getShortEpg(
 ): Promise<XtreamShortEpg> {
   return callXtream<XtreamShortEpg>(creds, 'get_short_epg', { stream_id: streamId, limit });
 }
+
+/** EPG COMPLET d'une chaine (plusieurs jours). Meme forme que short_epg.
+ *  Metadonnees uniquement — pour la detection des evenements sportifs 7 jours. */
+export function getFullEpg(creds: XtreamCredentials, streamId: string): Promise<XtreamShortEpg> {
+  return callXtream<XtreamShortEpg>(creds, 'get_simple_data_table', { stream_id: streamId });
+}

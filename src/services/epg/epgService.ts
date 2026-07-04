@@ -37,6 +37,32 @@ export async function getChannelEpg(
   }
 }
 
+const FULL_TTL_MS = 3 * 60 * 60 * 1000; // 3 h : l'EPG multi-jours bouge lentement
+
+/**
+ * EPG COMPLET d'une chaine (plusieurs jours) — pour la detection sport 7j.
+ * Cache Dexie sous une cle distincte (`full:<id>`) pour ne pas ecraser le cache
+ * short-EPG, stale-while-error.
+ */
+export async function getFullChannelEpg(
+  credentials: XtreamCredentials,
+  streamId: string,
+): Promise<EpgProgramme[]> {
+  const cacheId = `full:${streamId}`;
+  const cached = await db.epg_cache.get(cacheId);
+  if (cached !== undefined && Date.now() - cached.fetchedAt < FULL_TTL_MS) {
+    return cached.programmes;
+  }
+  try {
+    const raw = await xtreamApi.getFullEpg(credentials, streamId);
+    const programmes = normalizeShortEpg(raw);
+    await db.epg_cache.put({ id: cacheId, programmes, fetchedAt: Date.now() });
+    return programmes;
+  } catch {
+    return cached?.programmes ?? [];
+  }
+}
+
 export async function clearEpgCache(): Promise<void> {
   await db.epg_cache.clear();
 }

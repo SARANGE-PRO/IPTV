@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { BrandLogo } from '@/components/shared/BrandLogo';
 import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { SportEventsRail } from '@/components/live/SportEventsRail';
+import { SportHero } from '@/components/live/SportHero';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { MediaCard } from '@/components/shared/MediaCard';
 import { PosterImage } from '@/components/shared/PosterImage';
@@ -208,6 +209,7 @@ export default function HomePage() {
         Rechercher une chaîne, un film, une série…
       </Link>
 
+      <SportHero events={sportEvents} />
       <SportEventsRail events={sportEvents} title="À suivre en direct" />
 
       {!hasCatalog && (

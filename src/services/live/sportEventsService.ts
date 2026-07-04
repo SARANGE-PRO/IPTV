@@ -1,6 +1,6 @@
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import * as settingsRepository from '@/db/repositories/settingsRepository';
-import { getChannelEpg } from '@/services/epg/epgService';
+import { getFullChannelEpg } from '@/services/epg/epgService';
 import type { EpgProgramme } from '@/types/epg';
 import type { XtreamCredentials } from '@/types/xtream';
 
@@ -28,12 +28,10 @@ export interface SportEvent {
 
 const CACHE_KEY = 'homeSportEvents';
 const CACHE_TTL_MS = 30 * 60 * 1000;
-const MAX_CHANNELS = 8;
-// 48 h : horizon honnete au vu de l'EPG demande (16 prog./chaine). Au-dela, le
-// short-EPG ne couvre de toute facon pas les chaines sport chargees.
-const HORIZON_MS = 48 * 60 * 60 * 1000;
-const EPG_LIMIT = 16;
-const MAX_EVENTS = 24;
+const MAX_CHANNELS = 10;
+// 7 jours : l'EPG COMPLET (get_simple_data_table) couvre plusieurs jours.
+const HORIZON_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_EVENTS = 30;
 
 const SPORT_CHANNEL_HINTS = [
   'bein', 'rmc sport', 'canal+ sport', 'canal plus sport', 'canal sport',
@@ -139,7 +137,7 @@ export async function findUpcomingSportEvents(credentials: XtreamCredentials): P
   // EPG des chaines candidates en PARALLELE (au lieu de 8 aller-retours en serie).
   const epgByChannel = await Promise.all(
     candidates.map((channel) =>
-      getChannelEpg(credentials, channel.id, EPG_LIMIT)
+      getFullChannelEpg(credentials, channel.id)
         .catch(() => [] as EpgProgramme[])
         .then((programmes) => ({ channel, programmes })),
     ),

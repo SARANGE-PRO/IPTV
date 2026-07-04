@@ -24,6 +24,8 @@ const ALLOWED_ACTIONS = new Set([
   'get_vod_info',
   // EPG (programme TV) — metadonnees uniquement, jamais de flux.
   'get_short_epg',
+  // EPG COMPLET d'une chaine (plusieurs jours) — pour la detection sport 7j.
+  'get_simple_data_table',
 ]);
 
 const ALLOWED_PARAMS = new Set(['category_id', 'series_id', 'vod_id', 'stream_id', 'limit']);

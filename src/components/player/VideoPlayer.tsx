@@ -56,6 +56,7 @@ type WebkitVideo = HTMLVideoElement & {
   webkitSupportsPresentationMode?: (mode: string) => boolean;
   webkitSetPresentationMode?: (mode: 'inline' | 'picture-in-picture' | 'fullscreen') => void;
   webkitPresentationMode?: string;
+  webkitShowPlaybackTargetPicker?: () => void;
 };
 
 /** Ferme un eventuel PiP pointant sur cette video (standard ou webkit). */
@@ -109,6 +110,7 @@ export function VideoPlayer({
   const [attempt, setAttempt] = useState(0);
   const [limitedSeek, setLimitedSeek] = useState(false);
   const [pipSupported, setPipSupported] = useState(false);
+  const [airplaySupported, setAirplaySupported] = useState(false);
   // Flux HTTP -> passerelle HTTPS (Xtream HTTP-only + mixed-content). C'est la
   // passerelle qui choisit passthrough (MP4/segments) ou remux/transcodage
   // (MKV/HEVC, live .ts). Le drapeau `transcode` ne sert plus qu'a autoriser
@@ -388,7 +390,13 @@ export function VideoPlayer({
     // iOS Safari : PiP via l'API webkit (le bouton n'apparaissait jamais sur iPhone).
     const webkit = v?.webkitSupportsPresentationMode?.('picture-in-picture') === true;
     setPipSupported(standard || webkit);
+    // AirPlay (Safari/iOS) : recevoir sur Apple TV. Le picker natif s'ouvre au clic.
+    setAirplaySupported(typeof v?.webkitShowPlaybackTargetPicker === 'function');
   }, []);
+
+  const showAirplay = () => {
+    (videoRef.current as WebkitVideo | null)?.webkitShowPlaybackTargetPicker?.();
+  };
 
   const togglePip = async () => {
     const video = videoRef.current as WebkitVideo | null;
@@ -419,19 +427,37 @@ export function VideoPlayer({
           poster={posterUrl ?? undefined}
           className="aspect-video w-full bg-black"
         />
-        {pipSupported && status === 'ready' && (
-          <button
-            type="button"
-            onClick={() => void togglePip()}
-            aria-label="Picture-in-Picture"
-            title="Picture-in-Picture"
-            className="absolute right-2 top-2 rounded-lg bg-black/60 p-2 text-white/90 transition-colors hover:bg-black/80"
-          >
-            <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
-              <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
-              <rect x="12" y="11" width="7" height="5" rx="1" fill="currentColor" />
-            </svg>
-          </button>
+        {status === 'ready' && (airplaySupported || pipSupported) && (
+          <div className="absolute right-2 top-2 flex gap-1.5">
+            {airplaySupported && (
+              <button
+                type="button"
+                onClick={showAirplay}
+                aria-label="AirPlay"
+                title="Diffuser (AirPlay)"
+                className="rounded-lg bg-black/60 p-2 text-white/90 transition-colors hover:bg-black/80"
+              >
+                <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
+                  <path d="M5 17H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1h-1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                  <path d="M12 14l5 6H7l5-6Z" fill="currentColor" />
+                </svg>
+              </button>
+            )}
+            {pipSupported && (
+              <button
+                type="button"
+                onClick={() => void togglePip()}
+                aria-label="Picture-in-Picture"
+                title="Picture-in-Picture"
+                className="rounded-lg bg-black/60 p-2 text-white/90 transition-colors hover:bg-black/80"
+              >
+                <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden>
+                  <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" strokeWidth="1.6" />
+                  <rect x="12" y="11" width="7" height="5" rx="1" fill="currentColor" />
+                </svg>
+              </button>
+            )}
+          </div>
         )}
         {status === 'loading' && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
