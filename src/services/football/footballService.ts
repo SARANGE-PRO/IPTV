@@ -1,4 +1,7 @@
 import type { FootballMatch, FootballTeam } from '@/app/api/football/route';
+import * as catalogRepository from '@/db/repositories/catalogRepository';
+import { sportChannelMatchKey } from '@/services/live/channelNormalizer';
+import { broadcastersFor } from '@/utils/footballBroadcasters';
 
 /** Acces client a la route /api/football (jamais d'appel direct a l'API foot). */
 
@@ -31,4 +34,35 @@ export function isLiveStatus(status: string): boolean {
 
 export function isFinishedStatus(status: string): boolean {
   return status === 'FINISHED' || status === 'AWARDED';
+}
+
+export interface BroadcastChannel {
+  id: string;
+  name: string;
+}
+
+/**
+ * Resout les chaines FR candidates d'une competition (mapping diffuseurs) vers
+ * les vraies chaines du bouquet Live de l'utilisateur (recherche Dexie + cle
+ * canonique). Sert au « Voir le match » click-to-play.
+ */
+export async function resolveBroadcastChannels(competitionCode: string): Promise<BroadcastChannel[]> {
+  const names = broadcastersFor(competitionCode);
+  const found: BroadcastChannel[] = [];
+  const seen = new Set<string>();
+  for (const name of names) {
+    const key = sportChannelMatchKey(name);
+    if (key.length < 3) continue;
+    const candidates = await catalogRepository.searchLiveChannels(name, 25);
+    for (const c of candidates) {
+      if (seen.has(c.id)) continue;
+      const ck = sportChannelMatchKey(c.name);
+      if (ck === key || ck.startsWith(key) || key.startsWith(ck)) {
+        seen.add(c.id);
+        found.push({ id: c.id, name: c.name });
+      }
+    }
+    if (found.length >= 8) break;
+  }
+  return found;
 }

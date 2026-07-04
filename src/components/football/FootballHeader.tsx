@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { FootballMatchModal } from '@/components/football/FootballMatchModal';
 import { HScroll } from '@/components/shared/HScroll';
 import type { FootballMatch } from '@/app/api/football/route';
 import { cn } from '@/lib/cn';
@@ -45,14 +46,16 @@ function TeamRow({
   );
 }
 
-function MatchCard({ m, fav }: { m: FootballMatch; fav: boolean }) {
+function MatchCard({ m, fav, onClick }: { m: FootballMatch; fav: boolean; onClick: () => void }) {
   const live = isLiveStatus(m.status);
   const finished = isFinishedStatus(m.status);
   const showScore = live || finished;
   return (
-    <div
+    <button
+      type="button"
+      onClick={onClick}
       className={cn(
-        'flex w-44 shrink-0 flex-col gap-2 rounded-2xl border p-3 shadow-lg shadow-black/30',
+        'flex w-44 shrink-0 flex-col gap-2 rounded-2xl border p-3 text-left shadow-lg shadow-black/30 transition-transform hover:-translate-y-0.5 active:scale-[0.98]',
         live ? 'border-accent/50 bg-accent/[0.07]' : 'border-ink-700/60 bg-ink-800',
         fav && 'ring-1 ring-amber-400/40',
       )}
@@ -74,7 +77,7 @@ function MatchCard({ m, fav }: { m: FootballMatch; fav: boolean }) {
       </div>
       <TeamRow crest={m.home.crest} name={m.home.short} goals={showScore ? m.home.goals : null} />
       <TeamRow crest={m.away.crest} name={m.away.short} goals={showScore ? m.away.goals : null} />
-    </div>
+    </button>
   );
 }
 
@@ -84,6 +87,7 @@ export function FootballHeader() {
   const hydrated = useFootballStore((s) => s.hydrated);
   const hydrate = useFootballStore((s) => s.hydrate);
   const [matches, setMatches] = useState<FootballMatch[]>([]);
+  const [selected, setSelected] = useState<FootballMatch | null>(null);
 
   useEffect(() => {
     if (!hydrated) void hydrate();
@@ -129,11 +133,14 @@ export function FootballHeader() {
 
   return (
     <section className="mt-4">
-      <HScroll className="flex gap-3 pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:none]">
+      {/* py-2 : laisse la place aux ombres/anneaux des cartes (le scroll horizontal
+          rogne sinon verticalement). -my-2 pour ne pas gonfler l'espacement. */}
+      <HScroll className="-my-2 flex gap-3 px-0.5 py-2 [-webkit-overflow-scrolling:touch] [scrollbar-width:none]">
         {sorted.map((m) => (
-          <MatchCard key={m.id} m={m} fav={involvesFav(m)} />
+          <MatchCard key={m.id} m={m} fav={involvesFav(m)} onClick={() => setSelected(m)} />
         ))}
       </HScroll>
+      {selected !== null && <FootballMatchModal match={selected} onClose={() => setSelected(null)} />}
     </section>
   );
 }

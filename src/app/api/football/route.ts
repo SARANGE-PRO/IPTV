@@ -44,10 +44,17 @@ interface FdMatch {
   utcDate?: string;
   status?: string;
   minute?: number | null;
+  stage?: string | null;
+  matchday?: number | null;
+  venue?: string | null;
   competition?: { code?: string; name?: string };
   homeTeam?: FdTeam;
   awayTeam?: FdTeam;
-  score?: { fullTime?: { home?: number | null; away?: number | null } };
+  score?: {
+    fullTime?: { home?: number | null; away?: number | null };
+    halfTime?: { home?: number | null; away?: number | null };
+  };
+  referees?: { name?: string; type?: string }[];
 }
 
 export interface FootballMatch {
@@ -55,6 +62,11 @@ export interface FootballMatch {
   start: number; // epoch ms
   status: string; // SCHEDULED | TIMED | IN_PLAY | PAUSED | FINISHED | ...
   minute: number | null;
+  stage: string | null;
+  matchday: number | null;
+  venue: string | null;
+  referee: string | null;
+  halfTime: { home: number | null; away: number | null } | null;
   competition: string;
   competitionCode: string;
   home: { id: number | null; name: string; short: string; crest: string | null; goals: number | null };
@@ -129,16 +141,26 @@ export async function GET(request: Request): Promise<NextResponse> {
   const matches: FootballMatch[] = Array.isArray(data?.matches)
     ? data.matches
         .filter((m): m is FdMatch & { id: number; utcDate: string } => typeof m.id === 'number' && typeof m.utcDate === 'string')
-        .map((m) => ({
-          id: m.id,
-          start: Date.parse(m.utcDate),
-          status: m.status ?? 'SCHEDULED',
-          minute: typeof m.minute === 'number' ? m.minute : null,
-          competition: m.competition?.name ?? '',
-          competitionCode: m.competition?.code ?? '',
-          home: teamOf(m.homeTeam, m.score?.fullTime?.home),
-          away: teamOf(m.awayTeam, m.score?.fullTime?.away),
-        }))
+        .map((m) => {
+          const ht = m.score?.halfTime;
+          const hasHt = typeof ht?.home === 'number' || typeof ht?.away === 'number';
+          const ref = m.referees?.find((r) => r.type === 'REFEREE') ?? m.referees?.[0];
+          return {
+            id: m.id,
+            start: Date.parse(m.utcDate),
+            status: m.status ?? 'SCHEDULED',
+            minute: typeof m.minute === 'number' ? m.minute : null,
+            stage: m.stage ?? null,
+            matchday: typeof m.matchday === 'number' ? m.matchday : null,
+            venue: m.venue !== undefined && m.venue !== null && m.venue !== '' ? m.venue : null,
+            referee: ref?.name !== undefined && ref.name !== '' ? ref.name : null,
+            halfTime: hasHt ? { home: ht?.home ?? null, away: ht?.away ?? null } : null,
+            competition: m.competition?.name ?? '',
+            competitionCode: m.competition?.code ?? '',
+            home: teamOf(m.homeTeam, m.score?.fullTime?.home),
+            away: teamOf(m.awayTeam, m.score?.fullTime?.away),
+          };
+        })
         .sort((a, b) => a.start - b.start)
     : [];
 
