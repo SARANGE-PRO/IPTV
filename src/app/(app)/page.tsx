@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { BrandLogo } from '@/components/shared/BrandLogo';
+import { ZibLogo } from '@/components/shared/ZibLogo';
 import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { SportEventsRail } from '@/components/live/SportEventsRail';
 import { SportHero } from '@/components/live/SportHero';
@@ -232,11 +232,7 @@ export default function HomePage() {
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
-      <BrandLogo
-        className="mb-6 md:hidden"
-        markClassName="h-9 w-9"
-        textClassName="text-xl"
-      />
+      <ZibLogo className="mb-6 h-11 w-auto md:hidden" />
       <h1 className="pt-2 text-3xl font-semibold tracking-tight text-fg">Accueil</h1>
 
       <Link
