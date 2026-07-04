@@ -60,6 +60,7 @@ const config: Config = {
       animation: {
         'fade-in': 'fade-in 0.25s ease-out both',
         'modal-rise': 'modal-rise 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both',
+        shimmer: 'shimmer 1.6s ease-in-out infinite',
       },
     },
   },
