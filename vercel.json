@@ -1,6 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
-    { "path": "/api/sport-events", "schedule": "0 5 * * *" }
+    { "path": "/api/sport-events", "schedule": "0 5 * * *" },
+    { "path": "/api/trending", "schedule": "0 6 * * *" }
   ]
 }

@@ -20,6 +20,8 @@ import { usePlaybackStore } from '@/stores/playbackStore';
 import * as catalogRepository from '@/services/data/catalogService';
 import * as playbackRepository from '@/services/data/playbackDataService';
 import { getMovieTop10, getSeriesTop10 } from '@/services/ranking/smartRankingService';
+import { loadTrending, type TrendingItem } from '@/services/discovery/trendingService';
+import { tmdbPoster } from '@/services/tmdb/tmdbImage';
 import { loadHomeSportEvents } from '@/services/live/externalSportEventsService';
 import type { SportEvent } from '@/services/live/sportEventsService';
 import type { LiveChannel, Movie, PlaybackEntry, Series } from '@/types/models';
@@ -81,6 +83,10 @@ export default function HomePage() {
   const hiddenSeries = useFilterStore((s) => s.hidden.series);
   const [discovery, setDiscovery] = useState<DiscoveryRails>(EMPTY_RAILS);
   const [sportEvents, setSportEvents] = useState<SportEvent[]>([]);
+  const [trending, setTrending] = useState<{ movies: TrendingItem[]; series: TrendingItem[] }>({
+    movies: [],
+    series: [],
+  });
 
   useEffect(() => {
     void hydrateRails();
@@ -109,6 +115,25 @@ export default function HomePage() {
       active = false;
     };
   }, [hasCatalog, credentials]);
+
+  // Tendances TMDB de la semaine mappees sur le catalogue VF (affiches HD TMDB).
+  useEffect(() => {
+    if (!hasCatalog) {
+      setTrending({ movies: [], series: [] });
+      return;
+    }
+    let active = true;
+    void loadTrending(10)
+      .then((t) => {
+        if (active) setTrending(t);
+      })
+      .catch(() => {
+        // TMDB indispo / non configure : pas de rail tendances, jamais bloquant.
+      });
+    return () => {
+      active = false;
+    };
+  }, [hasCatalog, sections.vod.itemCount, sections.series.itemCount]);
 
   useEffect(() => {
     if (!hasCatalog) {
@@ -280,6 +305,38 @@ export default function HomePage() {
               />
               <span className="min-w-0 truncate text-xs text-fg">{displayChannelName(entry.label ?? 'Chaîne')}</span>
             </Link>
+          ))}
+        </Rail>
+      )}
+
+      {trending.movies.length > 0 && (
+        <Rail title="Tendances de la semaine" action={<Link href="/movies" className="text-xs text-fg-faint hover:text-fg">Voir les films</Link>}>
+          {trending.movies.map((t) => (
+            <MediaCard
+              key={t.xtreamId}
+              className="w-32 shrink-0"
+              href={`/movies/${t.xtreamId}`}
+              title={t.title}
+              posterUrl={tmdbPoster(t.posterPath)}
+              rating={t.rating}
+              subtitle={t.year?.toString() ?? null}
+            />
+          ))}
+        </Rail>
+      )}
+
+      {trending.series.length > 0 && (
+        <Rail title="Séries tendance" action={<Link href="/series" className="text-xs text-fg-faint hover:text-fg">Voir les séries</Link>}>
+          {trending.series.map((t) => (
+            <MediaCard
+              key={t.xtreamId}
+              className="w-32 shrink-0"
+              href={`/series/${t.xtreamId}`}
+              title={t.title}
+              posterUrl={tmdbPoster(t.posterPath)}
+              rating={t.rating}
+              subtitle={t.year?.toString() ?? null}
+            />
           ))}
         </Rail>
       )}
