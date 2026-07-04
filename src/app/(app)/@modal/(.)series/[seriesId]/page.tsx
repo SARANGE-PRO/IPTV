@@ -1,15 +1,15 @@
 'use client';
 
 import { useParams } from 'next/navigation';
+import { DetailModal } from '@/components/shared/DetailModal';
 import { SeriesDetailView } from '@/components/series/SeriesDetailView';
 
-/** Page plein ecran (acces direct / refresh). En navigation douce, c'est le
- *  modal (@modal/(.)series/[seriesId]) qui prend le relais — liste preservee. */
-export default function SeriesDetailPage() {
+/** Detail serie en MODAL (navigation douce depuis une liste/recherche). */
+export default function SeriesModal() {
   const { seriesId } = useParams<{ seriesId: string }>();
   return (
-    <main>
+    <DetailModal>
       <SeriesDetailView seriesId={seriesId} />
-    </main>
+    </DetailModal>
   );
 }
