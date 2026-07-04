@@ -1,5 +1,5 @@
 import * as catalogRepository from '@/db/repositories/catalogRepository';
-import { canonicalChannelKey } from '@/services/live/channelNormalizer';
+import { sportChannelMatchKey } from '@/services/live/channelNormalizer';
 import { findUpcomingSportEvents, type SportEvent } from '@/services/live/sportEventsService';
 import type { SportKind } from '@/utils/sportClassify';
 import type { XtreamCredentials } from '@/types/xtream';
@@ -41,13 +41,13 @@ async function mapToXtreamChannels(events: RouteEvent[]): Promise<SportEvent[]> 
   const pool = await catalogRepository.getLiveChannelsPage({ kind: 'french' }, 0, FR_POOL_CAP);
   const byKey = new Map<string, { id: string; name: string }>();
   for (const c of pool) {
-    const key = canonicalChannelKey(c.name);
+    const key = sportChannelMatchKey(c.name);
     if (!byKey.has(key)) byKey.set(key, { id: c.id, name: c.name });
   }
 
   const mapped: SportEvent[] = [];
   for (const ev of events) {
-    const match = byKey.get(canonicalChannelKey(ev.channel));
+    const match = byKey.get(sportChannelMatchKey(ev.channel));
     if (match === undefined) continue;
     mapped.push({
       channelId: match.id,

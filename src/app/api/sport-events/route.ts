@@ -12,6 +12,15 @@ import { classifySport } from '@/utils/sportClassify';
  * virgules acceptees). Idealement rafraichi par un Vercel Cron.
  */
 export const revalidate = 21_600; // 6 h
+export const maxDuration = 60; // parse XMLTV multi-Mo
+
+// Guide XMLTV public par defaut (iptv-org/epg) : programme-tv.net couvre les
+// bouquets sport FR (Canal+, beIN, RMC Sport, Eurosport, La Chaine L'Equipe).
+// Telerama en secours automatique. Surchargeable via env SPORT_EPG_URL.
+const DEFAULT_EPG_URLS = [
+  'https://iptv-org.github.io/epg/guides/fr/programme-tv.net.epg.xml',
+  'https://iptv-org.github.io/epg/guides/fr/telerama.fr.epg.xml',
+];
 
 const HORIZON_MS = 7 * 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = 25_000;
@@ -94,11 +103,10 @@ async function fetchXml(url: string): Promise<string> {
 
 export async function GET(): Promise<NextResponse> {
   const configured = process.env.SPORT_EPG_URL?.trim() ?? '';
-  if (configured === '') {
-    return NextResponse.json({ ok: true, events: [], source: 'disabled' });
-  }
-
-  const urls = configured.split(',').map((u) => u.trim()).filter(Boolean).slice(0, 4);
+  const urls =
+    configured === ''
+      ? DEFAULT_EPG_URLS
+      : configured.split(',').map((u) => u.trim()).filter(Boolean).slice(0, 4);
   const now = Date.now();
   const xmls = await Promise.all(urls.map(fetchXml));
 

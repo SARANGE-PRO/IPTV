@@ -108,3 +108,33 @@ export function isSeparatorOrEvent(name: string): boolean {
 export function canonicalChannelKey(rawName: string): string {
   return harmonize(normalizeText(cleanChannelDisplay(rawName)));
 }
+
+// Alias compacts pour divergences guide XMLTV <-> Xtream irreductibles a la
+// normalisation (sigles, marques renommees). Cle = forme compacte, valeur = cible.
+const MATCH_ALIASES: Record<string, string> = {
+  bein1: 'beinsport1',
+  bein2: 'beinsport2',
+  bein3: 'beinsport3',
+  lequipe: 'lachainelequipe',
+  equipe: 'lachainelequipe',
+  canalsport: 'canalplussport',
+  cplussport: 'canalplussport',
+  rmc1: 'rmcsport1',
+  rmc2: 'rmcsport2',
+};
+
+/**
+ * Cle de MATCHING agressive pour rapprocher une chaine du guide XMLTV
+ * ("beIN Sports 1") de TA chaine Xtream ("FR | BEIN SPORT 1 FHD"). Bien plus
+ * aplatie que `canonicalChannelKey` : on part de la cle canonique (deja
+ * debarrassee des tags qualite/prefixe pays et harmonisee FR), on neutralise le
+ * pluriel "sports"->"sport" (le point dur : Sports vs Sport), puis on compacte
+ * en alphanumerique pur ("beinsport1"). Reservee au mapping sport — ne PAS
+ * utiliser pour le regroupement des doublons (trop agressive, fusionnerait).
+ */
+export function sportChannelMatchKey(rawName: string): string {
+  const compact = canonicalChannelKey(rawName)
+    .replace(/\bsports\b/g, 'sport') // Sports/Sport -> sport (bein, rmc, canal+, euro)
+    .replace(/[^a-z0-9]+/g, ''); // supprime espaces, |, -, / -> "beinsport1"
+  return MATCH_ALIASES[compact] ?? compact;
+}
