@@ -117,11 +117,13 @@ export function MovieDetailView({ vodId }: { vodId: string }) {
 
   const tmdb = useTmdbMetadata('movie', movie?.name ?? null, movie?.year ?? null);
   const tmdbPosterUrl = tmdbPoster(tmdb?.posterPath ?? null);
-  const posterFallbackUrl = xtreamPoster ?? movie?.posterUrl ?? null;
-  const posterUrl = tmdbPosterUrl ?? posterFallbackUrl;
+  // STABILITE carte<->fiche : l'AFFICHE et la NOTE viennent d'Xtream (comme la
+  // carte et le rail « Continuer ») -> jamais de conflit ni de mauvais match TMDB
+  // sur l'identite. TMDB n'ENRICHIT que synopsis/casting/genres/backdrop.
+  const posterUrl = movie?.posterUrl ?? xtreamPoster ?? tmdbPosterUrl;
   const backdropUrl = tmdbBackdrop(tmdb?.backdropPath ?? null) ?? xtreamBackdrop;
   const overview = tmdb?.overview ?? plot;
-  const rating = tmdb?.voteAverage ?? movie?.rating ?? null;
+  const rating = movie?.rating ?? null;
 
   // Entree active = variante de langue selectionnee (a defaut, le film ouvert).
   const activeEntry = useMemo(
@@ -285,7 +287,7 @@ export function MovieDetailView({ vodId }: { vodId: string }) {
               <div className="relative">
                 <PosterImage
                   src={posterUrl}
-                  fallbackSrc={tmdbPosterUrl !== null ? posterFallbackUrl : null}
+                  fallbackSrc={tmdbPosterUrl}
                   alt={movie.name}
                   className="aspect-[2/3] w-full rounded-2xl"
                 />

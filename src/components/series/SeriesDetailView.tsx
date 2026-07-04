@@ -116,9 +116,10 @@ export function SeriesDetailView({ seriesId }: { seriesId: string }) {
   const seriesYear = series?.releaseDate != null ? Number.parseInt(series.releaseDate.slice(0, 4), 10) : null;
   const tmdb = useTmdbMetadata('series', series?.name ?? null, Number.isFinite(seriesYear) ? seriesYear : null);
   const tmdbPosterUrl = tmdbPoster(tmdb?.posterPath ?? null);
-  const posterUrl = tmdbPosterUrl ?? series?.posterUrl ?? null;
+  // STABILITE carte<->fiche : affiche + note depuis Xtream (TMDB = enrichissement).
+  const posterUrl = series?.posterUrl ?? tmdbPosterUrl;
   const overview = tmdb?.overview ?? series?.plot ?? null;
-  const rating = tmdb?.voteAverage ?? series?.rating ?? null;
+  const rating = series?.rating ?? null;
   const genres = tmdb !== null && tmdb.genres.length > 0 ? tmdb.genres.join(' · ') : (series?.genre ?? null);
 
   const episodes = useMemo(
@@ -279,7 +280,7 @@ export function SeriesDetailView({ seriesId }: { seriesId: string }) {
           <div className="mb-6 flex animate-fade-in gap-5">
             <PosterImage
               src={posterUrl}
-              fallbackSrc={tmdbPosterUrl !== null ? (series.posterUrl ?? null) : null}
+              fallbackSrc={tmdbPosterUrl}
               alt={series.name}
               className="aspect-[2/3] w-28 shrink-0 rounded-2xl sm:w-36"
             />
