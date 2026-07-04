@@ -45,7 +45,9 @@ const UPSTREAM_UA = process.env.UPSTREAM_USER_AGENT?.trim() || 'VLC/3.0.20 LibVL
 // (remux plus leger en CPU), ou un encodeur materiel (h264_nvenc/qsv/amf) si dispo.
 const TRANSCODE = process.env.TRANSCODE !== '0';
 const FFMPEG = process.env.FFMPEG_PATH?.trim() || 'ffmpeg';
+const FFPROBE = process.env.FFPROBE_PATH?.trim() || 'ffprobe';
 const VIDEO_CODEC = process.env.VIDEO_CODEC?.trim() || 'libx264';
+const PROBE_TIMEOUT_MS = 25_000;
 
 // Signature HMAC : la passerelle proxifie un hote NON allowliste uniquement si
 // l'URL porte une signature valide, donc uniquement les URLs qu'ELLE a
@@ -417,6 +419,97 @@ setInterval(() => {
   }
 }, 30_000).unref();
 
+/**
+ * DIAGNOSTIC pistes : `ffprobe` du flux amont reel -> liste COMPLETE des pistes
+ * (video/audio/sous-titres, codec, langue, canaux, resolution, HDR/10-bit). La
+ * seule source de verite : Xtream ne renvoie au mieux qu'UNE piste video + UNE
+ * audio. On ne renvoie que des champs STRUCTURELS et on retire `format.filename`
+ * (qui contient identifiants + URL) -> aucun secret ne fuit (invariant #4).
+ */
+function sanitizeProbe(parsed) {
+  const streams = Array.isArray(parsed?.streams)
+    ? parsed.streams.map((s) => ({
+        index: s.index,
+        type: s.codec_type ?? null, // "video" | "audio" | "subtitle"
+        codec: s.codec_name ?? null,
+        profile: s.profile ?? null,
+        width: s.width ?? null,
+        height: s.height ?? null,
+        pix_fmt: s.pix_fmt ?? null, // yuv420p10le => 10-bit
+        level: s.level ?? null,
+        color_transfer: s.color_transfer ?? null, // smpte2084/arib-std-b67 => HDR/HLG
+        color_primaries: s.color_primaries ?? null,
+        field_order: s.field_order ?? null,
+        channels: s.channels ?? null,
+        channel_layout: s.channel_layout ?? null,
+        sample_rate: s.sample_rate ?? null,
+        bit_rate: s.bit_rate ?? null,
+        language: s.tags?.language ?? null,
+        title: s.tags?.title ?? null, // libelle de piste ("VFF", "English SDH") — non sensible
+        default: s.disposition?.default ?? 0,
+        forced: s.disposition?.forced ?? 0,
+      }))
+    : [];
+  const f = parsed?.format ?? {};
+  return {
+    format: {
+      format_name: f.format_name ?? null,
+      duration: f.duration ?? null,
+      bit_rate: f.bit_rate ?? null,
+      size: f.size ?? null,
+      // NB : `filename` (URL + identifiants) volontairement OMIS.
+    },
+    streams,
+  };
+}
+
+function serveProbe(req, res) {
+  let target;
+  try {
+    const raw = new URL(req.url ?? '/', 'http://gateway.local').searchParams.get('url');
+    if (!raw) throw new Error('url absente');
+    target = new URL(raw);
+  } catch {
+    return void res.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: 'url invalide' }));
+  }
+  // Meme modele de confiance que /_fetch : uniquement l'hote d'origine allowliste,
+  // jamais une IP interne/LAN (anti-SSRF).
+  if (!isAllowed(target) || isBlockedHost(target.hostname)) {
+    return void res.writeHead(403, { 'content-type': 'application/json' }).end(JSON.stringify({ ok: false, error: 'hote non autorise' }));
+  }
+  const args = [
+    '-hide_banner', '-v', 'error',
+    '-user_agent', UPSTREAM_UA,
+    '-analyzeduration', '5000000', '-probesize', '5000000',
+    '-show_streams', '-show_format', '-print_format', 'json',
+    '-i', target.toString(),
+  ];
+  const ff = spawn(FFPROBE, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+  let out = '';
+  let done = false;
+  const finish = (status, payload) => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    try { ff.kill('SIGKILL'); } catch {}
+    if (!res.headersSent) res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }).end(JSON.stringify(payload));
+  };
+  const timer = setTimeout(() => finish(504, { ok: false, error: 'probe timeout' }), PROBE_TIMEOUT_MS);
+  ff.stdout.on('data', (d) => {
+    out += d;
+    if (out.length > 2_000_000) finish(502, { ok: false, error: 'probe trop volumineux' });
+  });
+  ff.stderr.on('data', () => {}); // ne journalise aucune URL
+  ff.on('error', () => finish(502, { ok: false, error: 'ffprobe indisponible' }));
+  ff.on('close', () => {
+    if (done) return;
+    let parsed;
+    try { parsed = JSON.parse(out); } catch { return void finish(502, { ok: false, error: 'probe illisible' }); }
+    finish(200, { ok: true, ...sanitizeProbe(parsed) });
+  });
+  res.once('close', () => { if (!done) { done = true; clearTimeout(timer); try { ff.kill('SIGKILL'); } catch {} } });
+}
+
 const server = http.createServer(async (req, res) => {
   cors(res);
   if (req.method === 'OPTIONS') return void res.writeHead(204).end();
@@ -425,6 +518,8 @@ const server = http.createServer(async (req, res) => {
   // filtre de methode : sendBeacon envoie un POST.
   if ((req.url ?? '').startsWith('/_hlsstop')) return void stopHlsSession(req, res);
   if (req.method !== 'GET' && req.method !== 'HEAD') return void res.writeHead(405, { allow: 'GET, HEAD, OPTIONS' }).end();
+  // Diagnostic pistes : ffprobe du flux amont reel (metadonnees structurelles).
+  if ((req.url ?? '').startsWith('/_probe')) return void serveProbe(req, res);
   // Segment HLS d'une session VOD (transcode Safari) — sert un fichier local signe.
   if ((req.url ?? '').startsWith('/_hlsseg')) return void serveHlsSegment(req, res);
 
