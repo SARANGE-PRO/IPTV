@@ -1,6 +1,7 @@
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import * as settingsRepository from '@/db/repositories/settingsRepository';
 import { getFullChannelEpg } from '@/services/epg/epgService';
+import { canonicalChannelKey } from '@/services/live/channelNormalizer';
 import type { EpgProgramme } from '@/types/epg';
 import type { XtreamCredentials } from '@/types/xtream';
 
@@ -26,24 +27,30 @@ export interface SportEvent {
   major: boolean;
 }
 
-const CACHE_KEY = 'homeSportEvents';
+// v2 : invalide l'ancien cache (logique de detection elargie).
+const CACHE_KEY = 'homeSportEvents2';
 const CACHE_TTL_MS = 30 * 60 * 1000;
-const MAX_CHANNELS = 10;
+const MAX_CHANNELS = 18;
+const FR_POOL_CAP = 4000;
 // 7 jours : l'EPG COMPLET (get_simple_data_table) couvre plusieurs jours.
 const HORIZON_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_EVENTS = 30;
 
-const SPORT_CHANNEL_HINTS = [
-  'bein', 'rmc sport', 'canal+ sport', 'canal plus sport', 'canal sport',
-  'l equipe', 'lequipe', 'ligue 1', 'dazn', 'football', 'foot', 'ares', 'ufc',
-  'combat', 'fight', 'sport',
-];
-// Chaines de tete pour l'accueil : elles diffusent le plus de vrais matchs FR.
-// On les scanne EN PRIORITE avant le plafond MAX_CHANNELS (sinon des chaines
-// sport secondaires pouvaient rafler les 8 places et vider le rail).
-const STRONG_CHANNEL_HINTS = [
+// Diffuseurs a scanner : chaines sport MAIS AUSSI grandes generalistes FR — les
+// gros matchs (Coupe du Monde, Euro, France) passent sur TF1/M6/France 2, PAS
+// sur des chaines de theme "sport". Ne plus se limiter au theme sport.
+const BROADCASTER_HINTS = [
+  // Sport
   'bein', 'rmc sport', 'canal+ sport', 'canal plus sport', 'canal sport', 'dazn',
-  'l equipe', 'lequipe', 'ligue 1',
+  'l equipe', 'lequipe', 'eurosport', 'ligue 1', 'infosport', 'sport en france',
+  'ares', 'ufc',
+  // Grandes generalistes qui diffusent les gros evenements FR
+  'tf1', 'm6', 'france 2', 'france 3', 'france 4', 'france tv', 'w9', 'c8', 'tmc', 'canal+',
+];
+// Prioritaires (scannees en premier) : les diffuseurs des plus gros matchs FR.
+const STRONG_HINTS = [
+  'tf1', 'm6', 'france 2', 'france 3', 'bein', 'rmc sport', 'canal+ sport',
+  'canal plus sport', 'dazn', 'l equipe', 'lequipe',
 ];
 
 // Competitions foot explicites (signal fort d'un VRAI match). Volontairement
@@ -51,8 +58,10 @@ const STRONG_CHANNEL_HINTS = [
 // "Late Football Club", "Late Foot"...).
 const FOOT_COMPETITIONS = [
   'ligue 1', 'ligue 2', 'ligue des champions', 'champions league', 'uefa',
-  'europa', 'coupe du monde', 'coupe de france', 'liga', 'premier league',
-  'serie a', 'bundesliga', 'eredivisie', 'ligue europa',
+  'europa', 'coupe du monde', 'mondial', 'coupe de france', 'liga', 'premier league',
+  'serie a', 'bundesliga', 'eredivisie', 'ligue europa', 'ligue des nations',
+  'nations league', 'eliminatoire', 'qualif', 'barrage', 'amical', 'euro ',
+  'championnat', 'football',
 ];
 // Motif "Equipe A vs/-/– Equipe B" : le vrai marqueur d'une affiche. Le mot
 // "vs"/"v" ou un separateur entoure d'espaces avec du texte de part et d'autre.
@@ -76,8 +85,8 @@ const GENERIC_SPORT_KEYWORDS = [
 const PRIORITY_KEYWORDS = ['france', 'psg', 'paris sg', 'paris saint', 'ufc'];
 const MAJOR_KEYWORDS = [
   'finale', 'final', 'ligue des champions', 'champions league', 'ufc',
-  'france', 'coupe du monde', 'world cup', 'euro ', 'roland garros', 'wimbledon',
-  'grand prix', 'jeux olympiques', 'grand chelem',
+  'france', 'coupe du monde', 'mondial', 'world cup', 'euro ', 'ligue des nations',
+  'roland garros', 'wimbledon', 'grand prix', 'jeux olympiques', 'grand chelem',
 ];
 
 function norm(s: string): string {
@@ -118,14 +127,25 @@ export async function findUpcomingSportEvents(credentials: XtreamCredentials): P
     if (stillUpcoming.length > 0) return stillUpcoming;
   }
 
-  const pool = await catalogRepository.getLiveChannelsPage({ kind: 'frenchTheme', theme: 'sport' }, 0, 80);
+  // Pool FR complet (borne) — PAS seulement le theme "sport" : les gros matchs
+  // FR passent sur les generalistes (TF1/M6/France 2).
+  const pool = await catalogRepository.getLiveChannelsPage({ kind: 'french' }, 0, FR_POOL_CAP);
+  const seenKey = new Set<string>();
   const candidates = pool
     .filter((c) => {
       const n = norm(c.name);
-      return SPORT_CHANNEL_HINTS.some((h) => n.includes(h));
+      return BROADCASTER_HINTS.some((h) => n.includes(h));
     })
-    // Chaines fortes d'abord (tri stable) avant le plafond MAX_CHANNELS.
-    .map((c) => ({ c, strong: STRONG_CHANNEL_HINTS.some((h) => norm(c.name).includes(h)) }))
+    // Dedup des variantes (TF1 HD / TF1 FHD / TF1 4K -> une seule) : inutile de
+    // scanner 3x le meme EPG.
+    .filter((c) => {
+      const key = canonicalChannelKey(c.name);
+      if (seenKey.has(key)) return false;
+      seenKey.add(key);
+      return true;
+    })
+    // Prioritaires (gros diffuseurs) d'abord — tri stable — avant le plafond.
+    .map((c) => ({ c, strong: STRONG_HINTS.some((h) => norm(c.name).includes(h)) }))
     .sort((a, b) => Number(b.strong) - Number(a.strong))
     .slice(0, MAX_CHANNELS)
     .map((x) => x.c);

@@ -48,14 +48,21 @@ export async function getFullChannelEpg(
   credentials: XtreamCredentials,
   streamId: string,
 ): Promise<EpgProgramme[]> {
-  const cacheId = `full:${streamId}`;
+  // Prefixe v2 (epg7) : ignore l'ancien cache "full:" qui pouvait etre vide
+  // (avant le repli short-EPG).
+  const cacheId = `epg7:${streamId}`;
   const cached = await db.epg_cache.get(cacheId);
   if (cached !== undefined && Date.now() - cached.fetchedAt < FULL_TTL_MS) {
     return cached.programmes;
   }
   try {
     const raw = await xtreamApi.getFullEpg(credentials, streamId);
-    const programmes = normalizeShortEpg(raw);
+    let programmes = normalizeShortEpg(raw);
+    // Repli : certains panels ne supportent pas get_simple_data_table (reponse
+    // vide) -> on retombe sur le short-EPG (au moins les prochaines heures).
+    if (programmes.length === 0) {
+      programmes = normalizeShortEpg(await xtreamApi.getShortEpg(credentials, streamId, 40));
+    }
     await db.epg_cache.put({ id: cacheId, programmes, fetchedAt: Date.now() });
     return programmes;
   } catch {
