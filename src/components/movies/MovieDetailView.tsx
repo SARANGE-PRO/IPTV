@@ -297,20 +297,40 @@ export function MovieDetailView({ vodId }: { vodId: string }) {
               </div>
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-xs text-fg-faint">
-                {[
-                  movie.year !== null
-                    ? String(movie.year)
-                    : (tmdb?.releaseDate?.slice(0, 4) ?? displayYear(movie.name, null)?.toString() ?? null),
-                  rating !== null ? `★ ${rating.toFixed(1)}` : null,
-                  tmdb?.runtimeMinutes != null ? `${tmdb.runtimeMinutes} min` : null,
-                  movie.containerExtension?.toUpperCase() ?? null,
-                ]
-                  .filter((v): v is string => v !== null)
-                  .join(' · ')}
-              </p>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {(() => {
+                  const year =
+                    movie.year !== null
+                      ? String(movie.year)
+                      : (tmdb?.releaseDate?.slice(0, 4) ?? displayYear(movie.name, null)?.toString() ?? null);
+                  return year !== null ? (
+                    <span className="rounded-md bg-ink-700 px-2 py-0.5 text-[11px] font-medium text-fg-muted">{year}</span>
+                  ) : null;
+                })()}
+                {rating !== null && (
+                  <span className="rounded-md bg-amber-400/15 px-2 py-0.5 text-[11px] font-semibold text-amber-300">
+                    ★ {rating.toFixed(1)}
+                  </span>
+                )}
+                {tmdb?.runtimeMinutes != null && (
+                  <span className="rounded-md bg-ink-700 px-2 py-0.5 text-[11px] font-medium text-fg-muted">
+                    {tmdb.runtimeMinutes} min
+                  </span>
+                )}
+                {movie.containerExtension != null && (
+                  <span className="rounded-md bg-ink-700 px-2 py-0.5 text-[11px] font-medium text-fg-muted">
+                    {movie.containerExtension.toUpperCase()}
+                  </span>
+                )}
+              </div>
               {tmdb !== null && tmdb.genres.length > 0 && (
-                <p className="mt-1 text-xs text-fg-faint">{tmdb.genres.join(' · ')}</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {tmdb.genres.map((g) => (
+                    <span key={g} className="rounded-full border border-ink-600 px-2 py-0.5 text-[11px] text-fg-muted">
+                      {g}
+                    </span>
+                  ))}
+                </div>
               )}
               {badges.length > 0 && (
                 <div className="mt-2.5 flex flex-wrap gap-1.5">
@@ -329,10 +349,16 @@ export function MovieDetailView({ vodId }: { vodId: string }) {
               )}
               {overview !== null && <p className="mt-3 text-sm leading-relaxed text-fg-muted">{overview}</p>}
               {tmdb !== null && tmdb.cast.length > 0 && (
-                <p className="mt-3 text-xs text-fg-faint">
-                  <span className="text-fg-muted">Avec </span>
-                  {tmdb.cast.slice(0, 5).map((c) => c.name).join(', ')}
-                </p>
+                <div className="mt-3">
+                  <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-faint">Avec</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {tmdb.cast.slice(0, 6).map((c) => (
+                      <span key={c.name} className="rounded-full bg-ink-800 px-2.5 py-1 text-[11px] text-fg-muted">
+                        {c.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               )}
               {variants.length >= 2 && activeId !== null && (
                 <div className="mt-4">
