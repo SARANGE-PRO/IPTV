@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { BrandMark } from '@/components/shared/BrandMark';
 import { CategoryPanel } from '@/components/shared/CategoryPanel';
 import { CountrySelect } from '@/components/shared/CountrySelect';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -281,7 +282,10 @@ export function MediaBrowser<T extends BrowserItem>({
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-fg">{title}</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight text-fg">{title}</h1>
+        <BrandMark className="md:hidden" />
+      </div>
 
       {hero}
 

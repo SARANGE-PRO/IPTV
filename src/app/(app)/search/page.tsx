@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { BrandMark } from '@/components/shared/BrandMark';
 import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
@@ -99,7 +100,10 @@ export default function SearchPage() {
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-fg">Recherche</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight text-fg">Recherche</h1>
+        <BrandMark className="md:hidden" />
+      </div>
 
       <div className="mt-4 relative">
         <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-fg-faint" />

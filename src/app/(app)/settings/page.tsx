@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { NotificationsCard } from '@/components/settings/NotificationsCard';
 import { TrackDiagnosticPanel } from '@/components/settings/TrackDiagnosticPanel';
+import { BrandMark } from '@/components/shared/BrandMark';
 import { CountrySelect } from '@/components/shared/CountrySelect';
 import { Button } from '@/components/ui/Button';
 import { IconDownload, IconRefresh, IconTrash } from '@/components/ui/icons';
@@ -250,7 +251,10 @@ export default function SettingsPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6 md:px-8">
-      <h1 className="text-2xl font-semibold tracking-tight text-fg">Réglages</h1>
+      <div className="flex items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight text-fg">Réglages</h1>
+        <BrandMark className="md:hidden" />
+      </div>
 
       <Card title="Compte">
         <p className="text-sm text-fg-muted">

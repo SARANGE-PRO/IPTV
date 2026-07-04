@@ -19,7 +19,7 @@ import { useFilterStore } from '@/stores/filterStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import * as catalogRepository from '@/services/data/catalogService';
 import * as playbackRepository from '@/services/data/playbackDataService';
-import { getMovieTop10 } from '@/services/ranking/smartRankingService';
+import { getMovieTop10, getSeriesTop10 } from '@/services/ranking/smartRankingService';
 import { loadHomeSportEvents } from '@/services/live/externalSportEventsService';
 import type { SportEvent } from '@/services/live/sportEventsService';
 import type { LiveChannel, Movie, PlaybackEntry, Series } from '@/types/models';
@@ -130,7 +130,7 @@ export default function HomePage() {
       loadResumeSeries(),
       catalogRepository.getFrenchSeries(18),
       catalogRepository.getRecentSeries(18),
-      catalogRepository.getTopRatedSeries(18),
+      getSeriesTop10(12),
       catalogRepository.getLiveChannelsPage({ kind: 'frenchTheme', theme: 'sport' }, 0, 12),
     ]).then(
       ([
@@ -150,24 +150,36 @@ export default function HomePage() {
         const frenchMovieIds = new Set(frenchMovies.map((movie) => movie.id));
         const frenchSeriesIds = new Set(frenchSeries.map((series) => series.id));
         const recentSeriesIds = new Set(recentSeries.map((series) => series.id));
+        // Garde-affiche : une carte sans affiche casse le rendu « premium » d'un rail.
         setDiscovery({
           topMovies: topMovies.filter((movie) => !hiddenVod.has(movie.categoryId)),
           frenchMovies: frenchMovies
-            .filter((movie) => !hiddenVod.has(movie.categoryId) && !topIds.has(movie.id) && !recentIds.has(movie.id))
+            .filter(
+              (movie) =>
+                movie.posterUrl !== null &&
+                !hiddenVod.has(movie.categoryId) &&
+                !topIds.has(movie.id) &&
+                !recentIds.has(movie.id),
+            )
             .slice(0, 12),
           popularMovies: popularMovies
             .filter(
               (movie) =>
+                movie.posterUrl !== null &&
                 !hiddenVod.has(movie.categoryId) &&
                 !topIds.has(movie.id) &&
                 !recentIds.has(movie.id) &&
                 !frenchMovieIds.has(movie.id),
             )
             .slice(0, 12),
-          recentMovies: recentMovies.filter((movie) => !hiddenVod.has(movie.categoryId)),
+          recentMovies: recentMovies.filter((movie) => movie.posterUrl !== null && !hiddenVod.has(movie.categoryId)),
           resumeSeries: resumeSeries.filter((series) => !hiddenSeries.has(series.categoryId)),
-          frenchSeries: frenchSeries.filter((series) => !hiddenSeries.has(series.categoryId)),
-          recentSeries: recentSeries.filter((series) => !hiddenSeries.has(series.categoryId)),
+          frenchSeries: frenchSeries.filter(
+            (series) => series.posterUrl !== null && !hiddenSeries.has(series.categoryId),
+          ),
+          recentSeries: recentSeries.filter(
+            (series) => series.posterUrl !== null && !hiddenSeries.has(series.categoryId),
+          ),
           topSeries: topSeries
             .filter(
               (series) =>
