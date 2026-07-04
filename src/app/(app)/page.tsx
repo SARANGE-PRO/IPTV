@@ -233,7 +233,7 @@ export default function HomePage() {
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
       <ZibLogo className="mb-6 h-11 w-auto md:hidden" />
-      <h1 className="pt-2 text-3xl font-semibold tracking-tight text-fg">Accueil</h1>
+      <h1 className="sr-only">Accueil</h1>
 
       <Link
         href="/search"

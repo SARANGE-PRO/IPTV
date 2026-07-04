@@ -167,9 +167,6 @@ export default function LiveWatchPage() {
                     </Link>
                   ))}
                 </div>
-                <p className="mt-2 text-[11px] text-fg-faint">
-                  Une version ne fonctionne pas ? Essaie-en une autre.
-                </p>
               </div>
             )}
             <div className="grid grid-cols-2 gap-3">

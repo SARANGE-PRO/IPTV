@@ -392,9 +392,9 @@ export default function LivePage() {
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight text-fg">Live TV</h1>
-        <BrandMark className="md:hidden" />
+      <h1 className="sr-only">Live TV</h1>
+      <div className="flex justify-end md:hidden">
+        <BrandMark />
       </div>
 
       <div className="mt-4">

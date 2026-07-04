@@ -251,9 +251,9 @@ export default function SettingsPage() {
 
   return (
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6 md:px-8">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight text-fg">Réglages</h1>
-        <BrandMark className="md:hidden" />
+      <h1 className="sr-only">Réglages</h1>
+      <div className="flex justify-end md:hidden">
+        <BrandMark />
       </div>
 
       <Card title="Compte">

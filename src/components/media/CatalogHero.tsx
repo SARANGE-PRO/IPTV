@@ -124,7 +124,7 @@ export function CatalogHero({ section }: { section: Extract<Section, 'vod' | 'se
           <Link href={href}>
             <Button size="sm">
               <IconPlay className="mr-2 h-4 w-4" />
-              Voir
+              Regarder
             </Button>
           </Link>
         </div>

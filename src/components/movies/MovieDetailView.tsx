@@ -370,7 +370,7 @@ export function MovieDetailView({ vodId }: { vodId: string }) {
               <div className="mt-6 flex flex-wrap items-start gap-3">
                 <Button size="lg" onClick={() => play(canResume && progress !== null ? progress.positionSec : 0)}>
                   <IconPlay className="mr-2 h-4 w-4" />
-                  {canResume && progress !== null ? `Reprendre (${formatClock(progress.positionSec)})` : 'Lire'}
+                  {canResume && progress !== null ? `Reprendre (${formatClock(progress.positionSec)})` : 'Regarder'}
                 </Button>
                 {canResume && (
                   <Button size="lg" variant="secondary" onClick={() => play(0)}>
