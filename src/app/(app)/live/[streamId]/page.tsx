@@ -34,6 +34,9 @@ export default function LiveWatchPage() {
   });
   const [versions, setVersions] = useState<ChannelVersion[]>([]);
   const [failed, setFailed] = useState(false);
+  // Le titre en surimpression s'efface apres quelques secondes pour ne pas
+  // recouvrir le bouton plein ecran natif (le nom reste dans l'en-tete au-dessus).
+  const [showTitleOverlay, setShowTitleOverlay] = useState(true);
   // Safari (iPhone/iPad/macOS) : Live en HLS .m3u8 natif — il refuse le fMP4
   // progressif de la passerelle. Chrome/Edge : .ts transcode (robuste).
   const [liveExt] = useState<'m3u8' | 'ts'>(() => (supportsNativeHls() ? 'm3u8' : 'ts'));
@@ -47,6 +50,13 @@ export default function LiveWatchPage() {
     return () => {
       active = false;
     };
+  }, [streamId]);
+
+  // Ré-affiche le titre au zapping puis l'estompe (laisse le bouton plein écran libre).
+  useEffect(() => {
+    setShowTitleOverlay(true);
+    const timer = setTimeout(() => setShowTitleOverlay(false), 4000);
+    return () => clearTimeout(timer);
   }, [streamId]);
 
   useEffect(() => {
@@ -119,8 +129,15 @@ export default function LiveWatchPage() {
                 container={liveExt}
                 onError={() => setFailed(true)}
               />
-              {/* Titre en surimpression (verre depoli). */}
-              <div className="pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/60 to-transparent p-3">
+              {/* Titre en surimpression (verre depoli) — s'estompe apres 4 s pour
+                  liberer le bouton plein ecran natif. pointer-events-none : les
+                  taps atteignent toujours les controles du lecteur. */}
+              <div
+                className={cn(
+                  'pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/60 to-transparent p-3 transition-opacity duration-700',
+                  showTitleOverlay ? 'opacity-100' : 'opacity-0',
+                )}
+              >
                 <span className="glass inline-block max-w-[70%] truncate rounded-lg px-2.5 py-1 text-xs font-medium text-fg">
                   {channel != null ? displayChannelName(channel.name) : 'Chaîne'}
                 </span>

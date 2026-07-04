@@ -9,23 +9,33 @@ export type PreferredLanguage = 'VF' | 'VOSTFR' | 'MULTI' | 'EN' | 'ES' | 'DE' |
 interface UiSettingsState {
   showVlcButton: boolean;
   preferredLanguage: PreferredLanguage;
+  /** Incrustation automatique (PiP) quand on quitte l'app pendant la lecture. */
+  autoPip: boolean;
   hydrated: boolean;
   hydrate: () => Promise<void>;
   setShowVlcButton: (value: boolean) => Promise<void>;
   setPreferredLanguage: (value: PreferredLanguage) => Promise<void>;
+  setAutoPip: (value: boolean) => Promise<void>;
 }
 
 export const useUiSettingsStore = create<UiSettingsState>()((set) => ({
   showVlcButton: false,
   preferredLanguage: 'VF',
+  autoPip: true,
   hydrated: false,
 
   hydrate: async () => {
-    const [vlc, lang] = await Promise.all([
+    const [vlc, lang, pip] = await Promise.all([
       settingsRepository.getSetting<boolean>('showVlcButton'),
       settingsRepository.getSetting<PreferredLanguage>('preferredLanguage'),
+      settingsRepository.getSetting<boolean>('autoPip'),
     ]);
-    set({ showVlcButton: vlc === true, preferredLanguage: lang ?? 'VF', hydrated: true });
+    set({
+      showVlcButton: vlc === true,
+      preferredLanguage: lang ?? 'VF',
+      autoPip: pip !== false, // defaut ON
+      hydrated: true,
+    });
   },
 
   setShowVlcButton: async (value) => {
@@ -36,5 +46,10 @@ export const useUiSettingsStore = create<UiSettingsState>()((set) => ({
   setPreferredLanguage: async (value) => {
     await settingsRepository.setSetting('preferredLanguage', value);
     set({ preferredLanguage: value });
+  },
+
+  setAutoPip: async (value) => {
+    await settingsRepository.setSetting('autoPip', value);
+    set({ autoPip: value });
   },
 }));
