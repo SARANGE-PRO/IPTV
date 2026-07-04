@@ -246,7 +246,8 @@ export function SeriesDetailView({ seriesId }: { seriesId: string }) {
                 preferHls={plan === 'gateway' && supportsNativeHls()}
                 contentType="episode"
                 container={playingEp.containerExtension}
-                startAt={startAt}
+                startAt={plan === 'gateway' && supportsNativeHls() ? 0 : startAt}
+                startOffset={plan === 'gateway' && supportsNativeHls() ? startAt : 0}
                 duration={playingEp.durationSecs}
                 poster={posterUrl}
                 onProgress={(pos, dur, force) =>

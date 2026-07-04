@@ -247,7 +247,8 @@ export function MovieDetailView({ vodId }: { vodId: string }) {
                 preferHls={plan === 'gateway' && supportsNativeHls()}
                 contentType="vod"
                 container={movie.containerExtension}
-                startAt={startAt}
+                startAt={plan === 'gateway' && supportsNativeHls() ? 0 : startAt}
+                startOffset={plan === 'gateway' && supportsNativeHls() ? startAt : 0}
                 duration={fallbackDuration}
                 poster={backdropUrl ?? posterUrl}
                 onProgress={(pos, dur, force) =>

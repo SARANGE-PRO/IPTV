@@ -21,7 +21,12 @@ export interface VideoPlayerProps {
   src: string;
   poster?: string | null;
   live?: boolean;
+  /** Reprise par SEEK (flux seekable : MP4 direct). */
   startAt?: number;
+  /** Reprise par OFFSET SERVEUR (flux transcode non-seekable) : la passerelle
+   *  demarre a cette position, le flux commence donc a `startOffset`. Le lecteur
+   *  ne seek pas et rapporte la progression decalee de cet offset. */
+  startOffset?: number;
   /** Duree totale de repli (Xtream/TMDB) quand le player n'expose pas de duree. */
   duration?: number | null;
   /** `force` = flush garanti (pause/fin/pagehide/demontage) : la page doit le
@@ -97,6 +102,7 @@ export function VideoPlayer({
   poster,
   live = false,
   startAt = 0,
+  startOffset = 0,
   duration = null,
   onProgress,
   onEnded,
@@ -121,7 +127,7 @@ export function VideoPlayer({
   // passerelle qui choisit passthrough (MP4/segments) ou remux/transcodage
   // (MKV/HEVC, live .ts). Le drapeau `transcode` ne sert plus qu'a autoriser
   // les conteneurs non-natifs et a contextualiser le diagnostic (voir plus bas).
-  const streamUrl = secureMediaUrl(src, { hls: preferHls });
+  const streamUrl = secureMediaUrl(src, { hls: preferHls, start: startOffset });
   const posterUrl = secureImageSrc(poster);
 
   const onProgressRef = useRef(onProgress);
@@ -132,6 +138,8 @@ export function VideoPlayer({
   onErrorRef.current = onError;
   const startAtRef = useRef(startAt);
   startAtRef.current = startAt;
+  const startOffsetRef = useRef(startOffset);
+  startOffsetRef.current = startOffset;
   const liveRef = useRef(live);
   liveRef.current = live;
   const durationRef = useRef(duration);
@@ -198,15 +206,25 @@ export function VideoPlayer({
       const now = Date.now();
       if (!force && now - lastSentRef.current < PROGRESS_INTERVAL_MS) return;
       lastSentRef.current = now;
-      // Duree effective : native fiable sinon repli Xtream/TMDB (jamais Infinity/NaN/0).
-      const effectiveDuration = nativeDurationSeconds(video.duration) ?? durationRef.current ?? null;
-      onProgressRef.current?.(video.currentTime, effectiveDuration, force);
+      // Reprise par offset serveur : la position reelle = offset + temps du flux,
+      // et la duree totale = offset + duree du flux transcode (a defaut, la duree fournie).
+      const base = startOffsetRef.current;
+      const nat = nativeDurationSeconds(video.duration);
+      const effectiveDuration =
+        base > 0 ? (nat !== null ? base + nat : (durationRef.current ?? null)) : (nat ?? durationRef.current ?? null);
+      onProgressRef.current?.(base + video.currentTime, effectiveDuration, force);
     };
 
     // Evalue la seekability (lazy) et applique la reprise UNE fois si possible.
     // Appelee a loadedmetadata ET canplay (les plages seekable arrivent tard).
     const evaluateSeek = () => {
       if (liveRef.current || cancelled) return;
+      // Reprise par offset serveur : le flux commence deja a la bonne position,
+      // aucun seek a faire (et il reste seekable dans sa fenetre transcodee).
+      if (startOffsetRef.current > 0) {
+        setLimitedSeek(false);
+        return;
+      }
       const seekable = isSeekable(video);
       setLimitedSeek(!seekable);
       if (resumedRef.current || !seekable || startAtRef.current <= 0) return;

@@ -34,7 +34,7 @@ const MEDIA_GATEWAY_URL = process.env.NEXT_PUBLIC_MEDIA_GATEWAY_URL?.trim().repl
  */
 export function secureMediaUrl(
   value: string | null | undefined,
-  options: { hls?: boolean } = {},
+  options: { hls?: boolean; start?: number } = {},
 ): string | null {
   if (value === null || value === undefined) return null;
   const url = value.trim();
@@ -50,8 +50,12 @@ export function secureMediaUrl(
   // Page HTTPS : passerelle si configuree, sinon upgrade TLS best-effort
   // (echoue proprement si le serveur n'a pas de vrai HTTPS).
   if (MEDIA_GATEWAY_URL !== '') {
-    const base = `${MEDIA_GATEWAY_URL}/_fetch?url=${encodeURIComponent(url)}`;
-    return options.hls === true ? `${base}&hls=1` : base;
+    let base = `${MEDIA_GATEWAY_URL}/_fetch?url=${encodeURIComponent(url)}`;
+    if (options.hls === true) base += '&hls=1';
+    // Reprise d'un flux TRANSCODE : la passerelle demarre ffmpeg a cette position
+    // (-ss, seek HTTP) -> le flux commence a l'offset, pas depuis 0.
+    if (options.start !== undefined && options.start > 0) base += `&start=${Math.floor(options.start)}`;
+    return base;
   }
   return url.replace(/^http:\/\//i, 'https://');
 }

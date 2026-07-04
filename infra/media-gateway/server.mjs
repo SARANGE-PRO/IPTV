@@ -293,24 +293,19 @@ function hlsSegUrl(key, file, origin) {
   return `${origin}/_hlsseg?s=${encodeURIComponent(key)}&f=${encodeURIComponent(file)}&_s=${sign(`${key}/${file}`)}`;
 }
 
-async function ensureHlsSession(key, target, trusted, signal) {
+async function ensureHlsSession(key, target, trusted, signal, startSec = 0) {
   const existing = hlsSessions.get(key);
-  if (existing !== undefined) {
+  // Reutilise la session UNIQUEMENT si le meme offset de reprise (sinon on
+  // repart proprement a la nouvelle position).
+  if (existing !== undefined && existing.startSec === startSec) {
     existing.lastAccess = Date.now();
     if (existing.ready) return;
   } else {
+    if (existing !== undefined) killHlsSession(key);
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'zibtv-hls-'));
-    const headers = new Headers({ 'user-agent': UPSTREAM_UA, accept: '*/*' });
-    const { response } = await fetchAllowed(target, { method: 'GET', headers, signal }, trusted);
-    if (response.body === null) {
-      await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
-      throw new Error('Flux amont vide (HLS).');
-    }
     const out = path.join(dir, 'index.m3u8').replace(/\\/g, '/');
     const segs = path.join(dir, 'seg%05d.ts').replace(/\\/g, '/');
-    const args = [
-      '-hide_banner', '-loglevel', 'error', '-nostdin', '-fflags', '+genpts',
-      '-i', 'pipe:0',
+    const outputArgs = [
       '-map', '0:v:0', '-map', '0:a:0?',
       '-c:v', VIDEO_CODEC,
       ...(VIDEO_CODEC === 'libx264' ? ['-preset', 'veryfast', '-crf', '23', '-pix_fmt', 'yuv420p'] : []),
@@ -321,17 +316,44 @@ async function ensureHlsSession(key, target, trusted, signal) {
       '-hls_flags', 'independent_segments', '-hls_segment_type', 'mpegts',
       '-hls_segment_filename', segs, out,
     ];
-    const ff = spawn(FFMPEG, args, { stdio: ['pipe', 'ignore', 'pipe'] });
-    ff.stderr.on('data', () => {}); // ne journalise aucune URL
-    ff.stdin.on('error', () => {}); // EPIPE si ffmpeg se ferme avant la fin
-    const src = Readable.fromWeb(response.body);
-    const killFf = () => {
-      try { ff.kill('SIGKILL'); } catch {}
-    };
-    src.on('error', killFf);
-    ff.on('error', killFf);
-    src.pipe(ff.stdin);
-    hlsSessions.set(key, { dir, ff, ready: false, lastAccess: Date.now() });
+    let ff;
+    if (startSec > 0) {
+      // REPRISE : ffmpeg lit l'URL amont DIRECTEMENT avec seek HTTP (-ss avant -i)
+      // -> demarre a l'offset sans re-decoder depuis 0, et sans 2e connexion
+      // (pas de pre-fetch). Le serveur Xtream sert le fichier film en Range.
+      const args = [
+        '-hide_banner', '-loglevel', 'error', '-nostdin',
+        '-user_agent', UPSTREAM_UA,
+        '-ss', String(startSec), '-i', target.toString(),
+        ...outputArgs,
+      ];
+      ff = spawn(FFMPEG, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+      ff.stderr.on('data', () => {});
+      ff.on('error', () => { try { ff.kill('SIGKILL'); } catch {} });
+    } else {
+      const headers = new Headers({ 'user-agent': UPSTREAM_UA, accept: '*/*' });
+      const { response } = await fetchAllowed(target, { method: 'GET', headers, signal }, trusted);
+      if (response.body === null) {
+        await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+        throw new Error('Flux amont vide (HLS).');
+      }
+      const args = [
+        '-hide_banner', '-loglevel', 'error', '-nostdin', '-fflags', '+genpts',
+        '-i', 'pipe:0',
+        ...outputArgs,
+      ];
+      ff = spawn(FFMPEG, args, { stdio: ['pipe', 'ignore', 'pipe'] });
+      ff.stderr.on('data', () => {}); // ne journalise aucune URL
+      ff.stdin.on('error', () => {}); // EPIPE si ffmpeg se ferme avant la fin
+      const src = Readable.fromWeb(response.body);
+      const killFf = () => {
+        try { ff.kill('SIGKILL'); } catch {}
+      };
+      src.on('error', killFf);
+      ff.on('error', killFf);
+      src.pipe(ff.stdin);
+    }
+    hlsSessions.set(key, { dir, ff, ready: false, lastAccess: Date.now(), startSec });
   }
 
   const session = hlsSessions.get(key);
@@ -541,11 +563,14 @@ const server = http.createServer(async (req, res) => {
     // VOD MKV + client Safari (hls=1) -> transcodage HLS (Safari refuse le fMP4
     // progressif). On (re)demarre la session ffmpeg et on renvoie la playlist
     // reecrite ; Safari va ensuite chercher les segments via /_hlsseg.
-    const wantHls = new URL(req.url ?? '/', 'http://gateway.local').searchParams.get('hls') === '1';
+    const reqParams = new URL(req.url ?? '/', 'http://gateway.local').searchParams;
+    const wantHls = reqParams.get('hls') === '1';
+    // Offset de REPRISE (secondes) : demarre le transcodage a cette position.
+    const startSec = Math.max(0, Math.floor(Number(reqParams.get('start')) || 0));
     if (wantHls && !viaSig && TRANSCODE && req.method === 'GET' && UNSUPPORTED_EXT.test(rawTarget)) {
       clearTimeout(headerTimer);
       const key = sign(rawTarget);
-      await ensureHlsSession(key, target, trusted, aborter.signal);
+      await ensureHlsSession(key, target, trusted, aborter.signal, startSec);
       const playlist = await buildHlsPlaylist(key, publicOrigin(req));
       return void res
         .writeHead(200, { 'content-type': 'application/vnd.apple.mpegurl', 'cache-control': 'no-store' })
