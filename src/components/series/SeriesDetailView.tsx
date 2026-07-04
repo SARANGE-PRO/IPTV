@@ -16,7 +16,8 @@ import * as catalogRepository from '@/services/data/catalogService';
 import * as playbackRepository from '@/services/data/playbackDataService';
 import { resetGatewayHealthCache } from '@/services/player/mediaGatewayService';
 import { getSeriesDetailsCached } from '@/services/xtream/seriesDetailsService';
-import { tmdbPoster } from '@/services/tmdb/tmdbImage';
+import { tmdbBackdrop, tmdbPoster } from '@/services/tmdb/tmdbImage';
+import { secureImageSrc } from '@/utils/secureUrl';
 import { buildSeriesEpisodeUrl } from '@/services/xtream/xtreamUrls';
 import { supportsNativeHls } from '@/utils/playerSupport';
 import { usePlaybackPlan } from '@/hooks/usePlaybackPlan';
@@ -148,21 +149,42 @@ export function SeriesDetailView({ seriesId }: { seriesId: string }) {
     );
   }
 
+  const heroBackdrop = secureImageSrc(tmdbBackdrop(tmdb?.backdropPath ?? null));
+  const inPlayer = playingEp !== null && src !== null;
+
   return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-6 md:px-8">
-      <div className="mb-4 flex items-center gap-3">
-        <button
-          onClick={() => router.back()}
-          aria-label="Retour"
-          className="rounded-full bg-ink-800 p-2 text-fg-muted hover:text-fg"
-        >
-          <IconArrowLeft className="h-5 w-5" />
-        </button>
-        <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg">
-          {series != null ? displayTitle(series.name) : ''}
-        </h1>
-        <FavoriteButton type="series" itemId={seriesId} />
-      </div>
+    <div className="mx-auto w-full max-w-4xl">
+      {!inPlayer && (
+        <div className="relative h-48 w-full overflow-hidden sm:h-72 sm:rounded-t-3xl">
+          {heroBackdrop !== null ? (
+            <img
+              src={heroBackdrop}
+              alt=""
+              aria-hidden
+              className="h-full w-full animate-fade-in object-cover object-top"
+            />
+          ) : (
+            <div className="h-full w-full bg-gradient-to-br from-ink-800 to-ink-950" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-ink-950 via-ink-950/60 to-ink-950/10" />
+          <div className="absolute inset-0 bg-gradient-to-r from-ink-950/70 to-transparent" />
+        </div>
+      )}
+
+      <div className={cn('px-4 pb-8 md:px-8', inPlayer ? 'pt-6' : 'relative -mt-16 sm:-mt-24')}>
+        <div className="mb-4 flex items-center gap-3">
+          <button
+            onClick={() => router.back()}
+            aria-label="Retour"
+            className="glass rounded-full p-2 text-fg-muted transition-colors hover:text-fg"
+          >
+            <IconArrowLeft className="h-5 w-5" />
+          </button>
+          <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg drop-shadow">
+            {series != null ? displayTitle(series.name) : ''}
+          </h1>
+          <FavoriteButton type="series" itemId={seriesId} />
+        </div>
 
       {playingEp !== null && src !== null ? (
         <div className="mb-6 space-y-4">
@@ -342,6 +364,7 @@ export function SeriesDetailView({ seriesId }: { seriesId: string }) {
           </div>
         </>
       )}
+      </div>
     </div>
   );
 }

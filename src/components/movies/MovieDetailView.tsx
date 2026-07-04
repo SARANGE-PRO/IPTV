@@ -9,6 +9,9 @@ import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { Button } from '@/components/ui/Button';
 import { IconArrowLeft, IconPlay } from '@/components/ui/icons';
+import { cn } from '@/lib/cn';
+import { mediaBadges, BADGE_TONE_CLASS } from '@/utils/mediaBadges';
+import { secureImageSrc } from '@/utils/secureUrl';
 import * as catalogRepository from '@/services/data/catalogService';
 import * as playbackRepository from '@/services/data/playbackDataService';
 import { resetGatewayHealthCache } from '@/services/player/mediaGatewayService';
@@ -132,23 +135,45 @@ export function MovieDetailView({ vodId }: { vodId: string }) {
     );
   }
 
-  return (
-    <div className="mx-auto w-full max-w-4xl px-4 py-6 md:px-8">
-      <div className="mb-4 flex items-center gap-3">
-        <button
-          onClick={() => router.back()}
-          aria-label="Retour"
-          className="rounded-full bg-ink-800 p-2 text-fg-muted hover:text-fg"
-        >
-          <IconArrowLeft className="h-5 w-5" />
-        </button>
-        <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg">
-          {movie != null ? displayTitle(movie.name) : ''}
-        </h1>
-        <FavoriteButton type="vod" itemId={vodId} />
-      </div>
+  const heroBackdrop = secureImageSrc(backdropUrl);
+  const badges = mediaBadges(movie?.name ?? null, movie?.containerExtension ?? null);
 
-      {playing && src !== null && movie !== undefined ? (
+  return (
+    <div className="mx-auto w-full max-w-4xl">
+      {/* Hero cinematographique : backdrop plein cadre + degrades de fondu. */}
+      {!playing && (
+        <div className="relative h-48 w-full overflow-hidden sm:h-72 sm:rounded-t-3xl">
+          {heroBackdrop !== null ? (
+            <img
+              src={heroBackdrop}
+              alt=""
+              aria-hidden
+              className="h-full w-full animate-fade-in object-cover object-top"
+            />
+          ) : (
+            <div className="h-full w-full bg-gradient-to-br from-ink-800 to-ink-950" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-ink-950 via-ink-950/60 to-ink-950/10" />
+          <div className="absolute inset-0 bg-gradient-to-r from-ink-950/70 to-transparent" />
+        </div>
+      )}
+
+      <div className={cn('px-4 pb-8 md:px-8', playing ? 'pt-6' : 'relative -mt-16 sm:-mt-24')}>
+        <div className="mb-4 flex items-center gap-3">
+          <button
+            onClick={() => router.back()}
+            aria-label="Retour"
+            className="glass rounded-full p-2 text-fg-muted transition-colors hover:text-fg"
+          >
+            <IconArrowLeft className="h-5 w-5" />
+          </button>
+          <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg drop-shadow">
+            {movie != null ? displayTitle(movie.name) : ''}
+          </h1>
+          <FavoriteButton type="vod" itemId={vodId} />
+        </div>
+
+        {playing && src !== null && movie !== undefined ? (
         <div className="space-y-3">
           {plan === 'vlc-only' ? (
             <div className="rounded-2xl bg-ink-800 p-6 text-center">
@@ -245,6 +270,21 @@ export function MovieDetailView({ vodId }: { vodId: string }) {
               {tmdb !== null && tmdb.genres.length > 0 && (
                 <p className="mt-1 text-xs text-fg-faint">{tmdb.genres.join(' · ')}</p>
               )}
+              {badges.length > 0 && (
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  {badges.map((b) => (
+                    <span
+                      key={b.label}
+                      className={cn(
+                        'rounded-md border px-1.5 py-0.5 text-[10px] font-semibold tracking-wide',
+                        BADGE_TONE_CLASS[b.tone],
+                      )}
+                    >
+                      {b.label}
+                    </span>
+                  ))}
+                </div>
+              )}
               {overview !== null && <p className="mt-3 text-sm leading-relaxed text-fg-muted">{overview}</p>}
               {tmdb !== null && tmdb.cast.length > 0 && (
                 <p className="mt-3 text-xs text-fg-faint">
@@ -268,6 +308,7 @@ export function MovieDetailView({ vodId }: { vodId: string }) {
           </div>
         )
       )}
+      </div>
     </div>
   );
 }

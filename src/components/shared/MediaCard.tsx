@@ -23,11 +23,12 @@ export function MediaCard({ href, title, posterUrl, subtitle, badge, tag, progre
     <Link
       href={href}
       className={cn(
-        'group block transition-transform duration-200 will-change-transform active:scale-[0.97]',
+        'group block rounded-xl outline-none transition-transform duration-200 will-change-transform',
+        'hover:-translate-y-1 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950',
         className,
       )}
     >
-      <div className="relative overflow-hidden rounded-xl border border-white/[0.06] shadow-lg shadow-black/40 transition-colors group-hover:border-white/15">
+      <div className="relative overflow-hidden rounded-xl border border-white/[0.06] shadow-lg shadow-black/40 transition-all duration-200 group-hover:border-accent/40 group-hover:shadow-xl group-hover:shadow-black/60">
         <PosterImage
           src={posterUrl}
           alt={title}

@@ -38,7 +38,7 @@ export function DetailModal({ children }: { children: ReactNode }) {
       <div className="flex min-h-full items-start justify-center sm:py-8">
         <div
           onClick={(e) => e.stopPropagation()}
-          className="relative w-full max-w-4xl bg-ink-950 shadow-2xl shadow-black/60 sm:rounded-3xl sm:border sm:border-ink-700/60"
+          className="relative w-full max-w-4xl animate-modal-rise overflow-hidden bg-ink-950 shadow-2xl shadow-black/60 sm:rounded-3xl sm:border sm:border-ink-700/60"
         >
           {children}
         </div>
