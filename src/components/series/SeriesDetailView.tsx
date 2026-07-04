@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { HScroll } from '@/components/shared/HScroll';
+import { LanguageVariantSwitcher } from '@/components/media/LanguageVariantSwitcher';
 import { PosterImage } from '@/components/shared/PosterImage';
 import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
@@ -15,6 +16,7 @@ import { cn } from '@/lib/cn';
 import * as catalogRepository from '@/services/data/catalogService';
 import * as playbackRepository from '@/services/data/playbackDataService';
 import { resetGatewayHealthCache } from '@/services/player/mediaGatewayService';
+import { findSeriesVariants, type LanguageVariant } from '@/services/media/languageVariantService';
 import { getSeriesDetailsCached } from '@/services/xtream/seriesDetailsService';
 import { tmdbBackdrop, tmdbPoster } from '@/services/tmdb/tmdbImage';
 import { secureImageSrc } from '@/utils/secureUrl';
@@ -51,6 +53,7 @@ export function SeriesDetailView({ seriesId }: { seriesId: string }) {
   const router = useRouter();
 
   const [series, setSeries] = useState<Series | null | undefined>(undefined);
+  const [variants, setVariants] = useState<LanguageVariant[]>([]);
   const [details, setDetails] = useState<SeriesDetails | null | undefined>(undefined);
   const [season, setSeason] = useState<number | null>(null);
   const [playingEp, setPlayingEp] = useState<Episode | null>(null);
@@ -69,6 +72,19 @@ export function SeriesDetailView({ seriesId }: { seriesId: string }) {
       active = false;
     };
   }, [seriesId]);
+
+  // Variantes de langue (series soeurs VF/VOSTFR/MULTI/VO) : changer de version
+  // = recharger la serie soeur via sa route (fonctionne en modal comme en page).
+  useEffect(() => {
+    if (series === null || series === undefined) return;
+    let active = true;
+    void findSeriesVariants(series).then((vs) => {
+      if (active) setVariants(vs);
+    });
+    return () => {
+      active = false;
+    };
+  }, [series]);
 
   // Saisons/episodes charges A LA DEMANDE (cache Dexie + TTL).
   useEffect(() => {
@@ -285,6 +301,15 @@ export function SeriesDetailView({ seriesId }: { seriesId: string }) {
                   <span className="text-fg-muted">Avec </span>
                   {tmdb.cast.slice(0, 5).map((c) => c.name).join(', ')}
                 </p>
+              )}
+              {variants.length >= 2 && (
+                <div className="mt-4">
+                  <LanguageVariantSwitcher
+                    variants={variants}
+                    activeId={seriesId}
+                    onSelect={(v) => router.replace(`/series/${v.id}`)}
+                  />
+                </div>
               )}
               {resumeEpisode !== null && (
                 <div className="mt-4">

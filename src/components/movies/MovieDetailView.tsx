@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
+import { LanguageVariantSwitcher } from '@/components/media/LanguageVariantSwitcher';
 import { PosterImage } from '@/components/shared/PosterImage';
 import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
@@ -17,6 +18,11 @@ import * as playbackRepository from '@/services/data/playbackDataService';
 import { resetGatewayHealthCache } from '@/services/player/mediaGatewayService';
 import { resolveDuration, parseDurationToSeconds } from '@/services/player/mediaDurationService';
 import { progressRatio, shouldOfferResume } from '@/services/player/resumePlaybackService';
+import {
+  findMovieVariants,
+  pickPreferredVariant,
+  type LanguageVariant,
+} from '@/services/media/languageVariantService';
 import { tmdbBackdrop, tmdbPoster } from '@/services/tmdb/tmdbImage';
 import * as xtreamApi from '@/services/xtream/xtreamApi';
 import { buildVodStreamUrl } from '@/services/xtream/xtreamUrls';
@@ -40,9 +46,12 @@ export function MovieDetailView({ vodId }: { vodId: string }) {
   const saveProgress = usePlaybackStore((s) => s.saveProgress);
   const markFinished = usePlaybackStore((s) => s.markFinished);
   const showVlcButton = useUiSettingsStore((s) => s.showVlcButton);
+  const preferredLanguage = useUiSettingsStore((s) => s.preferredLanguage);
   const router = useRouter();
 
   const [movie, setMovie] = useState<Movie | null | undefined>(undefined);
+  const [variants, setVariants] = useState<LanguageVariant[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [progress, setProgress] = useState<PlaybackEntry | null>(null);
   const [plot, setPlot] = useState<string | null>(null);
   const [xtreamPoster, setXtreamPoster] = useState<string | null>(null);
@@ -66,6 +75,21 @@ export function MovieDetailView({ vodId }: { vodId: string }) {
       active = false;
     };
   }, [vodId]);
+
+  // Variantes de langue (VF/VOSTFR/MULTI/VO) : le provider duplique les entrees
+  // par langue -> on regroupe les soeurs et on selectionne la langue preferee.
+  useEffect(() => {
+    if (movie === null || movie === undefined) return;
+    let active = true;
+    void findMovieVariants(movie).then((vs) => {
+      if (!active) return;
+      setVariants(vs);
+      setActiveId(pickPreferredVariant(vs, movie.id, preferredLanguage)?.id ?? movie.id);
+    });
+    return () => {
+      active = false;
+    };
+  }, [movie, preferredLanguage]);
 
   // Synopsis a la demande (non bloquant, jamais indispensable).
   useEffect(() => {
@@ -99,17 +123,35 @@ export function MovieDetailView({ vodId }: { vodId: string }) {
   const overview = tmdb?.overview ?? plot;
   const rating = tmdb?.voteAverage ?? movie?.rating ?? null;
 
+  // Entree active = variante de langue selectionnee (a defaut, le film ouvert).
+  const activeEntry = useMemo(
+    () => variants.find((v) => v.id === activeId) ?? null,
+    [variants, activeId],
+  );
+  const activeMovieId = activeEntry?.id ?? movie?.id ?? null;
+  const activeContainer = activeEntry?.containerExtension ?? movie?.containerExtension ?? null;
+
   const src = useMemo(
     () =>
-      credentials !== null && movie !== null && movie !== undefined
-        ? buildVodStreamUrl(credentials, movie.id, movie.containerExtension)
+      credentials !== null && activeMovieId !== null
+        ? buildVodStreamUrl(credentials, activeMovieId, activeContainer)
         : null,
-    [credentials, movie],
+    [credentials, activeMovieId, activeContainer],
   );
 
   // Plan de lecture adaptatif : MP4 -> direct ; MKV -> passerelle si joignable,
   // sinon VLC. Sonde la passerelle une seule fois (cache), aucune connexion Xtream.
-  const plan = usePlaybackPlan(movie?.containerExtension ?? null, planRetry);
+  const plan = usePlaybackPlan(activeContainer, planRetry);
+
+  // Changer de variante : on stoppe la lecture (le lecteur envoie son beacon
+  // d'arret -> libere la connexion Xtream) ; l'utilisateur relance en un tap.
+  const handleSelectVariant = (v: LanguageVariant) => {
+    if (v.id === activeId) return;
+    setActiveId(v.id);
+    setPlaying(false);
+    setFailed(false);
+    setStartAt(0);
+  };
 
   // Duree de repli (Xtream puis TMDB) quand le player n'expose pas de duree fiable.
   const fallbackDuration = resolveDuration({
@@ -178,7 +220,7 @@ export function MovieDetailView({ vodId }: { vodId: string }) {
           {plan === 'vlc-only' ? (
             <div className="rounded-2xl bg-ink-800 p-6 text-center">
               <p className="text-sm text-fg">
-                Ce film est en {movie.containerExtension?.toUpperCase() ?? 'un format non lisible'} — un iPhone
+                Ce film est en {activeContainer?.toUpperCase() ?? 'un format non lisible'} — un iPhone
                 ou iPad ne le décode pas dans le navigateur.
               </p>
               <p className="mt-1.5 text-xs text-fg-muted">
@@ -291,6 +333,15 @@ export function MovieDetailView({ vodId }: { vodId: string }) {
                   <span className="text-fg-muted">Avec </span>
                   {tmdb.cast.slice(0, 5).map((c) => c.name).join(', ')}
                 </p>
+              )}
+              {variants.length >= 2 && activeId !== null && (
+                <div className="mt-4">
+                  <LanguageVariantSwitcher
+                    variants={variants}
+                    activeId={activeId}
+                    onSelect={handleSelectVariant}
+                  />
+                </div>
               )}
               <div className="mt-6 flex flex-wrap items-start gap-3">
                 <Button size="lg" onClick={() => play(canResume && progress !== null ? progress.positionSec : 0)}>
