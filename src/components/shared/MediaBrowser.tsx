@@ -20,6 +20,7 @@ import type { BoolNum, MediaType, Section } from '@/types/models';
 import { detectFrenchVariant } from '@/services/media/languageDetectionService';
 import { prioritizeCategories } from '@/utils/categoryPriority';
 import { displayTitle } from '@/utils/displayTitle';
+import { mediaBadges } from '@/utils/mediaBadges';
 import { formatCount } from '@/utils/format';
 
 export interface BrowserItem {
@@ -375,6 +376,8 @@ export function MediaBrowser<T extends BrowserItem>({
                 title={displayTitle(item.name)}
                 posterUrl={item.posterUrl}
                 subtitle={subtitleFor?.(item) ?? undefined}
+                quality={mediaBadges(item.name, null).find((b) => b.tone === 'quality')?.label ?? null}
+                rating={item.rating ?? null}
                 tag={detectFrenchVariant(item.name) ?? (item.isFrench === 1 ? 'FR' : null)}
                 favorite={{ type: favoriteType, itemId: item.id }}
               />
