@@ -20,7 +20,8 @@ import { usePlaybackStore } from '@/stores/playbackStore';
 import * as catalogRepository from '@/services/data/catalogService';
 import * as playbackRepository from '@/services/data/playbackDataService';
 import { getMovieTop10 } from '@/services/ranking/smartRankingService';
-import { findUpcomingSportEvents, type SportEvent } from '@/services/live/sportEventsService';
+import { loadHomeSportEvents } from '@/services/live/externalSportEventsService';
+import type { SportEvent } from '@/services/live/sportEventsService';
 import type { LiveChannel, Movie, PlaybackEntry, Series } from '@/types/models';
 import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
 import { formatCount } from '@/utils/format';
@@ -97,7 +98,7 @@ export default function HomePage() {
       return;
     }
     let active = true;
-    void findUpcomingSportEvents(credentials)
+    void loadHomeSportEvents(credentials)
       .then((events) => {
         if (active) setSportEvents(events);
       })
