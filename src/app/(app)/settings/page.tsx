@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { DevTmdbBackfill } from '@/components/dev/DevTmdbBackfill';
 import { FootballCard } from '@/components/settings/FootballCard';
 import { NotificationsCard } from '@/components/settings/NotificationsCard';
 import { TrackDiagnosticPanel } from '@/components/settings/TrackDiagnosticPanel';
@@ -295,6 +296,9 @@ export default function SettingsPage() {
           </Button>
         </div>
       </Card>
+
+      {/* TEMPORAIRE (dev) — validation étape 1 refonte VOD. À retirer avant l'étape 2. */}
+      <DevTmdbBackfill />
 
       <Card title="Préférences">
         <div className="flex flex-col gap-4">

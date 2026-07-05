@@ -155,6 +155,8 @@ export interface XtreamSeries {
   youtube_trailer?: string | null;
   episode_run_time?: NumLike | null;
   category_id: NumLike | null;
+  /** Certains panels exposent directement l'id TMDB de la serie. */
+  tmdb?: NumLike;
 }
 
 export interface XtreamSeason {
