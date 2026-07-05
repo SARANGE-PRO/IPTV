@@ -453,6 +453,137 @@ export function countByCategory(section: Section, categoryId: string): Promise<n
   return db.xtream_series.where('categoryId').equals(categoryId).count();
 }
 
+// --- Pagination A PLAT (refonte VOD, etape 2 : filtres TMDB, sans categorie) --------
+
+/** Tri global d'une collection a plat. `rating`/`year` s'appuient sur les metadonnees TMDB. */
+export type FlatSort = 'recent' | 'rating' | 'year' | 'title';
+
+/**
+ * Filtres frontend appliques sur TOUTE la collection, independamment des
+ * categories fournisseur. Tous optionnels et cumulatifs (ET entre criteres) ; les
+ * genres sont en OU (au moins un). La distinction FR de base est preservee via
+ * `frenchOnly` (isFrench). Refonte VOD, etape 2.
+ */
+export interface CatalogFilter {
+  /** Genres TMDB filtres. Vide/omis = pas de filtre genre. */
+  genreIds?: number[];
+  /** 'any' (OU, defaut) : au moins un genre ; 'all' (ET) : tous les genres. */
+  genreMatch?: 'any' | 'all';
+  /** Annee TMDB minimale / maximale (inclusives). */
+  minYear?: number;
+  maxYear?: number;
+  /** Note TMDB minimale (/10). */
+  minRating?: number;
+  /** Restreint aux contenus FR (isFrench=1). */
+  frenchOnly?: boolean;
+  /** Pseudo-filtre « Autres / Non classes » : items sans correspondance TMDB (tmdbState=2). */
+  unclassifiedOnly?: boolean;
+}
+
+/** Champs minimaux lus par le predicat de filtrage (films et series). */
+interface TmdbFilterable {
+  categoryId: string;
+  isFrench: BoolNum;
+  tmdbGenreIds: number[];
+  tmdbYear: number | null;
+  tmdbRating: number | null;
+  tmdbState: number;
+}
+
+function isEmptyFilter(f: CatalogFilter): boolean {
+  return (
+    (f.genreIds === undefined || f.genreIds.length === 0) &&
+    f.minYear === undefined &&
+    f.maxYear === undefined &&
+    f.minRating === undefined &&
+    f.frenchOnly !== true &&
+    f.unclassifiedOnly !== true
+  );
+}
+
+function buildPredicate(
+  filter: CatalogFilter,
+  hidden?: ReadonlySet<string>,
+): (item: TmdbFilterable) => boolean {
+  const genreIds = filter.genreIds ?? [];
+  const genreAll = filter.genreMatch === 'all';
+  return (item) => {
+    if (hidden !== undefined && hidden.has(item.categoryId)) return false;
+    if (filter.frenchOnly === true && item.isFrench !== 1) return false;
+    if (filter.unclassifiedOnly === true && item.tmdbState !== 2) return false;
+    if (genreIds.length > 0) {
+      const ok = genreAll
+        ? genreIds.every((g) => item.tmdbGenreIds.includes(g))
+        : genreIds.some((g) => item.tmdbGenreIds.includes(g));
+      if (!ok) return false;
+    }
+    if (filter.minYear !== undefined && (item.tmdbYear === null || item.tmdbYear < filter.minYear)) return false;
+    if (filter.maxYear !== undefined && (item.tmdbYear === null || item.tmdbYear > filter.maxYear)) return false;
+    if (filter.minRating !== undefined && (item.tmdbRating === null || item.tmdbRating < filter.minRating)) return false;
+    return true;
+  };
+}
+
+/**
+ * Collection triee par index GLOBAL (jamais de tableau en RAM : Dexie parcourt
+ * l'index et ne materialise que la page demandee). `rating`/`year` utilisent les
+ * index TMDB -> les items non enrichis (cle nulle) en sont naturellement exclus.
+ */
+function moviesSorted(sort: FlatSort): Collection<Movie, string> {
+  if (sort === 'title') return db.xtream_vod_streams.orderBy('normalizedName');
+  if (sort === 'rating') return db.xtream_vod_streams.orderBy('tmdbRating').reverse();
+  if (sort === 'year') return db.xtream_vod_streams.orderBy('tmdbYear').reverse();
+  return db.xtream_vod_streams.orderBy('addedAt').reverse();
+}
+
+function seriesSorted(sort: FlatSort): Collection<Series, string> {
+  if (sort === 'title') return db.xtream_series.orderBy('normalizedName');
+  if (sort === 'rating') return db.xtream_series.orderBy('tmdbRating').reverse();
+  if (sort === 'year') return db.xtream_series.orderBy('tmdbYear').reverse();
+  return db.xtream_series.orderBy('lastModifiedAt').reverse();
+}
+
+/**
+ * Page de films sur TOUTE la collection (« data flattening ») : tri par index
+ * global + filtres TMDB en `.filter()` + pagination offset/limit. Aucune notion de
+ * categorie fournisseur. Memoire bornee (seule la page est materialisee).
+ */
+export function getAllMoviesPage(
+  offset: number,
+  limit: number,
+  sort: FlatSort = 'recent',
+  filter: CatalogFilter = {},
+  hidden?: ReadonlySet<string>,
+): Promise<Movie[]> {
+  return moviesSorted(sort).filter(buildPredicate(filter, hidden)).offset(offset).limit(limit).toArray();
+}
+
+/** Page de series sur toute la collection (voir getAllMoviesPage). */
+export function getAllSeriesPage(
+  offset: number,
+  limit: number,
+  sort: FlatSort = 'recent',
+  filter: CatalogFilter = {},
+  hidden?: ReadonlySet<string>,
+): Promise<Series[]> {
+  return seriesSorted(sort).filter(buildPredicate(filter, hidden)).offset(offset).limit(limit).toArray();
+}
+
+/**
+ * Compte les films correspondant au filtre. Sans filtre ni blacklist -> compte
+ * d'index (rapide). Avec filtre -> SCAN de table (lit les objets) : a utiliser
+ * avec parcimonie (pas a chaque frappe/scroll).
+ */
+export function countAllMovies(filter: CatalogFilter = {}, hidden?: ReadonlySet<string>): Promise<number> {
+  if (isEmptyFilter(filter) && hidden === undefined) return db.xtream_vod_streams.count();
+  return db.xtream_vod_streams.filter(buildPredicate(filter, hidden)).count();
+}
+
+export function countAllSeries(filter: CatalogFilter = {}, hidden?: ReadonlySet<string>): Promise<number> {
+  if (isEmptyFilter(filter) && hidden === undefined) return db.xtream_series.count();
+  return db.xtream_series.filter(buildPredicate(filter, hidden)).count();
+}
+
 // --- Recherche (index multiEntry searchTokens, schema v2) ---------------------------
 
 interface Searchable {
@@ -478,6 +609,7 @@ async function searchIn<T extends Searchable>(
   query: string,
   limit: number,
   hiddenCategoryIds?: ReadonlySet<string>,
+  extra?: (item: T) => boolean,
 ): Promise<T[]> {
   const tokens = tokenizeQuery(query);
   const primary = tokens.reduce<string | null>(
@@ -495,7 +627,8 @@ async function searchIn<T extends Searchable>(
     .filter(
       (item) =>
         (hidden === undefined || !hidden.has(item.categoryId)) &&
-        rest.every((t) => item.searchTokens.some((tok) => tok.startsWith(t))),
+        rest.every((t) => item.searchTokens.some((tok) => tok.startsWith(t))) &&
+        (extra === undefined || extra(item)),
     )
     .limit(limit)
     .toArray();
@@ -531,6 +664,30 @@ export function searchSeries(
   hiddenCategoryIds?: ReadonlySet<string>,
 ): Promise<Series[]> {
   return searchIn(db.xtream_series, query, limit, hiddenCategoryIds);
+}
+
+/**
+ * Recherche films CROISEE avec les filtres TMDB (genre/annee/note/FR/orphelins).
+ * Le texte passe par l'index searchTokens ; le filtre TMDB s'applique dans le
+ * meme `.filter()` (avant `.limit()`). Le tri de pertinence de searchIn prime ;
+ * le tri par metadonnee (rating/year) reste l'affaire de getAll*Page (navigation).
+ */
+export function searchMoviesFiltered(
+  query: string,
+  filter: CatalogFilter = {},
+  limit = 60,
+  hiddenCategoryIds?: ReadonlySet<string>,
+): Promise<Movie[]> {
+  return searchIn(db.xtream_vod_streams, query, limit, hiddenCategoryIds, buildPredicate(filter));
+}
+
+export function searchSeriesFiltered(
+  query: string,
+  filter: CatalogFilter = {},
+  limit = 60,
+  hiddenCategoryIds?: ReadonlySet<string>,
+): Promise<Series[]> {
+  return searchIn(db.xtream_series, query, limit, hiddenCategoryIds, buildPredicate(filter));
 }
 
 // --- Enrichissement TMDB (refonte VOD, etape 1) --------------------------------

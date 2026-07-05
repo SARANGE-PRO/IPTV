@@ -8,6 +8,8 @@ import {
   normalizeMovie,
   normalizeSeries,
 } from '@/services/xtream/normalize';
+import { runCatalogBackfill } from '@/services/tmdb/tmdbEnrichmentService';
+import { ensureAllGenres } from '@/services/tmdb/tmdbGenreService';
 import * as xtreamApi from '@/services/xtream/xtreamApi';
 import type { Category, Section } from '@/types/models';
 import type { XtreamCredentials } from '@/types/xtream';
@@ -144,5 +146,22 @@ export async function syncAllSections(
     outcomes.push(outcome);
     opts?.onSectionDone?.(outcome);
   }
+  maybeStartTmdbBackfill(outcomes);
   return outcomes;
+}
+
+/**
+ * Demarre EN TACHE DE FOND (non bloquant) le prechargement des genres TMDB puis
+ * le backfill d'enrichissement — uniquement si une section VOD/series vient d'etre
+ * resynchronisee (donc des lignes en tmdbState=0 a traiter). Best-effort : n'impacte
+ * jamais la sync. Le backfill est single-flight (un seul a la fois), rate-limite
+ * (limiteur tmdbClient) et reprenable. Refonte VOD, etape 2.
+ */
+function maybeStartTmdbBackfill(outcomes: SectionOutcome[]): void {
+  const vodResynced = outcomes.some(
+    (o) => (o.section === 'vod' || o.section === 'series') && o.ok && !o.skipped,
+  );
+  if (!vodResynced) return;
+  void ensureAllGenres().catch(() => {});
+  void runCatalogBackfill().catch(() => {});
 }
