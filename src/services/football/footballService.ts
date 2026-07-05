@@ -1,7 +1,7 @@
 import type { FootballMatch, FootballTeam } from '@/app/api/football/route';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import { getFullChannelEpg } from '@/services/epg/epgService';
-import { sportChannelMatchKey } from '@/services/live/channelNormalizer';
+import { detectQuality, sportChannelMatchKey } from '@/services/live/channelNormalizer';
 import type { XtreamCredentials } from '@/types/xtream';
 import { broadcastersFor } from '@/utils/footballBroadcasters';
 import { epgMentionsMatch, teamNameForms } from '@/utils/footballMatch';
@@ -51,23 +51,37 @@ export interface BroadcastChannel {
  */
 export async function resolveBroadcastChannels(competitionCode: string): Promise<BroadcastChannel[]> {
   const names = broadcastersFor(competitionCode);
-  const found: BroadcastChannel[] = [];
-  const seen = new Set<string>();
+  // Une entree par chaine (cle canonique) : on garde la MEILLEURE qualite, pas
+  // toutes les variantes (FHD/HD/4K/backup) qui encombraient l'affichage. `order`
+  // preserve l'ordre du mapping (probabilite decroissante des droits TV).
+  const bestByKey = new Map<string, { id: string; name: string; score: number; order: number }>();
+  let order = 0;
   for (const name of names) {
     const key = sportChannelMatchKey(name);
-    if (key.length < 3) continue;
+    // >= 2 : laisse passer M6 / W9 (cle a 2 caracteres) sans admettre le bruit
+    // 1-caractere. Le rapprochement se fait par EGALITE stricte de cle canonique
+    // (un `startsWith` faisait matcher beIN 1 avec beIN 10/11/12).
+    if (key.length < 2) {
+      order += 1;
+      continue;
+    }
     const candidates = await catalogRepository.searchLiveChannels(name, 25);
     for (const c of candidates) {
-      if (seen.has(c.id)) continue;
-      const ck = sportChannelMatchKey(c.name);
-      if (ck === key || ck.startsWith(key) || key.startsWith(ck)) {
-        seen.add(c.id);
-        found.push({ id: c.id, name: c.name });
+      if (sportChannelMatchKey(c.name) !== key) continue;
+      const score = detectQuality(c.name).score;
+      const existing = bestByKey.get(key);
+      if (existing === undefined) {
+        bestByKey.set(key, { id: c.id, name: c.name, score, order });
+      } else if (score > existing.score) {
+        bestByKey.set(key, { id: c.id, name: c.name, score, order: existing.order });
       }
     }
-    if (found.length >= 8) break;
+    order += 1;
+    if (bestByKey.size >= 8) break;
   }
-  return found;
+  return [...bestByKey.values()]
+    .sort((a, b) => a.order - b.order)
+    .map(({ id, name }) => ({ id, name }));
 }
 
 export interface MatchChannel {
