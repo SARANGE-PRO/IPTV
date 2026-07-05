@@ -9,8 +9,8 @@
  */
 
 const BROADCASTERS: Record<string, string[]> = {
-  WC: ['TF1', 'M6', 'beIN Sports 1', 'beIN Sports 2', 'beIN Sports 3'], // Coupe du Monde 2026 (TF1/M6 en clair + beIN)
-  EC: ['TF1', 'M6', 'beIN Sports 1', 'beIN Sports 2'], // Euro
+  WC: ['TF1', 'beIN Sports 1', 'beIN Sports 2', 'beIN Sports 3'], // Coupe du Monde 2026 (TF1 en clair + beIN ; pas M6)
+  EC: ['TF1', 'M6', 'beIN Sports 1', 'beIN Sports 2'], // Euro (TF1/M6 en clair + beIN)
   CL: ['Canal+ Foot', 'Canal+ Sport', 'beIN Sports 1'], // Ligue des Champions
   FL1: ['Ligue 1+', 'DAZN', 'beIN Sports 1'], // Ligue 1
   PL: ['Canal+ Foot', 'Canal+ Sport'], // Premier League
