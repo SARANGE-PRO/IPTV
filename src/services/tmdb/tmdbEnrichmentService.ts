@@ -23,14 +23,23 @@ import { enrichByTmdbId, enrichMovie, enrichSeries, tmdbCacheKey } from './tmdbM
  * reste en `tmdbState = 0` et sera retentee au prochain passage.
  */
 
-// Lots volontairement conservateurs : chaque item = 1 requete (voie tmdbId) a 2
-// (voie titre : recherche + detail, + eventuel retry). Concurrence 4 + pause de
-// 1,5 s entre les tours -> on reste sous 60 req/min meme dans le pire cas.
+// Le DEBIT est desormais garanti par le limiteur de tmdbClient (>= 1,15 s entre
+// appels proxy, ~52 req/min < 60). Ici on ne gere plus le rythme fin : lots de
+// 12, concurrence 4 pour masquer la latence reseau dans le creneau, petite pause
+// entre les tours. Un 429 residuel est deja absorbe (backoff) cote client.
 const BACKFILL_BATCH = 12;
 const CONCURRENCY = 4;
-const BATCH_PAUSE_MS = 1500;
-/** Nombre de tours SANS aucune progression avant d'abandonner (TMDB HS). */
-const MAX_STALL = 2;
+const BATCH_PAUSE_MS = 500;
+/**
+ * Tours consecutifs SANS progression avant d'abandonner. Genereux : une accalmie
+ * (429 en backoff, TMDB lent) fait PATIENTER (backoff exponentiel ci-dessous) et
+ * REPREND les memes lignes au tour suivant — on n'abandonne un item que si TMDB
+ * reste injoignable sur toute la fenetre. Les lignes restent en tmdbState=0 et
+ * seront reprises au prochain lancement du backfill.
+ */
+const MAX_STALL = 6;
+/** Plafond du backoff quand ca stagne (ms). */
+const STALL_BACKOFF_CAP_MS = 30_000;
 
 /** Verrou par ligne : evite qu'« a la demande » et backfill enrichissent 2x le meme id. */
 const inFlight = new Set<string>();
@@ -220,13 +229,6 @@ export async function runCatalogBackfill(opts?: {
         (await runPool(series, (s) => enrichSeriesRowInternal(s), signal));
       processed += ok;
 
-      if (ok === 0) {
-        stall += 1;
-        if (stall >= MAX_STALL) break; // aucun progres : on abandonne, on retentera au prochain lancement
-      } else {
-        stall = 0;
-      }
-
       if (opts?.onProgress !== undefined) {
         const [moviesLeft, seriesLeft] = await Promise.all([
           catalogRepository.countMoviesNeedingTmdb(),
@@ -236,7 +238,18 @@ export async function runCatalogBackfill(opts?: {
       }
 
       if (signal.aborted) break;
-      await sleep(BATCH_PAUSE_MS, signal);
+
+      if (ok === 0) {
+        // Aucun item traite ce tour (probable 429 en backoff / TMDB lent) : on
+        // PATIENTE de plus en plus longtemps, sans abandonner les lignes (elles
+        // restent en tmdbState=0 et repassent au tour suivant).
+        stall += 1;
+        if (stall >= MAX_STALL) break;
+        await sleep(Math.min(BATCH_PAUSE_MS * 2 ** stall, STALL_BACKOFF_CAP_MS), signal);
+      } else {
+        stall = 0;
+        await sleep(BATCH_PAUSE_MS, signal);
+      }
     }
   } finally {
     backfillRunning = false;
