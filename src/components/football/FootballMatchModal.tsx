@@ -8,8 +8,10 @@ import {
   isFinishedStatus,
   isLiveStatus,
   resolveBroadcastChannels,
-  type BroadcastChannel,
+  resolveMatchChannels,
+  type MatchChannel,
 } from '@/services/football/footballService';
+import { useAuthStore } from '@/stores/authStore';
 import {
   addSportReminder,
   getNotificationPermission,
@@ -60,7 +62,8 @@ function Side({ crest, name }: { crest: string | null; name: string }) {
 
 export function FootballMatchModal({ match, onClose }: { match: FootballMatch; onClose: () => void }) {
   const router = useRouter();
-  const [channels, setChannels] = useState<BroadcastChannel[] | null>(null);
+  const credentials = useAuthStore((s) => s.credentials);
+  const [channels, setChannels] = useState<MatchChannel[] | null>(null);
   const [reminded, setReminded] = useState(false);
   const [remindBusy, setRemindBusy] = useState(false);
   const live = isLiveStatus(match.status);
@@ -83,13 +86,17 @@ export function FootballMatchModal({ match, onClose }: { match: FootballMatch; o
 
   useEffect(() => {
     let active = true;
-    void resolveBroadcastChannels(match.competitionCode).then((c) => {
+    const resolve = credentials !== null
+      ? resolveMatchChannels(credentials, match)
+      : resolveBroadcastChannels(match.competitionCode).then((cs) => cs.map((c) => ({ ...c, confirmed: false })));
+    void resolve.then((c) => {
       if (active) setChannels(c);
     });
     return () => {
       active = false;
     };
-  }, [match.competitionCode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [match.id, credentials]);
 
   // Rappel notif (matchs a venir) : cle stable basee sur la 1re chaine resolue
   // (ou null) + le coup d'envoi. Verifie l'etat une fois les chaines chargees.
@@ -237,6 +244,13 @@ export function FootballMatchModal({ match, onClose }: { match: FootballMatch; o
                 </svg>
                 Voir le match · {displayChannelName(channels[0]!.name)}
               </button>
+              <p className="mt-1.5 text-center text-[11px]">
+                {channels[0]!.confirmed ? (
+                  <span className="font-medium text-emerald-400">✓ Diffuse ce match (confirmé par le guide TV)</span>
+                ) : (
+                  <span className="text-fg-faint">Chaîne probable — choisis ci-dessous si besoin</span>
+                )}
+              </p>
               {channels.length > 1 && (
                 <div className="mt-2 flex flex-wrap justify-center gap-1.5">
                   {channels.slice(1, 6).map((c) => (
@@ -244,8 +258,14 @@ export function FootballMatchModal({ match, onClose }: { match: FootballMatch; o
                       key={c.id}
                       type="button"
                       onClick={() => openChannel(c.id)}
-                      className="rounded-full bg-ink-700 px-3 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:bg-ink-600 hover:text-fg"
+                      className={cn(
+                        'rounded-full px-3 py-1.5 text-xs font-medium transition-colors',
+                        c.confirmed
+                          ? 'bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+                          : 'bg-ink-700 text-fg-muted hover:bg-ink-600 hover:text-fg',
+                      )}
                     >
+                      {c.confirmed && <span className="mr-1">✓</span>}
                       {displayChannelName(c.name)}
                     </button>
                   ))}
