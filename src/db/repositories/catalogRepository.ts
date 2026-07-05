@@ -465,8 +465,10 @@ export type FlatSort = 'recent' | 'rating' | 'year' | 'title';
  * `frenchOnly` (isFrench). Refonte VOD, etape 2.
  */
 export interface CatalogFilter {
-  /** Au moins un de ces genres TMDB. Vide/omis = pas de filtre genre. */
+  /** Genres TMDB filtres. Vide/omis = pas de filtre genre. */
   genreIds?: number[];
+  /** 'any' (OU, defaut) : au moins un genre ; 'all' (ET) : tous les genres. */
+  genreMatch?: 'any' | 'all';
   /** Annee TMDB minimale / maximale (inclusives). */
   minYear?: number;
   maxYear?: number;
@@ -504,11 +506,17 @@ function buildPredicate(
   hidden?: ReadonlySet<string>,
 ): (item: TmdbFilterable) => boolean {
   const genreIds = filter.genreIds ?? [];
+  const genreAll = filter.genreMatch === 'all';
   return (item) => {
     if (hidden !== undefined && hidden.has(item.categoryId)) return false;
     if (filter.frenchOnly === true && item.isFrench !== 1) return false;
     if (filter.unclassifiedOnly === true && item.tmdbState !== 2) return false;
-    if (genreIds.length > 0 && !genreIds.some((g) => item.tmdbGenreIds.includes(g))) return false;
+    if (genreIds.length > 0) {
+      const ok = genreAll
+        ? genreIds.every((g) => item.tmdbGenreIds.includes(g))
+        : genreIds.some((g) => item.tmdbGenreIds.includes(g));
+      if (!ok) return false;
+    }
     if (filter.minYear !== undefined && (item.tmdbYear === null || item.tmdbYear < filter.minYear)) return false;
     if (filter.maxYear !== undefined && (item.tmdbYear === null || item.tmdbYear > filter.maxYear)) return false;
     if (filter.minRating !== undefined && (item.tmdbRating === null || item.tmdbRating < filter.minRating)) return false;
@@ -601,6 +609,7 @@ async function searchIn<T extends Searchable>(
   query: string,
   limit: number,
   hiddenCategoryIds?: ReadonlySet<string>,
+  extra?: (item: T) => boolean,
 ): Promise<T[]> {
   const tokens = tokenizeQuery(query);
   const primary = tokens.reduce<string | null>(
@@ -618,7 +627,8 @@ async function searchIn<T extends Searchable>(
     .filter(
       (item) =>
         (hidden === undefined || !hidden.has(item.categoryId)) &&
-        rest.every((t) => item.searchTokens.some((tok) => tok.startsWith(t))),
+        rest.every((t) => item.searchTokens.some((tok) => tok.startsWith(t))) &&
+        (extra === undefined || extra(item)),
     )
     .limit(limit)
     .toArray();
@@ -654,6 +664,30 @@ export function searchSeries(
   hiddenCategoryIds?: ReadonlySet<string>,
 ): Promise<Series[]> {
   return searchIn(db.xtream_series, query, limit, hiddenCategoryIds);
+}
+
+/**
+ * Recherche films CROISEE avec les filtres TMDB (genre/annee/note/FR/orphelins).
+ * Le texte passe par l'index searchTokens ; le filtre TMDB s'applique dans le
+ * meme `.filter()` (avant `.limit()`). Le tri de pertinence de searchIn prime ;
+ * le tri par metadonnee (rating/year) reste l'affaire de getAll*Page (navigation).
+ */
+export function searchMoviesFiltered(
+  query: string,
+  filter: CatalogFilter = {},
+  limit = 60,
+  hiddenCategoryIds?: ReadonlySet<string>,
+): Promise<Movie[]> {
+  return searchIn(db.xtream_vod_streams, query, limit, hiddenCategoryIds, buildPredicate(filter));
+}
+
+export function searchSeriesFiltered(
+  query: string,
+  filter: CatalogFilter = {},
+  limit = 60,
+  hiddenCategoryIds?: ReadonlySet<string>,
+): Promise<Series[]> {
+  return searchIn(db.xtream_series, query, limit, hiddenCategoryIds, buildPredicate(filter));
 }
 
 // --- Enrichissement TMDB (refonte VOD, etape 1) --------------------------------

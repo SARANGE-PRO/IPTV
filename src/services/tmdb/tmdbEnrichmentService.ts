@@ -1,3 +1,4 @@
+import { CACHE_TTL } from '@/config/constants';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import type { TmdbEnrichPatch } from '@/db/repositories/catalogRepository';
 import * as tmdbRepository from '@/db/repositories/tmdbRepository';
@@ -44,6 +45,15 @@ const STALL_BACKOFF_CAP_MS = 30_000;
 /** Verrou par ligne : evite qu'« a la demande » et backfill enrichissent 2x le meme id. */
 const inFlight = new Set<string>();
 
+/** Reessai d'un « introuvable » (cache negatif) apres 3 j — aligne sur tmdbCacheService. */
+const NEGATIVE_RETRY_MS = 1000 * 60 * 60 * 24 * 3;
+
+interface ResolveResult {
+  meta: TmdbMetadata | null;
+  /** false si servi depuis le cache TMDB (aucune requete reseau consommee). */
+  fromNetwork: boolean;
+}
+
 function yearOf(releaseDate: string | null): number | null {
   if (releaseDate === null || releaseDate.length < 4) return null;
   const y = Number.parseInt(releaseDate.slice(0, 4), 10);
@@ -84,14 +94,23 @@ async function resolveMeta(
   tmdbId: number | null,
   name: string,
   year: number | null,
-): Promise<TmdbMetadata | null> {
-  // 1) tmdbId du panel = priorite absolue (fiable, 1 seule requete).
-  if (tmdbId !== null) {
-    const byId = await enrichByTmdbId(type, tmdbId);
-    if (byId !== null) return byId;
+): Promise<ResolveResult> {
+  // 0) CACHE TMDB d'abord. La table tmdb_cache survit au clear() du catalogue
+  //    (resync) : un item deja enrichi est restitue SANS requete reseau -> une
+  //    resync ne reconsomme pas le quota, l'enrichissement est "preserve".
+  const key = tmdbCacheKey(type, name);
+  const cached = await tmdbRepository.getTmdbEntry(key);
+  if (cached !== undefined) {
+    const age = Date.now() - cached.fetchedAt;
+    if (cached.status === 'found' && age < CACHE_TTL.tmdb) return { meta: cached.data, fromNetwork: false };
+    if (cached.status === 'notfound' && age < NEGATIVE_RETRY_MS) return { meta: null, fromNetwork: false };
   }
+  // 1) tmdbId du panel = priorite absolue (fiable, 1 seule requete).
+  let meta: TmdbMetadata | null = null;
+  if (tmdbId !== null) meta = await enrichByTmdbId(type, tmdbId);
   // 2) fallback : matching titre propre + annee.
-  return type === 'movie' ? enrichMovie(name, year) : enrichSeries(name, year);
+  if (meta === null) meta = type === 'movie' ? await enrichMovie(name, year) : await enrichSeries(name, year);
+  return { meta, fromNetwork: true };
 }
 
 /** Enrichit un film. Renvoie true si l'etat a progresse (0 -> 1|2), false si echec. */
@@ -101,9 +120,9 @@ async function enrichMovieRowInternal(movie: Movie, force = false): Promise<bool
   if (inFlight.has(lock)) return false;
   inFlight.add(lock);
   try {
-    const meta = await resolveMeta('movie', movie.tmdbId, movie.name, movie.year);
+    const { meta, fromNetwork } = await resolveMeta('movie', movie.tmdbId, movie.name, movie.year);
     await catalogRepository.updateMovieTmdb(movie.id, toPatch(meta, movie.tmdbId));
-    await mirrorToDetailCache('movie', movie.name, meta);
+    if (fromNetwork) await mirrorToDetailCache('movie', movie.name, meta);
     return true;
   } catch {
     return false; // reste en attente (tmdbState = 0), retente plus tard
@@ -119,9 +138,9 @@ async function enrichSeriesRowInternal(series: Series, force = false): Promise<b
   if (inFlight.has(lock)) return false;
   inFlight.add(lock);
   try {
-    const meta = await resolveMeta('tv', series.tmdbId, series.name, yearOf(series.releaseDate));
+    const { meta, fromNetwork } = await resolveMeta('tv', series.tmdbId, series.name, yearOf(series.releaseDate));
     await catalogRepository.updateSeriesTmdb(series.id, toPatch(meta, series.tmdbId));
-    await mirrorToDetailCache('tv', series.name, meta);
+    if (fromNetwork) await mirrorToDetailCache('tv', series.name, meta);
     return true;
   } catch {
     return false;
