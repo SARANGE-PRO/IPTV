@@ -168,6 +168,18 @@ export class IptvDatabase extends Dexie {
           tx.table('sync_metadata').clear(),
         ]);
       });
+
+    // v9 : index STANDALONE `normalizedName` sur films/series -> tri par titre « a
+    // plat » (toute la collection, sans categorie) pour la refonte VOD (etape 2).
+    // Additif PUR, aucune resync : `normalizedName` est deja present sur toutes les
+    // lignes ecrites depuis la v8 (qui a purge le catalogue), donc IndexedDB
+    // construit le nouvel index a partir des lignes existantes.
+    this.version(9).stores({
+      xtream_vod_streams:
+        'id, categoryId, name, normalizedName, addedAt, rating, year, isFrench, tmdbState, tmdbYear, tmdbRating, [categoryId+normalizedName], [categoryId+addedAt], [categoryId+rating], [categoryId+year], [isFrench+addedAt], [isFrench+rating], *searchTokens, *tmdbGenreIds',
+      xtream_series:
+        'id, categoryId, name, normalizedName, lastModifiedAt, rating, isFrench, tmdbState, tmdbYear, tmdbRating, [categoryId+normalizedName], [categoryId+lastModifiedAt], [categoryId+rating], [isFrench+lastModifiedAt], [isFrench+rating], *searchTokens, *tmdbGenreIds',
+    });
   }
 }
 
