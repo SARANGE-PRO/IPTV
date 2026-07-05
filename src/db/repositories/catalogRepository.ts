@@ -1,6 +1,15 @@
-import Dexie, { type Collection, type Table } from 'dexie';
+import Dexie, { type Collection, type Table, type UpdateSpec } from 'dexie';
 import { db } from '@/db/database';
-import type { BoolNum, Category, LiveChannel, Movie, Section, Series, SeriesDetails } from '@/types/models';
+import type {
+  BoolNum,
+  Category,
+  LiveChannel,
+  Movie,
+  Section,
+  Series,
+  SeriesDetails,
+  TmdbEnrichState,
+} from '@/types/models';
 import type { ChannelTheme } from '@/utils/channelTheme';
 import { normalizeText, tokenizeQuery } from '@/utils/text';
 
@@ -522,4 +531,47 @@ export function searchSeries(
   hiddenCategoryIds?: ReadonlySet<string>,
 ): Promise<Series[]> {
   return searchIn(db.xtream_series, query, limit, hiddenCategoryIds);
+}
+
+// --- Enrichissement TMDB (refonte VOD, etape 1) --------------------------------
+
+/**
+ * Patch ecrit sur une ligne film/serie a l'issue de l'enrichissement TMDB.
+ * `tmdbId` peut rester tel quel (deja fourni par le panel) — on ne le passe que
+ * lorsqu'on l'a resolu par titre.
+ */
+export interface TmdbEnrichPatch {
+  tmdbId?: number | null;
+  tmdbGenreIds: number[];
+  tmdbYear: number | null;
+  tmdbRating: number | null;
+  tmdbState: TmdbEnrichState;
+}
+
+/** Prochain lot de films en attente d'enrichissement (tmdbState = 0). */
+export function getMoviesNeedingTmdb(limit: number): Promise<Movie[]> {
+  return db.xtream_vod_streams.where('tmdbState').equals(0).limit(limit).toArray();
+}
+
+/** Prochain lot de series en attente d'enrichissement (tmdbState = 0). */
+export function getSeriesNeedingTmdb(limit: number): Promise<Series[]> {
+  return db.xtream_series.where('tmdbState').equals(0).limit(limit).toArray();
+}
+
+export function countMoviesNeedingTmdb(): Promise<number> {
+  return db.xtream_vod_streams.where('tmdbState').equals(0).count();
+}
+
+export function countSeriesNeedingTmdb(): Promise<number> {
+  return db.xtream_series.where('tmdbState').equals(0).count();
+}
+
+/** Write-back TMDB sur un film (mise a jour indexee, ne touche pas les autres champs). */
+export async function updateMovieTmdb(id: string, patch: TmdbEnrichPatch): Promise<void> {
+  await db.xtream_vod_streams.update(id, patch as UpdateSpec<Movie>);
+}
+
+/** Write-back TMDB sur une serie. */
+export async function updateSeriesTmdb(id: string, patch: TmdbEnrichPatch): Promise<void> {
+  await db.xtream_series.update(id, patch as UpdateSpec<Series>);
 }

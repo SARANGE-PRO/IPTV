@@ -24,6 +24,16 @@ export type MediaType = 'live' | 'vod' | 'series' | 'episode';
 /** Booleen indexable IndexedDB (0 = false, 1 = true). */
 export type BoolNum = 0 | 1;
 
+/**
+ * Etat d'enrichissement TMDB d'un item catalogue. Indexe (nombre) : pilote la
+ * FILE de backfill (`0` = a traiter) et le pseudo-filtre « Autres / Non classes »
+ * (`2` = enrichi mais sans correspondance TMDB). Refonte VOD, etape 1.
+ */
+export type TmdbEnrichState =
+  | 0 // en attente : jamais enrichi (etat par defaut a la sync)
+  | 1 // enrichi AVEC correspondance TMDB (genre_ids/annee/note disponibles)
+  | 2; // enrichi SANS correspondance -> orphelin (« Autres / Non classes »)
+
 // --- Catalogue -----------------------------------------------------------------
 
 export interface Category {
@@ -80,6 +90,17 @@ export interface Movie {
   isFrench: BoolNum;
   country: string | null;
   language: string | null;
+  // --- Metadonnees TMDB (refonte VOD, etape 1) ---
+  /** id TMDB : fourni par Xtream si dispo, sinon resolu a l'enrichissement, sinon null. */
+  tmdbId: number | null;
+  /** genre_ids TMDB (index multiEntry). Vide tant que non enrichi OU sans correspondance. */
+  tmdbGenreIds: number[];
+  /** Annee de sortie TMDB (peut differer du `year` fournisseur). */
+  tmdbYear: number | null;
+  /** Note TMDB /10 (distincte du `rating` fournisseur). */
+  tmdbRating: number | null;
+  /** File de backfill + regroupement orphelins. Voir TmdbEnrichState. */
+  tmdbState: TmdbEnrichState;
 }
 
 export interface Series {
@@ -101,6 +122,17 @@ export interface Series {
   isFrench: BoolNum;
   country: string | null;
   language: string | null;
+  // --- Metadonnees TMDB (refonte VOD, etape 1) ---
+  /** id TMDB : fourni par Xtream si dispo, sinon resolu a l'enrichissement, sinon null. */
+  tmdbId: number | null;
+  /** genre_ids TMDB (index multiEntry). Vide tant que non enrichi OU sans correspondance. */
+  tmdbGenreIds: number[];
+  /** Annee de sortie TMDB (peut differer de `releaseDate` fournisseur). */
+  tmdbYear: number | null;
+  /** Note TMDB /10 (distincte du `rating` fournisseur). */
+  tmdbRating: number | null;
+  /** File de backfill + regroupement orphelins. Voir TmdbEnrichState. */
+  tmdbState: TmdbEnrichState;
 }
 
 export interface Season {
@@ -191,8 +223,23 @@ export interface TmdbMetadata {
   releaseDate: string | null;
   voteAverage: number | null;
   genres: string[];
+  /** genre_ids TMDB conserves (avant on ne gardait que les noms). Filtrage par genre. */
+  genreIds: number[];
   runtimeMinutes: number | null;
   cast: TmdbCastMember[];
+}
+
+/**
+ * Correspondance genre TMDB id -> nom (table `tmdb_genres`, cle composite
+ * [type+id]). Alimentee une fois via /genre/movie|tv/list ; source de verite des
+ * libelles de « pills » de genre. Refonte VOD, etape 1.
+ */
+export interface TmdbGenreEntry {
+  type: 'movie' | 'tv';
+  id: number;
+  name: string;
+  /** Horodatage de recuperation (ms) — pilote le rafraichissement TTL. */
+  fetchedAt: number;
 }
 
 export interface TmdbCacheEntry {

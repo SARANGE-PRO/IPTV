@@ -55,6 +55,12 @@ function rating10(raw10: NumLike | null | undefined, raw5: NumLike | null | unde
   return rating !== null ? Math.min(Math.max(rating, 0), 10) : null;
 }
 
+/** id TMDB fourni par le panel (`tmdb`) -> entier positif, sinon null. */
+function toTmdbId(value: NumLike | null | undefined): number | null {
+  const n = toNum(value);
+  return n !== null && n > 0 ? Math.trunc(n) : null;
+}
+
 export function normalizeCategory(section: Section, raw: XtreamCategory): Category {
   const name = strOrNull(raw.category_name) ?? 'Sans nom';
   return {
@@ -107,6 +113,13 @@ export function normalizeMovie(raw: XtreamVodStream, categoryIsFrench: boolean):
     isFrench: categoryIsFrench || isFrenchLabel(name) ? 1 : 0,
     country: detectCountry(name),
     language: detectLanguage(name),
+    // TMDB : id capte si le panel le fournit (matching fiable a l'enrichissement),
+    // le reste reste vide/en attente jusqu'au backfill (refonte VOD, etape 1).
+    tmdbId: toTmdbId(raw.tmdb),
+    tmdbGenreIds: [],
+    tmdbYear: null,
+    tmdbRating: null,
+    tmdbState: 0,
   };
 }
 
@@ -131,6 +144,12 @@ export function normalizeSeries(raw: XtreamSeries, categoryIsFrench: boolean): S
     isFrench: categoryIsFrench || isFrenchLabel(name) ? 1 : 0,
     country: detectCountry(name),
     language: detectLanguage(name),
+    // TMDB : voir normalizeMovie (refonte VOD, etape 1).
+    tmdbId: toTmdbId(raw.tmdb),
+    tmdbGenreIds: [],
+    tmdbYear: null,
+    tmdbRating: null,
+    tmdbState: 0,
   };
 }
 

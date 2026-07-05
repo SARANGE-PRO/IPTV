@@ -19,8 +19,21 @@ const TIMEOUT_MS = 12_000;
  * de cache (Dexie), et on evite toute retention cote infra. */
 const NO_STORE = { 'Cache-Control': 'no-store' } as const;
 
-type Action = 'search_movie' | 'search_tv' | 'movie_detail' | 'tv_detail';
-const ALLOWED_ACTIONS = new Set<Action>(['search_movie', 'search_tv', 'movie_detail', 'tv_detail']);
+type Action =
+  | 'search_movie'
+  | 'search_tv'
+  | 'movie_detail'
+  | 'tv_detail'
+  | 'genre_movie_list'
+  | 'genre_tv_list';
+const ALLOWED_ACTIONS = new Set<Action>([
+  'search_movie',
+  'search_tv',
+  'movie_detail',
+  'tv_detail',
+  'genre_movie_list',
+  'genre_tv_list',
+]);
 
 interface TmdbProxyRequest {
   action: Action;
@@ -40,29 +53,42 @@ function parse(value: unknown): TmdbProxyRequest | null {
     const year = typeof v.year === 'number' && Number.isFinite(v.year) ? v.year : undefined;
     return { action, query: v.query.trim().slice(0, 200), year };
   }
+  // Listes de genres : aucun parametre requis.
+  if (action === 'genre_movie_list' || action === 'genre_tv_list') {
+    return { action };
+  }
   if (typeof v.id !== 'number' || !Number.isFinite(v.id)) return null;
   return { action, id: Math.trunc(v.id) };
 }
 
+function endpointPath(req: TmdbProxyRequest): string {
+  switch (req.action) {
+    case 'search_movie':
+      return `${TMDB_BASE}/search/movie`;
+    case 'search_tv':
+      return `${TMDB_BASE}/search/tv`;
+    case 'movie_detail':
+      return `${TMDB_BASE}/movie/${req.id}`;
+    case 'tv_detail':
+      return `${TMDB_BASE}/tv/${req.id}`;
+    case 'genre_movie_list':
+      return `${TMDB_BASE}/genre/movie/list`;
+    case 'genre_tv_list':
+      return `${TMDB_BASE}/genre/tv/list`;
+  }
+}
+
 function buildUrl(req: TmdbProxyRequest): string {
-  const url = new URL(
-    req.action === 'search_movie'
-      ? `${TMDB_BASE}/search/movie`
-      : req.action === 'search_tv'
-        ? `${TMDB_BASE}/search/tv`
-        : req.action === 'movie_detail'
-          ? `${TMDB_BASE}/movie/${req.id}`
-          : `${TMDB_BASE}/tv/${req.id}`,
-  );
+  const url = new URL(endpointPath(req));
   url.searchParams.set('language', 'fr-FR');
-  if (req.action.startsWith('search')) {
+  if (req.action === 'search_movie' || req.action === 'search_tv') {
     url.searchParams.set('query', req.query ?? '');
     url.searchParams.set('include_adult', 'false');
     url.searchParams.set('region', 'FR');
     if (req.year !== undefined) {
       url.searchParams.set(req.action === 'search_movie' ? 'year' : 'first_air_date_year', String(req.year));
     }
-  } else {
+  } else if (req.action === 'movie_detail' || req.action === 'tv_detail') {
     url.searchParams.set('append_to_response', 'credits');
   }
   return url.toString();

@@ -1,5 +1,5 @@
 import { db } from '@/db/database';
-import type { TmdbCacheEntry } from '@/types/models';
+import type { TmdbCacheEntry, TmdbGenreEntry } from '@/types/models';
 
 /** Cache TMDB local. La derivation des cles appartient a tmdbMatcher (etape 9). */
 
@@ -33,4 +33,19 @@ export async function clearTmdbCache(): Promise<void> {
 /** Nombre d'entrees TMDB reellement trouvees (proxy "TMDB operationnel"). */
 export function countTmdbFound(): Promise<number> {
   return db.tmdb_cache.filter((e) => e.status === 'found').count();
+}
+
+// --- Correspondance genres TMDB (id -> nom) -----------------------------------
+
+/** Genres TMDB caches pour un type ('movie' | 'tv'). */
+export function getGenreEntries(type: 'movie' | 'tv'): Promise<TmdbGenreEntry[]> {
+  return db.tmdb_genres.where('type').equals(type).toArray();
+}
+
+/** Remplace atomiquement la liste des genres d'un type (rafraichissement TTL). */
+export async function replaceGenreEntries(type: 'movie' | 'tv', entries: TmdbGenreEntry[]): Promise<void> {
+  await db.transaction('rw', db.tmdb_genres, async () => {
+    await db.tmdb_genres.where('type').equals(type).delete();
+    await db.tmdb_genres.bulkPut(entries);
+  });
 }

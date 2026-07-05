@@ -78,12 +78,22 @@ function mapDetail(raw: TmdbDetailRaw): TmdbMetadata {
     releaseDate: raw.release_date ?? raw.first_air_date ?? null,
     voteAverage: raw.vote_average ?? null,
     genres: (raw.genres ?? []).map((g) => g.name),
+    genreIds: (raw.genres ?? []).map((g) => g.id),
     runtimeMinutes: runtime !== null && runtime > 0 ? runtime : null,
     cast: (raw.credits?.cast ?? [])
       .slice(0, CAST_LIMIT)
       .map((c) => ({ name: c.name ?? '', character: c.character ?? null }))
       .filter((c) => c.name !== ''),
   };
+}
+
+/**
+ * Enrichissement DIRECT par id TMDB (priorite absolue quand le panel fournit
+ * `tmdb`) : une seule requete detail, aucun matching approximatif. Refonte VOD.
+ */
+export async function enrichByTmdbId(type: 'movie' | 'tv', tmdbId: number): Promise<TmdbMetadata | null> {
+  const detail = await (type === 'movie' ? movieDetail(tmdbId) : tvDetail(tmdbId));
+  return detail === null ? null : mapDetail(detail);
 }
 
 async function enrich(
@@ -117,6 +127,7 @@ async function enrich(
       releaseDate: best.release_date ?? best.first_air_date ?? null,
       voteAverage: best.vote_average ?? null,
       genres: [],
+      genreIds: best.genre_ids ?? [],
       runtimeMinutes: null,
       cast: [],
     };

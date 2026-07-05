@@ -22,6 +22,17 @@ export interface TmdbSearchItem {
   release_date?: string; // movie
   first_air_date?: string; // tv
   vote_average?: number;
+  /** genre_ids fournis des la recherche (fallback si le detail echoue). */
+  genre_ids?: number[];
+}
+
+export interface TmdbGenreRaw {
+  id: number;
+  name: string;
+}
+
+interface TmdbGenreListResponse {
+  genres?: TmdbGenreRaw[];
 }
 
 interface TmdbSearchResponse {
@@ -102,4 +113,12 @@ export function movieDetail(id: number): Promise<TmdbDetailRaw | null> {
 
 export function tvDetail(id: number): Promise<TmdbDetailRaw | null> {
   return call<TmdbDetailRaw>({ action: 'tv_detail', id });
+}
+
+export function movieGenres(): Promise<TmdbGenreListResponse | null> {
+  return call<TmdbGenreListResponse>({ action: 'genre_movie_list' });
+}
+
+export function tvGenres(): Promise<TmdbGenreListResponse | null> {
+  return call<TmdbGenreListResponse>({ action: 'genre_tv_list' });
 }

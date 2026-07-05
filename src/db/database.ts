@@ -17,6 +17,7 @@ import type {
   SettingEntry,
   SyncMetadataEntry,
   TmdbCacheEntry,
+  TmdbGenreEntry,
 } from '@/types/models';
 
 /**
@@ -45,6 +46,7 @@ export class IptvDatabase extends Dexie {
   xtream_series!: Table<Series, string>;
   xtream_series_details!: Table<SeriesDetails, string>;
   tmdb_cache!: Table<TmdbCacheEntry, string>;
+  tmdb_genres!: Table<TmdbGenreEntry, [string, number]>;
   favorites!: Table<FavoriteEntry, [MediaType, string]>;
   playback_history!: Table<PlaybackEntry, [MediaType, string]>;
   hidden_categories!: Table<HiddenCategoryEntry, [Section, string]>;
@@ -137,6 +139,35 @@ export class IptvDatabase extends Dexie {
     this.version(7).stores({
       reminders: 'id, startAt, notifiedAt',
     });
+
+    // v8 : REFONTE VOD (etape 1) — metadonnees TMDB a plat sur films/series.
+    //  - Nouveaux champs indexes : tmdbState (file de backfill + orphelins),
+    //    tmdbYear, tmdbRating, et l'index multiEntry *tmdbGenreIds (filtre genre).
+    //  - Nouvelle table tmdb_genres : correspondance id -> nom (cle composite).
+    // Ces champs proviennent de la normalisation (couche services) : on ne peut
+    // pas les recalculer depuis un `.upgrade()` sans inverser les dependances.
+    // Conformement au PATTERN etabli en v6, on PURGE le catalogue + sync_metadata
+    // pour que la prochaine sync reconstruise les lignes AVEC ces champs (etat 0)
+    // et alimente proprement les nouveaux index. Favoris / historique / reglages /
+    // session sont PRESERVES. Cout assume : une resync manuelle apres mise a jour.
+    this.version(8)
+      .stores({
+        xtream_vod_streams:
+          'id, categoryId, name, addedAt, rating, year, isFrench, tmdbState, tmdbYear, tmdbRating, [categoryId+normalizedName], [categoryId+addedAt], [categoryId+rating], [categoryId+year], [isFrench+addedAt], [isFrench+rating], *searchTokens, *tmdbGenreIds',
+        xtream_series:
+          'id, categoryId, name, lastModifiedAt, rating, isFrench, tmdbState, tmdbYear, tmdbRating, [categoryId+normalizedName], [categoryId+lastModifiedAt], [categoryId+rating], [isFrench+lastModifiedAt], [isFrench+rating], *searchTokens, *tmdbGenreIds',
+        tmdb_genres: '[type+id], type, fetchedAt',
+      })
+      .upgrade(async (tx) => {
+        await Promise.all([
+          tx.table('xtream_vod_categories').clear(),
+          tx.table('xtream_vod_streams').clear(),
+          tx.table('xtream_series_categories').clear(),
+          tx.table('xtream_series').clear(),
+          tx.table('xtream_series_details').clear(),
+          tx.table('sync_metadata').clear(),
+        ]);
+      });
   }
 }
 
