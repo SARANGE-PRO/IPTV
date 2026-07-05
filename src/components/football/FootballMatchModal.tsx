@@ -21,7 +21,7 @@ import {
   requestNotificationPermission,
   sportReminderId,
 } from '@/services/notifications/reminderService';
-import { displayChannelName } from '@/utils/displayTitle';
+import { cleanChannelDisplay } from '@/services/live/channelNormalizer';
 
 /**
  * Carte DETAIL d'un match (premium) : score, mi-temps, phase, stade, arbitre +
@@ -242,7 +242,7 @@ export function FootballMatchModal({ match, onClose }: { match: FootballMatch; o
                 <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>
                   <path d="M8 5v14l11-7z" />
                 </svg>
-                Voir le match · {displayChannelName(channels[0]!.name)}
+                Voir le match · {cleanChannelDisplay(channels[0]!.name)}
               </button>
               <p className="mt-1.5 text-center text-[11px]">
                 {channels[0]!.confirmed ? (
@@ -266,7 +266,7 @@ export function FootballMatchModal({ match, onClose }: { match: FootballMatch; o
                       )}
                     >
                       {c.confirmed && <span className="mr-1">✓</span>}
-                      {displayChannelName(c.name)}
+                      {cleanChannelDisplay(c.name)}
                     </button>
                   ))}
                 </div>
