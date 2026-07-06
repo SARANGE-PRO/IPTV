@@ -53,12 +53,17 @@ interface MediaBrowserProps<T extends BrowserItem> {
   countItems: (filter: CatalogFilter, hidden?: ReadonlySet<string>) => Promise<number>;
   /** Enrichissement TMDB « a la demande » des items affichés (fire-and-forget). */
   enrichVisible?: (items: T[]) => void;
+  /** Vues curatées éditoriales (En cours, Top 10, Populaires, Nouveautés…). */
+  quickFilters?: { id: string; label: string }[];
+  /** Charge la liste bornée d'une vue curatée. */
+  fetchQuickFilter?: (filterId: string, limit: number) => Promise<T[]>;
   subtitleFor?: (item: T) => string | null;
   hero?: ReactNode;
 }
 
 const PAGE_SIZE = 60;
 const SEARCH_LIMIT = 60;
+const SMART_LIMIT = 120;
 
 const SORT_OPTIONS: { id: FlatSort; label: string }[] = [
   { id: 'recent', label: 'Récents' },
@@ -105,6 +110,8 @@ export function MediaBrowser<T extends BrowserItem>({
   searchFiltered,
   countItems,
   enrichVisible,
+  quickFilters = [],
+  fetchQuickFilter,
   subtitleFor,
   hero,
 }: MediaBrowserProps<T>) {
@@ -133,6 +140,9 @@ export function MediaBrowser<T extends BrowserItem>({
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<T[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [activeQuick, setActiveQuick] = useState<string | null>(null);
+  const [smartItems, setSmartItems] = useState<T[]>([]);
+  const [smartLoading, setSmartLoading] = useState(false);
   const offsetRef = useRef(0);
   const loadingRef = useRef(false);
   const debouncedQuery = useDebounce(query.trim(), 300);
@@ -167,8 +177,9 @@ export function MediaBrowser<T extends BrowserItem>({
     void loadGenres(section);
   }, [loadGenres, section]);
 
-  // Première page à chaque changement de tri/filtre.
+  // Première page à plat à chaque changement de tri/filtre (sauf en vue curatée).
   useEffect(() => {
+    if (activeQuick !== null) return;
     let alive = true;
     offsetRef.current = 0;
     setItems([]);
@@ -185,7 +196,31 @@ export function MediaBrowser<T extends BrowserItem>({
     return () => {
       alive = false;
     };
-  }, [fetchFlatPage, filters.sort, filter, hiddenArg, enrichVisible]);
+  }, [fetchFlatPage, filters.sort, filter, hiddenArg, enrichVisible, activeQuick]);
+
+  // Vue curatée bornée (En cours, Top 10, Populaires, Nouveautés…).
+  useEffect(() => {
+    if (activeQuick === null || fetchQuickFilter === undefined) {
+      setSmartItems([]);
+      setSmartLoading(false);
+      return;
+    }
+    let alive = true;
+    setSmartLoading(true);
+    void fetchQuickFilter(activeQuick, SMART_LIMIT)
+      .then((rows) => {
+        if (!alive) return;
+        const visible = hiddenArg === undefined ? rows : rows.filter((r) => !hiddenArg.has(r.categoryId));
+        setSmartItems(visible);
+        enrichVisible?.(visible);
+      })
+      .finally(() => {
+        if (alive) setSmartLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [activeQuick, fetchQuickFilter, hiddenArg, enrichVisible]);
 
   // Compte total : seulement sans filtre actif (compte d'index rapide).
   useEffect(() => {
@@ -223,7 +258,7 @@ export function MediaBrowser<T extends BrowserItem>({
   }, [debouncedQuery, searchFiltered, filter, hiddenArg, enrichVisible]);
 
   const loadMore = () => {
-    if (loadingRef.current || endReached || results !== null) return;
+    if (loadingRef.current || endReached || results !== null || activeQuick !== null) return;
     loadingRef.current = true;
     setLoading(true);
     void fetchFlatPage(offsetRef.current, PAGE_SIZE, filters.sort, filter, hiddenArg).then((page) => {
@@ -236,8 +271,18 @@ export function MediaBrowser<T extends BrowserItem>({
     });
   };
 
-  const shown = results ?? items;
-  const sentinelRef = useLoadMore(loadMore, results === null && !endReached && items.length > 0);
+  const quickMode = activeQuick !== null;
+  const shown = results ?? (quickMode ? smartItems : items);
+  const sentinelRef = useLoadMore(
+    loadMore,
+    results === null && !quickMode && !endReached && items.length > 0,
+  );
+
+  const toggleQuick = (id: string) => {
+    setQuery('');
+    setResults(null);
+    setActiveQuick((cur) => (cur === id ? null : id));
+  };
 
   const catalogEmpty = catalogSlice.itemCount === 0 && catalogSlice.status !== 'loading';
   const selectClass =
@@ -266,6 +311,7 @@ export function MediaBrowser<T extends BrowserItem>({
             inputMode="search"
           />
         </div>
+        {!quickMode && (
         <div className="flex flex-wrap items-center gap-2">
           <select
             aria-label="Trier"
@@ -304,8 +350,29 @@ export function MediaBrowser<T extends BrowserItem>({
             ))}
           </select>
         </div>
+        )}
       </div>
 
+      {/* Vues curatées éditoriales (En cours, Top 10, Populaires, Nouveautés…) */}
+      {quickFilters.length > 0 && (
+        <HScroll className="mt-3 flex gap-2 pb-1 [scrollbar-width:none]">
+          {quickFilters.map((q) => (
+            <button
+              key={q.id}
+              onClick={() => toggleQuick(q.id)}
+              className={`shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition-colors ${
+                activeQuick === q.id ? 'bg-accent text-white' : 'bg-ink-800 text-fg-muted hover:text-fg'
+              }`}
+            >
+              {q.label}
+            </button>
+          ))}
+        </HScroll>
+      )}
+
+      {/* Filtres à plat (masqués en vue curatée) */}
+      {!quickMode && (
+        <>
       {/* Toggles VF / Non classés / ET-OU / reset */}
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <TogglePill active={filters.frenchOnly} onClick={() => setFrenchOnly(section, !filters.frenchOnly)}>
@@ -362,6 +429,8 @@ export function MediaBrowser<T extends BrowserItem>({
           })}
         </HScroll>
       )}
+        </>
+      )}
 
       {/* Compteur */}
       {results !== null ? (
@@ -369,6 +438,10 @@ export function MediaBrowser<T extends BrowserItem>({
           {results.length >= SEARCH_LIMIT
             ? `${SEARCH_LIMIT}+ résultats — affine ta recherche`
             : `${results.length} résultat${results.length > 1 ? 's' : ''}`}
+        </p>
+      ) : quickMode ? (
+        <p className="mt-3 text-xs text-fg-faint">
+          {smartItems.length} sélection{smartItems.length > 1 ? 's' : ''}
         </p>
       ) : active ? (
         <p className="mt-3 text-xs text-fg-faint">
@@ -404,7 +477,7 @@ export function MediaBrowser<T extends BrowserItem>({
                 favorite={{ type: favoriteType, itemId: item.id }}
               />
             ))}
-            {(loading || searching) &&
+            {(loading || searching || smartLoading) &&
               shown.length === 0 &&
               Array.from({ length: 12 }, (_, i) => <Skeleton key={i} className="aspect-[2/3] rounded-xl" />)}
           </div>
@@ -414,7 +487,12 @@ export function MediaBrowser<T extends BrowserItem>({
               <EmptyState title="Aucun résultat" hint="Essaie un autre titre ou ajuste les filtres." />
             </div>
           )}
-          {results === null && !loading && shown.length === 0 && (
+          {results === null && quickMode && !smartLoading && shown.length === 0 && (
+            <div className="mt-6">
+              <EmptyState title="Rien à afficher ici pour le moment" />
+            </div>
+          )}
+          {results === null && !quickMode && !loading && shown.length === 0 && (
             <div className="mt-6">
               <EmptyState
                 title={active ? 'Aucun contenu pour ces filtres' : 'Catégorie vide'}
@@ -423,7 +501,7 @@ export function MediaBrowser<T extends BrowserItem>({
             </div>
           )}
 
-          {results === null && <div ref={sentinelRef} className="h-10" />}
+          {results === null && !quickMode && <div ref={sentinelRef} className="h-10" />}
           {loading && items.length > 0 && (
             <p className="py-4 text-center text-xs text-fg-faint">Chargement…</p>
           )}
