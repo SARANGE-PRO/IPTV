@@ -53,17 +53,12 @@ interface MediaBrowserProps<T extends BrowserItem> {
   countItems: (filter: CatalogFilter, hidden?: ReadonlySet<string>) => Promise<number>;
   /** Enrichissement TMDB « a la demande » des items affichés (fire-and-forget). */
   enrichVisible?: (items: T[]) => void;
-  /** Vues curatées éditoriales (En cours, Top 10, Populaires, Nouveautés…). */
-  quickFilters?: { id: string; label: string }[];
-  /** Charge la liste bornée d'une vue curatée. */
-  fetchQuickFilter?: (filterId: string, limit: number) => Promise<T[]>;
   subtitleFor?: (item: T) => string | null;
   hero?: ReactNode;
 }
 
 const PAGE_SIZE = 60;
 const SEARCH_LIMIT = 60;
-const SMART_LIMIT = 120;
 
 const SORT_OPTIONS: { id: FlatSort; label: string }[] = [
   { id: 'recent', label: 'Récents' },
@@ -95,10 +90,10 @@ function decadeValue(minYear: number | null, maxYear: number | null): string {
 }
 
 /**
- * Navigateur générique VOD/Séries « a plat » (refonte, étape 5). Plus de
- * catégories fournisseur : filtres par métadonnées TMDB (genres/année/note), tri
- * global, recherche croisée. La distinction FR/VOSTFR est préservée (toggle FR +
- * badge de variante sur la carte via detectFrenchVariant).
+ * Navigateur générique VOD/Séries « a plat » (refonte). Plus de catégories
+ * fournisseur : filtres par métadonnées TMDB (genres/année/note), tri global,
+ * recherche croisée. La distinction FR/VOSTFR reste visible via le badge de
+ * variante sur la carte (detectFrenchVariant).
  */
 export function MediaBrowser<T extends BrowserItem>({
   section,
@@ -110,8 +105,6 @@ export function MediaBrowser<T extends BrowserItem>({
   searchFiltered,
   countItems,
   enrichVisible,
-  quickFilters = [],
-  fetchQuickFilter,
   subtitleFor,
   hero,
 }: MediaBrowserProps<T>) {
@@ -129,8 +122,6 @@ export function MediaBrowser<T extends BrowserItem>({
   const setGenreMatch = useVodFilterStore((s) => s.setGenreMatch);
   const setYearRange = useVodFilterStore((s) => s.setYearRange);
   const setMinRating = useVodFilterStore((s) => s.setMinRating);
-  const setFrenchOnly = useVodFilterStore((s) => s.setFrenchOnly);
-  const setUnclassifiedOnly = useVodFilterStore((s) => s.setUnclassifiedOnly);
   const resetFilters = useVodFilterStore((s) => s.resetFilters);
 
   const [items, setItems] = useState<T[]>([]);
@@ -140,9 +131,6 @@ export function MediaBrowser<T extends BrowserItem>({
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<T[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const [activeQuick, setActiveQuick] = useState<string | null>(null);
-  const [smartItems, setSmartItems] = useState<T[]>([]);
-  const [smartLoading, setSmartLoading] = useState(false);
   const offsetRef = useRef(0);
   const loadingRef = useRef(false);
   const debouncedQuery = useDebounce(query.trim(), 300);
@@ -151,9 +139,7 @@ export function MediaBrowser<T extends BrowserItem>({
     filters.genreIds.length > 0 ||
     filters.minYear !== null ||
     filters.maxYear !== null ||
-    filters.minRating !== null ||
-    filters.frenchOnly ||
-    filters.unclassifiedOnly;
+    filters.minRating !== null;
   const hiddenArg = hiddenSet.size > 0 ? hiddenSet : undefined;
   // Objet CatalogFilter stable tant que les filtres de la section ne changent pas.
   const filter = useMemo<CatalogFilter>(() => {
@@ -165,8 +151,6 @@ export function MediaBrowser<T extends BrowserItem>({
     if (filters.minYear !== null) cf.minYear = filters.minYear;
     if (filters.maxYear !== null) cf.maxYear = filters.maxYear;
     if (filters.minRating !== null) cf.minRating = filters.minRating;
-    if (filters.frenchOnly) cf.frenchOnly = true;
-    if (filters.unclassifiedOnly) cf.unclassifiedOnly = true;
     return cf;
   }, [filters]);
 
@@ -177,9 +161,8 @@ export function MediaBrowser<T extends BrowserItem>({
     void loadGenres(section);
   }, [loadGenres, section]);
 
-  // Première page à plat à chaque changement de tri/filtre (sauf en vue curatée).
+  // Première page à chaque changement de tri/filtre.
   useEffect(() => {
-    if (activeQuick !== null) return;
     let alive = true;
     offsetRef.current = 0;
     setItems([]);
@@ -196,31 +179,7 @@ export function MediaBrowser<T extends BrowserItem>({
     return () => {
       alive = false;
     };
-  }, [fetchFlatPage, filters.sort, filter, hiddenArg, enrichVisible, activeQuick]);
-
-  // Vue curatée bornée (En cours, Top 10, Populaires, Nouveautés…).
-  useEffect(() => {
-    if (activeQuick === null || fetchQuickFilter === undefined) {
-      setSmartItems([]);
-      setSmartLoading(false);
-      return;
-    }
-    let alive = true;
-    setSmartLoading(true);
-    void fetchQuickFilter(activeQuick, SMART_LIMIT)
-      .then((rows) => {
-        if (!alive) return;
-        const visible = hiddenArg === undefined ? rows : rows.filter((r) => !hiddenArg.has(r.categoryId));
-        setSmartItems(visible);
-        enrichVisible?.(visible);
-      })
-      .finally(() => {
-        if (alive) setSmartLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [activeQuick, fetchQuickFilter, hiddenArg, enrichVisible]);
+  }, [fetchFlatPage, filters.sort, filter, hiddenArg, enrichVisible]);
 
   // Compte total : seulement sans filtre actif (compte d'index rapide).
   useEffect(() => {
@@ -258,7 +217,7 @@ export function MediaBrowser<T extends BrowserItem>({
   }, [debouncedQuery, searchFiltered, filter, hiddenArg, enrichVisible]);
 
   const loadMore = () => {
-    if (loadingRef.current || endReached || results !== null || activeQuick !== null) return;
+    if (loadingRef.current || endReached || results !== null) return;
     loadingRef.current = true;
     setLoading(true);
     void fetchFlatPage(offsetRef.current, PAGE_SIZE, filters.sort, filter, hiddenArg).then((page) => {
@@ -271,23 +230,14 @@ export function MediaBrowser<T extends BrowserItem>({
     });
   };
 
-  const quickMode = activeQuick !== null;
-  const shown = results ?? (quickMode ? smartItems : items);
-  const sentinelRef = useLoadMore(
-    loadMore,
-    results === null && !quickMode && !endReached && items.length > 0,
-  );
-
-  const toggleQuick = (id: string) => {
-    setQuery('');
-    setResults(null);
-    setActiveQuick((cur) => (cur === id ? null : id));
-  };
+  const shown = results ?? items;
+  const sentinelRef = useLoadMore(loadMore, results === null && !endReached && items.length > 0);
 
   const catalogEmpty = catalogSlice.itemCount === 0 && catalogSlice.status !== 'loading';
   const selectClass =
     'h-10 rounded-xl border border-ink-600 bg-ink-800 px-3 text-xs text-fg outline-none';
   const decade = decadeValue(filters.minYear, filters.maxYear);
+  const showSecondaryRow = filters.genreIds.length > 1 || active;
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
@@ -311,7 +261,6 @@ export function MediaBrowser<T extends BrowserItem>({
             inputMode="search"
           />
         </div>
-        {!quickMode && (
         <div className="flex flex-wrap items-center gap-2">
           <select
             aria-label="Trier"
@@ -350,57 +299,34 @@ export function MediaBrowser<T extends BrowserItem>({
             ))}
           </select>
         </div>
-        )}
       </div>
 
-      {/* Vues curatées éditoriales (En cours, Top 10, Populaires, Nouveautés…) */}
-      {quickFilters.length > 0 && (
-        <HScroll className="mt-3 flex gap-2 pb-1 [scrollbar-width:none]">
-          {quickFilters.map((q) => (
+      {/* Bascule genres ET/OU + réinitialiser (visibles au besoin) */}
+      {showSecondaryRow && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {filters.genreIds.length > 1 && (
             <button
-              key={q.id}
-              onClick={() => toggleQuick(q.id)}
+              onClick={() => setGenreMatch(section, filters.genreMatch === 'all' ? 'any' : 'all')}
+              aria-pressed={filters.genreMatch === 'all'}
               className={`shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition-colors ${
-                activeQuick === q.id ? 'bg-accent text-white' : 'bg-ink-800 text-fg-muted hover:text-fg'
+                filters.genreMatch === 'all'
+                  ? 'bg-accent text-white'
+                  : 'bg-ink-800 text-fg-muted hover:text-fg'
               }`}
             >
-              {q.label}
+              {filters.genreMatch === 'all' ? 'Tous les genres (ET)' : 'Au moins un genre (OU)'}
             </button>
-          ))}
-        </HScroll>
+          )}
+          {active && (
+            <button
+              onClick={() => resetFilters(section)}
+              className="rounded-full px-3 py-2 text-[13px] font-medium text-fg-faint underline-offset-2 hover:text-fg hover:underline"
+            >
+              Réinitialiser
+            </button>
+          )}
+        </div>
       )}
-
-      {/* Filtres à plat (masqués en vue curatée) */}
-      {!quickMode && (
-        <>
-      {/* Toggles VF / Non classés / ET-OU / reset */}
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <TogglePill active={filters.frenchOnly} onClick={() => setFrenchOnly(section, !filters.frenchOnly)}>
-          VF / FR
-        </TogglePill>
-        <TogglePill
-          active={filters.unclassifiedOnly}
-          onClick={() => setUnclassifiedOnly(section, !filters.unclassifiedOnly)}
-        >
-          Non classés
-        </TogglePill>
-        {filters.genreIds.length > 1 && (
-          <TogglePill
-            active={filters.genreMatch === 'all'}
-            onClick={() => setGenreMatch(section, filters.genreMatch === 'all' ? 'any' : 'all')}
-          >
-            {filters.genreMatch === 'all' ? 'Tous les genres (ET)' : 'Au moins un genre (OU)'}
-          </TogglePill>
-        )}
-        {active && (
-          <button
-            onClick={() => resetFilters(section)}
-            className="rounded-full px-3 py-2 text-[13px] font-medium text-fg-faint underline-offset-2 hover:text-fg hover:underline"
-          >
-            Réinitialiser
-          </button>
-        )}
-      </div>
 
       {/* Pills de genres TMDB */}
       {genres.length > 0 && (
@@ -429,8 +355,6 @@ export function MediaBrowser<T extends BrowserItem>({
           })}
         </HScroll>
       )}
-        </>
-      )}
 
       {/* Compteur */}
       {results !== null ? (
@@ -438,10 +362,6 @@ export function MediaBrowser<T extends BrowserItem>({
           {results.length >= SEARCH_LIMIT
             ? `${SEARCH_LIMIT}+ résultats — affine ta recherche`
             : `${results.length} résultat${results.length > 1 ? 's' : ''}`}
-        </p>
-      ) : quickMode ? (
-        <p className="mt-3 text-xs text-fg-faint">
-          {smartItems.length} sélection{smartItems.length > 1 ? 's' : ''}
         </p>
       ) : active ? (
         <p className="mt-3 text-xs text-fg-faint">
@@ -477,7 +397,7 @@ export function MediaBrowser<T extends BrowserItem>({
                 favorite={{ type: favoriteType, itemId: item.id }}
               />
             ))}
-            {(loading || searching || smartLoading) &&
+            {(loading || searching) &&
               shown.length === 0 &&
               Array.from({ length: 12 }, (_, i) => <Skeleton key={i} className="aspect-[2/3] rounded-xl" />)}
           </div>
@@ -487,12 +407,7 @@ export function MediaBrowser<T extends BrowserItem>({
               <EmptyState title="Aucun résultat" hint="Essaie un autre titre ou ajuste les filtres." />
             </div>
           )}
-          {results === null && quickMode && !smartLoading && shown.length === 0 && (
-            <div className="mt-6">
-              <EmptyState title="Rien à afficher ici pour le moment" />
-            </div>
-          )}
-          {results === null && !quickMode && !loading && shown.length === 0 && (
+          {results === null && !loading && shown.length === 0 && (
             <div className="mt-6">
               <EmptyState
                 title={active ? 'Aucun contenu pour ces filtres' : 'Catégorie vide'}
@@ -501,34 +416,12 @@ export function MediaBrowser<T extends BrowserItem>({
             </div>
           )}
 
-          {results === null && !quickMode && <div ref={sentinelRef} className="h-10" />}
+          {results === null && <div ref={sentinelRef} className="h-10" />}
           {loading && items.length > 0 && (
             <p className="py-4 text-center text-xs text-fg-faint">Chargement…</p>
           )}
         </>
       )}
     </main>
-  );
-}
-
-function TogglePill({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      className={`shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition-colors ${
-        active ? 'bg-accent text-white' : 'bg-ink-800 text-fg-muted hover:text-fg'
-      }`}
-    >
-      {children}
-    </button>
   );
 }
