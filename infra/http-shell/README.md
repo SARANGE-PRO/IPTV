@@ -49,10 +49,17 @@ Le conteneur ne fait que servir la page et le proxy métadonnées (`/api/*`).
    datacenter → 456 possible. Le désactiver pour ce site (Réglages → identifiant
    Apple → iCloud → Relais privé) ou globalement.
 
-## Option A — Docker sur un VPS / VM gratuite (recommandé pour commencer)
+## Option A — Docker sur une VM gratuite (Oracle Cloud Always Free)
 
-Oracle Cloud *Always Free* (VM ARM, IP publique fixe) ou n'importe quel petit VPS
-à 3 €/mois. Il faut Docker et le port 80 ouvert dans le pare-feu.
+Seul hébergeur connu qui donne **gratuitement et sans limite de durée** une VM
+avec IP publique fixe et port 80 ouvert (offre *Always Free* : VM ARM ou micro
+AMD, 10 To de sortie/mois). L'inscription demande une carte bancaire pour
+vérifier l'identité, sans prélèvement ; rester sur le compte « Always Free ».
+Choisir une région européenne (Paris, Marseille, Francfort). Ouvrir le port 80
+dans la *Security List* du VCN **et** dans le pare-feu de la VM (`iptables`).
+
+Les PaaS « gratuits » (Render, Koyeb, Cloud Run…) ne conviennent pas : ils
+forcent la redirection vers HTTPS ou leur domaine est préchargé HSTS.
 
 ```bash
 git clone <repo> zibtv && cd zibtv/infra/http-shell
@@ -66,7 +73,7 @@ Puis sur l'iPhone : Safari → `http://<ip>/` → Partager → **Sur l'écran d'
 Pour le transcodage MKV quand le PC est allumé, passer la passerelle au build :
 `NEXT_PUBLIC_MEDIA_GATEWAY_URL=https://… docker compose up -d --build`.
 
-## Option B — Fly.io (sans serveur à gérer, ~2 à 4 $/mois)
+## Option B — Fly.io (payant, ~2 à 4 $/mois, sans serveur à gérer)
 
 Depuis la **racine** du dépôt, avec [flyctl](https://fly.io/docs/flyctl/) :
 
