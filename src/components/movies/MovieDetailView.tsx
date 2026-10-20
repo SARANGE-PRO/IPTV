@@ -7,6 +7,7 @@ import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { LanguageVariantSwitcher } from '@/components/media/LanguageVariantSwitcher';
 import { PosterImage } from '@/components/shared/PosterImage';
 import { ExternalPlayer } from '@/components/player/ExternalPlayer';
+import { DirectMkvProbe } from '@/components/player/DirectMkvProbe';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { Button } from '@/components/ui/Button';
 import { IconArrowLeft, IconPlay } from '@/components/ui/icons';
@@ -234,6 +235,7 @@ export function MovieDetailView({ vodId, onBack }: { vodId: string; onBack?: () 
                 </Button>
                 <ExternalPlayer streamUrl={src} label="Ouvrir dans VLC" />
               </div>
+              <DirectMkvProbe streamUrl={src} />
             </div>
           ) : plan === 'checking' ? (
             <div className="flex aspect-video items-center justify-center rounded-2xl bg-black">

@@ -8,6 +8,7 @@ import { HScroll } from '@/components/shared/HScroll';
 import { LanguageVariantSwitcher } from '@/components/media/LanguageVariantSwitcher';
 import { PosterImage } from '@/components/shared/PosterImage';
 import { ExternalPlayer } from '@/components/player/ExternalPlayer';
+import { DirectMkvProbe } from '@/components/player/DirectMkvProbe';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { Button } from '@/components/ui/Button';
 import { IconArrowLeft, IconPlay } from '@/components/ui/icons';
@@ -224,6 +225,7 @@ export function SeriesDetailView({ seriesId, onBack }: { seriesId: string; onBac
                   label={`Ouvrir S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`}
                 />
               </div>
+              <DirectMkvProbe streamUrl={src} />
             </div>
           ) : plan === 'checking' ? (
             <div className="flex aspect-video items-center justify-center rounded-2xl bg-black">
