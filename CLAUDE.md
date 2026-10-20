@@ -18,6 +18,10 @@ Gestionnaire de paquets : **npm**.
 2. **Proxy `/api/xtream` = MÉTADONNÉES uniquement.** Aucun flux vidéo
    (`.m3u8` / `.ts` / `.mp4`) ne transite par Vercel — coût, latence, blocages.
    La vidéo utilise l'URL directe du serveur Xtream, jamais mise en cache SW.
+   Deux cibles : Vercel (HTTPS → passerelle `infra/media-gateway` pour les flux
+   HTTP) et coquille HTTP pure (`infra/http-shell`, `NEXT_PUBLIC_PLAIN_HTTP=1`
+   → flux directs sans passerelle). Toute logique de schéma vit dans
+   `utils/secureUrl.ts`, jamais dans les composants.
 3. **Session locale minimale** (table `sessions`) : `serverUrl`, `username`,
    `password` **seulement si « Se souvenir de moi »**, `createdAt`,
    `lastValidatedAt`, `sessionStatus`. Manipulée uniquement via

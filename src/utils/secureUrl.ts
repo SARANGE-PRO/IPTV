@@ -1,6 +1,14 @@
 const MEDIA_GATEWAY_URL = process.env.NEXT_PUBLIC_MEDIA_GATEWAY_URL?.trim().replace(/\/+$/, '') ?? '';
 
 /**
+ * Coquille servie en HTTP PUR (voir infra/http-shell) : la page n'est pas en
+ * HTTPS, donc aucune contrainte mixed-content. Constante de BUILD (et non
+ * `window.location.protocol`) pour que serveur et client calculent la meme URL
+ * d'image au rendu (sinon mismatch d'hydratation sur l'attribut `src`).
+ */
+const PLAIN_HTTP_SHELL = process.env.NEXT_PUBLIC_PLAIN_HTTP === '1';
+
+/**
  * Deux politiques STRICTEMENT distinctes selon le type de ressource.
  *
  * VIDEO (secureMediaUrl) : un flux HTTP doit passer par la passerelle HTTPS
@@ -28,28 +36,36 @@ const MEDIA_GATEWAY_URL = process.env.NEXT_PUBLIC_MEDIA_GATEWAY_URL?.trim().repl
  * (MP4/HLS) en tablant sur un HTTPS direct du CDN — invalide pour un Xtream
  * HTTP-only, ce qui cassait toute la VOD et le Live Safari. Ne pas reintroduire.
  *
+ * Page HTTP (coquille infra/http-shell, ou dev local) : aucune contrainte
+ * mixed-content -> lecture DIRECTE depuis l'IP du client (le CDN accepte l'IP
+ * residentielle/mobile), SANS passerelle. Seule exception : `options.transcode`
+ * (conteneur non-natif, passerelle sondee joignable) -> on route quand meme
+ * vers la passerelle, car c'est le transcodage qu'on veut, pas le relais HTTPS.
+ *
  * `options.hls` (Safari + VOD non-natif) : demande a la passerelle un flux HLS
  * (Safari refuse le fMP4 progressif du transcodage -> MediaError 4). Sans effet
  * hors passerelle.
  */
 export function secureMediaUrl(
   value: string | null | undefined,
-  options: { hls?: boolean; start?: number } = {},
+  options: { hls?: boolean; start?: number; transcode?: boolean } = {},
 ): string | null {
   if (value === null || value === undefined) return null;
   const url = value.trim();
   if (url === '') return null;
-  if (url.startsWith('//')) return `https:${url}`;
+  if (url.startsWith('//')) return PLAIN_HTTP_SHELL ? `http:${url}` : `https:${url}`;
   if (!/^http:\/\//i.test(url)) return url;
 
-  // Page HTTP (localhost/dev) : aucune contrainte mixed-content -> lecture
-  // DIRECTE depuis l'IP du client (le CDN accepte l'IP residentielle).
   const onHttpsPage = typeof window !== 'undefined' && window.location.protocol === 'https:';
-  if (!onHttpsPage) return url;
+  const gatewayConfigured = MEDIA_GATEWAY_URL !== '';
+
+  // Page HTTP : direct, sauf transcodage explicitement demande ET passerelle
+  // configuree (elle est en HTTPS : chargeable depuis une page HTTP).
+  if (!onHttpsPage && !(options.transcode === true && gatewayConfigured)) return url;
 
   // Page HTTPS : passerelle si configuree, sinon upgrade TLS best-effort
   // (echoue proprement si le serveur n'a pas de vrai HTTPS).
-  if (MEDIA_GATEWAY_URL !== '') {
+  if (gatewayConfigured) {
     let base = `${MEDIA_GATEWAY_URL}/_fetch?url=${encodeURIComponent(url)}`;
     if (options.hls === true) base += '&hls=1';
     // Reprise d'un flux TRANSCODE : la passerelle demarre ffmpeg a cette position
@@ -81,15 +97,18 @@ export function mediaGatewayStopUrl(value: string | null | undefined): string | 
  * des hotes de logos (souvent le serveur Xtream lui-meme) repondent en HTTPS ;
  * si ce n'est pas le cas, l'image echoue proprement -> fallback monogramme
  * (onError + brokenImageMemory). Aucune requete ne passe par la passerelle.
+ *
+ * Coquille HTTP pure : pas d'upgrade (un Xtream HTTP-only servirait zero logo
+ * en HTTPS) — l'image HTTP est chargee telle quelle.
  */
 export function secureImageSrc(value: string | null | undefined): string | null {
   if (value === null || value === undefined) return null;
   const url = value.trim();
   if (url === '') return null;
-  if (url.startsWith('//')) return `https:${url}`;
+  if (url.startsWith('//')) return PLAIN_HTTP_SHELL ? `http:${url}` : `https:${url}`;
   if (/^https:\/\//i.test(url)) return url;
   if (/^(data|blob):/i.test(url)) return url;
-  if (/^http:\/\//i.test(url)) return url.replace(/^http:\/\//i, 'https://');
+  if (/^http:\/\//i.test(url)) return PLAIN_HTTP_SHELL ? url : url.replace(/^http:\/\//i, 'https://');
   // Schema relatif/inconnu : pas de reseau, fallback monogramme.
   return null;
 }

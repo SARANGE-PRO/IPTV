@@ -70,6 +70,19 @@ Jamais l'inverse. Les composants n'accèdent jamais directement à fetch/Dexie.
 - **Flux vidéo** (`.m3u8` / `.ts` / `.mp4`) → **URL directe** vers Xtream, jamais via
   Vercel, jamais mis en cache par le service worker.
 
+### Deux cibles de déploiement (même code)
+| Cible | Page | Flux HTTP du Xtream | MKV |
+|---|---|---|---|
+| **Vercel** (défaut) | HTTPS | Bloqué par le mixed-content → **passerelle** `infra/media-gateway` obligatoire | Passerelle (transcodage) sinon VLC |
+| **Coquille HTTP** `infra/http-shell` (Docker, `NEXT_PUBLIC_PLAIN_HTTP=1`) | HTTP pur | **Direct** depuis l'IP du client, sans passerelle | Passerelle si joignable, sinon VLC |
+
+La coquille HTTP supprime le besoin de passerelle pour tout ce qui est MP4/HLS :
+le flux part du téléphone (IP résidentielle/mobile acceptée par le CDN). Elle
+perd le service worker (hors ligne, notifications) mais reste installable sur
+l'écran d'accueil. La logique est centralisée dans `utils/secureUrl.ts` (option
+`transcode` de `secureMediaUrl`) et `next.config.mjs` (CSP sans
+`upgrade-insecure-requests`).
+
 ### Stockage de session — forme minimale (amendement)
 Table `sessions`, un seul enregistrement actif :
 

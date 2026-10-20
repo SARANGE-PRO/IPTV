@@ -24,6 +24,14 @@ Copier `.env.example` en `.env.local` et renseigner les variables (TMDB à
 l'étape 9). Les identifiants Xtream ne sont pas des variables d'env : ils sont
 saisis dans l'interface puis stockés localement.
 
+## Déploiement
+
+- **Vercel** (HTTPS) : cible par défaut. Un Xtream HTTP-only y impose la passerelle
+  média (`infra/media-gateway`) pour relayer les flux.
+- **Coquille HTTP pure** (`infra/http-shell`, Docker) : sert l'app en HTTP, donc
+  les flux MP4/HLS se lisent **en direct sans passerelle**. Voir le README du
+  dossier pour les pièges (HSTS, redirections, Private Relay).
+
 ## Documentation
 
 Architecture complète, décisions de sécurité et plan de développement :

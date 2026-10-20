@@ -1,0 +1,18 @@
+# Coquille HTTP pure — VPS, VM gratuite (Oracle Cloud Free Tier) ou tout hote
+# Docker avec le port 80 ouvert. Lancer depuis ce dossier :
+#   docker compose up -d --build
+# Puis ouvrir http://<ip-ou-domaine>/ sur l'iPhone et « Sur l'écran d'accueil ».
+services:
+  zibtv:
+    build:
+      context: ../..
+      args:
+        # Optionnel : passerelle de transcodage MKV (HTTPS). Vide = MKV via VLC.
+        NEXT_PUBLIC_MEDIA_GATEWAY_URL: ${NEXT_PUBLIC_MEDIA_GATEWAY_URL:-}
+    ports:
+      - '80:3000'
+    env_file:
+      # Cles SERVEUR (TMDB, football, EPG) : copier ../../.env.example en .env ici.
+      - path: .env
+        required: false
+    restart: unless-stopped

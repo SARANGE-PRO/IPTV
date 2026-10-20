@@ -123,9 +123,11 @@ export function VideoPlayer({
   const [limitedSeek, setLimitedSeek] = useState(false);
   // Flux HTTP -> passerelle HTTPS (Xtream HTTP-only + mixed-content). C'est la
   // passerelle qui choisit passthrough (MP4/segments) ou remux/transcodage
-  // (MKV/HEVC, live .ts). Le drapeau `transcode` ne sert plus qu'a autoriser
-  // les conteneurs non-natifs et a contextualiser le diagnostic (voir plus bas).
-  const streamUrl = secureMediaUrl(src, { hls: preferHls, start: startOffset });
+  // (MKV/HEVC, live .ts). Le drapeau `transcode` autorise les conteneurs
+  // non-natifs, contextualise le diagnostic (voir plus bas) et, sur une page
+  // HTTP (coquille infra/http-shell, lecture directe par defaut), force malgre
+  // tout le passage par la passerelle : c'est son transcodage qu'on veut.
+  const streamUrl = secureMediaUrl(src, { hls: preferHls, start: startOffset, transcode });
   const posterUrl = secureImageSrc(poster);
 
   const onProgressRef = useRef(onProgress);
