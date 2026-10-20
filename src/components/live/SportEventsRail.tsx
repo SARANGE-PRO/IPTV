@@ -5,6 +5,7 @@ import { HScroll } from '@/components/shared/HScroll';
 import { cn } from '@/lib/cn';
 import type { SportEvent, SportKind } from '@/services/live/sportEventsService';
 import { displayChannelName } from '@/utils/displayTitle';
+import { liveHref } from '@/utils/appRoutes';
 
 /**
  * Rail d'evenements sportifs a venir (foot + MMA) : le plus proche en tete, on
@@ -25,7 +26,7 @@ function whenLabel(start: number): string {
 function EventCard({ event }: { event: SportEvent }) {
   return (
     <Link
-      href={`/live/${event.channelId}`}
+      href={liveHref(event.channelId)}
       className={cn(
         'group relative flex w-72 shrink-0 flex-col justify-between overflow-hidden rounded-2xl border p-4 transition-transform active:scale-[0.98]',
         event.priority

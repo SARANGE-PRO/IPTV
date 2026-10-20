@@ -7,6 +7,7 @@ import type { CatalogFilter, FlatSort } from '@/services/data/catalogService';
 import { enrichVisibleSeries } from '@/services/tmdb/tmdbEnrichmentService';
 import type { Series } from '@/types/models';
 import { displayYear } from '@/utils/displayTitle';
+import { seriesHref } from '@/utils/appRoutes';
 
 const fetchFlatPage = (
   offset: number,
@@ -26,7 +27,7 @@ const enrichVisible = (items: Series[]) => {
   void enrichVisibleSeries(items);
 };
 
-const hrefFor = (s: Series) => `/series/${s.id}`;
+const hrefFor = (s: Series) => seriesHref(s.id);
 const subtitleFor = (s: Series) => {
   const fallback = s.releaseDate != null ? Number.parseInt(s.releaseDate.slice(0, 4), 10) : null;
   const year = displayYear(s.name, s.tmdbYear ?? (Number.isFinite(fallback) ? fallback : null));

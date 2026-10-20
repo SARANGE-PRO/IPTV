@@ -1,15 +1,19 @@
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
 import { AuthGate } from '@/components/layout/AuthGate';
+import { DetailModalHost } from '@/components/shared/DetailModalHost';
 
-/** Groupe (app) : session obligatoire + shell de navigation. Le slot parallele
- *  `modal` accueille les detail films/series ouverts en navigation douce
- *  (intercepting routes) — la page liste/recherche reste montee dessous. */
-export default function AppLayout({ children, modal }: { children: ReactNode; modal: ReactNode }) {
+/** Groupe (app) : session obligatoire + shell de navigation. `DetailModalHost`
+ *  ouvre les detail films/series (`?vod=` / `?series=`) en modal par-dessus la
+ *  page courante, qui reste montee dessous. Suspense : exige par
+ *  useSearchParams au prerendu (export statique). */
+export default function AppLayout({ children }: { children: ReactNode }) {
   return (
     <AuthGate>
       <AppShell>{children}</AppShell>
-      {modal}
+      <Suspense fallback={null}>
+        <DetailModalHost />
+      </Suspense>
     </AuthGate>
   );
 }

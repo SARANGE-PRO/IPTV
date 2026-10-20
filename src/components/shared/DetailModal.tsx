@@ -1,23 +1,20 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { useEffect, type ReactNode } from 'react';
 
 /**
- * Conteneur MODAL des pages detail (intercepting routes). En navigation douce
- * depuis une liste/recherche, le detail s'ouvre ICI par-dessus la page courante
- * qui reste montee -> recherche, filtres et scroll PRESERVES au retour.
+ * Conteneur MODAL des detail film/serie (ouverts par `?vod=` / `?series=`, voir
+ * DetailModalHost). La page courante reste montee dessous -> recherche,
+ * filtres et scroll PRESERVES au retour.
  *
- * Fermeture : clic sur le fond, touche Echap, ou bouton retour -> `router.back()`
- * (depile l'entree d'historique du modal). Verrou de scroll de l'arriere-plan.
+ * Fermeture : clic sur le fond, touche Echap, ou bouton retour -> `onClose`
+ * (fourni par l'hote : depile l'historique, ou retire le parametre en acces
+ * direct). Verrou de scroll de l'arriere-plan.
  */
-export function DetailModal({ children }: { children: ReactNode }) {
-  const router = useRouter();
-
+export function DetailModal({ children, onClose }: { children: ReactNode; onClose: () => void }) {
   useEffect(() => {
-    const close = () => router.back();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') close();
+      if (e.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKey);
     const previousOverflow = document.body.style.overflow;
@@ -26,13 +23,13 @@ export function DetailModal({ children }: { children: ReactNode }) {
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = previousOverflow;
     };
-  }, [router]);
+  }, [onClose]);
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      onClick={() => router.back()}
+      onClick={onClose}
       className="fixed inset-0 z-50 animate-fade-in overflow-y-auto overscroll-contain bg-black/70 backdrop-blur-sm"
     >
       {/* pt-safe : sur iPhone en PWA, sans marge le contenu (retour/favori) passe

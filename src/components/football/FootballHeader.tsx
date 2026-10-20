@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FootballMatchModal } from '@/components/football/FootballMatchModal';
 import { HScroll } from '@/components/shared/HScroll';
-import type { FootballMatch } from '@/app/api/football/route';
+import type { FootballMatch } from '@/types/football';
 import { cn } from '@/lib/cn';
 import { isFinishedStatus, isLiveStatus, loadFootballMatches } from '@/services/football/footballService';
 import { useFootballStore } from '@/stores/footballStore';

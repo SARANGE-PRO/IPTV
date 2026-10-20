@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { TMDB_API_KEY } from '@/config/env';
+import type { TrendingEntry } from '@/types/trending';
 
 /**
  * Tendances TMDB de la semaine (films + series), en francais. Source de verite
@@ -16,16 +17,6 @@ export const maxDuration = 30;
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const TIMEOUT_MS = 12_000;
 const PAGES = 3; // 3 x 20 = 60 candidats par type (assez pour trouver 10 presents)
-
-export interface TrendingEntry {
-  tmdbId: number;
-  type: 'movie' | 'tv';
-  title: string;
-  year: number | null;
-  posterPath: string | null;
-  overview: string | null;
-  rating: number | null;
-}
 
 interface TmdbTrendingRow {
   id?: number;

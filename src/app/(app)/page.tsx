@@ -24,11 +24,12 @@ import { tmdbPoster } from '@/services/tmdb/tmdbImage';
 import type { LiveChannel, Movie, PlaybackEntry, Series } from '@/types/models';
 import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
 import { formatCount } from '@/utils/format';
+import { liveHref, movieHref, seriesHref } from '@/utils/appRoutes';
 
 function hrefForEntry(entry: PlaybackEntry): string {
-  if (entry.type === 'episode') return `/series/${entry.seriesId ?? ''}`;
-  if (entry.type === 'vod') return `/movies/${entry.itemId}`;
-  return `/live/${entry.itemId}`;
+  if (entry.type === 'episode') return seriesHref(entry.seriesId ?? '');
+  if (entry.type === 'vod') return movieHref(entry.itemId);
+  return liveHref(entry.itemId);
 }
 
 const SECTION_CARDS = [
@@ -266,7 +267,7 @@ export default function HomePage() {
           {recentChannels.map((entry) => (
             <Link
               key={entry.itemId}
-              href={`/live/${entry.itemId}`}
+              href={liveHref(entry.itemId)}
               className="flex w-44 shrink-0 items-center gap-2.5 rounded-xl bg-ink-800 p-3 transition-colors hover:bg-ink-700"
             >
               <PosterImage
@@ -286,7 +287,7 @@ export default function HomePage() {
             <MediaCard
               key={t.xtreamId}
               className="w-32 shrink-0"
-              href={`/movies/${t.xtreamId}`}
+              href={movieHref(t.xtreamId)}
               title={t.title}
               posterUrl={tmdbPoster(t.posterPath)}
               rating={t.rating}
@@ -302,7 +303,7 @@ export default function HomePage() {
             <MediaCard
               key={t.xtreamId}
               className="w-32 shrink-0"
-              href={`/series/${t.xtreamId}`}
+              href={seriesHref(t.xtreamId)}
               title={t.title}
               posterUrl={tmdbPoster(t.posterPath)}
               rating={t.rating}
@@ -318,7 +319,7 @@ export default function HomePage() {
             <MediaCard
               key={movie.id}
               className="w-32 shrink-0"
-              href={`/movies/${movie.id}`}
+              href={movieHref(movie.id)}
               title={displayTitle(movie.name)}
               posterUrl={movie.posterUrl}
               rating={movie.rating}
@@ -332,7 +333,7 @@ export default function HomePage() {
       {discovery.frenchMovies.length > 0 && (
         <Rail title="Films FR à découvrir">
           {discovery.frenchMovies.map((movie) => (
-            <MediaCard key={movie.id} className="w-32 shrink-0" href={`/movies/${movie.id}`} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} rating={movie.rating} subtitle={displayYear(movie.name, movie.year)?.toString()} />
+            <MediaCard key={movie.id} className="w-32 shrink-0" href={movieHref(movie.id)} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} rating={movie.rating} subtitle={displayYear(movie.name, movie.year)?.toString()} />
           ))}
         </Rail>
       )}
@@ -340,7 +341,7 @@ export default function HomePage() {
       {discovery.recentMovies.length > 0 && (
         <Rail title="Films récemment ajoutés">
           {discovery.recentMovies.map((movie) => (
-            <MediaCard key={movie.id} className="w-32 shrink-0" href={`/movies/${movie.id}`} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} rating={movie.rating} subtitle={displayYear(movie.name, movie.year)?.toString()} />
+            <MediaCard key={movie.id} className="w-32 shrink-0" href={movieHref(movie.id)} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} rating={movie.rating} subtitle={displayYear(movie.name, movie.year)?.toString()} />
           ))}
         </Rail>
       )}
@@ -348,7 +349,7 @@ export default function HomePage() {
       {discovery.popularMovies.length > 0 && (
         <Rail title="Films populaires" action={<Link href="/movies" className="text-xs text-fg-faint hover:text-fg">Voir les films</Link>}>
           {discovery.popularMovies.map((movie) => (
-            <MediaCard key={movie.id} className="w-32 shrink-0" href={`/movies/${movie.id}`} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} rating={movie.rating} subtitle={displayYear(movie.name, movie.year)?.toString()} />
+            <MediaCard key={movie.id} className="w-32 shrink-0" href={movieHref(movie.id)} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} rating={movie.rating} subtitle={displayYear(movie.name, movie.year)?.toString()} />
           ))}
         </Rail>
       )}
@@ -356,7 +357,7 @@ export default function HomePage() {
       {discovery.resumeSeries.length > 0 && (
         <Rail title="Séries à reprendre" action={<Link href="/series" className="text-xs text-fg-faint hover:text-fg">Voir les séries</Link>}>
           {discovery.resumeSeries.map((series) => (
-            <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.rating} subtitle={series.releaseDate?.slice(0, 4)} />
+            <MediaCard key={series.id} className="w-32 shrink-0" href={seriesHref(series.id)} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.rating} subtitle={series.releaseDate?.slice(0, 4)} />
           ))}
         </Rail>
       )}
@@ -364,7 +365,7 @@ export default function HomePage() {
       {discovery.frenchSeries.length > 0 && (
         <Rail title="Séries FR">
           {discovery.frenchSeries.map((series) => (
-            <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.rating} subtitle={series.releaseDate?.slice(0, 4)} />
+            <MediaCard key={series.id} className="w-32 shrink-0" href={seriesHref(series.id)} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.rating} subtitle={series.releaseDate?.slice(0, 4)} />
           ))}
         </Rail>
       )}
@@ -372,7 +373,7 @@ export default function HomePage() {
       {discovery.recentSeries.length > 0 && (
         <Rail title="Séries récemment ajoutées">
           {discovery.recentSeries.map((series) => (
-            <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.rating} subtitle={series.releaseDate?.slice(0, 4)} />
+            <MediaCard key={series.id} className="w-32 shrink-0" href={seriesHref(series.id)} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.rating} subtitle={series.releaseDate?.slice(0, 4)} />
           ))}
         </Rail>
       )}
@@ -380,7 +381,7 @@ export default function HomePage() {
       {discovery.topSeries.length > 0 && (
         <Rail title="Séries mieux notées" action={<Link href="/series" className="text-xs text-fg-faint hover:text-fg">Voir les séries</Link>}>
           {discovery.topSeries.map((series) => (
-            <MediaCard key={series.id} className="w-32 shrink-0" href={`/series/${series.id}`} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.rating} subtitle={series.releaseDate?.slice(0, 4)} />
+            <MediaCard key={series.id} className="w-32 shrink-0" href={seriesHref(series.id)} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.rating} subtitle={series.releaseDate?.slice(0, 4)} />
           ))}
         </Rail>
       )}
@@ -388,7 +389,7 @@ export default function HomePage() {
       {discovery.liveSports.length > 0 && (
         <Rail title="Sport en direct" action={<Link href="/live" className="text-xs text-fg-faint hover:text-fg">Tout le Live</Link>}>
           {discovery.liveSports.map((channel) => (
-            <Link key={channel.id} href={`/live/${channel.id}`} className="w-36 shrink-0 rounded-xl bg-ink-800 p-3 transition-colors hover:bg-ink-700">
+            <Link key={channel.id} href={liveHref(channel.id)} className="w-36 shrink-0 rounded-xl bg-ink-800 p-3 transition-colors hover:bg-ink-700">
               <ChannelLogo channel={channel} className="mx-auto h-16 w-16" />
               <span className="mt-2 block truncate text-center text-xs text-fg">{displayChannelName(channel.name)}</span>
             </Link>

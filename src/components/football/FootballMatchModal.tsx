@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import type { FootballMatch } from '@/app/api/football/route';
+import type { FootballMatch } from '@/types/football';
 import { cn } from '@/lib/cn';
 import {
   isFinishedStatus,
@@ -22,6 +22,7 @@ import {
   sportReminderId,
 } from '@/services/notifications/reminderService';
 import { cleanChannelDisplay } from '@/services/live/channelNormalizer';
+import { liveHref } from '@/utils/appRoutes';
 
 /**
  * Carte DETAIL d'un match (premium) : score, mi-temps, phase, stade, arbitre +
@@ -137,7 +138,7 @@ export function FootballMatchModal({ match, onClose }: { match: FootballMatch; o
 
   const openChannel = (id: string) => {
     onClose();
-    router.push(`/live/${id}`);
+    router.push(liveHref(id));
   };
 
   const meta = [

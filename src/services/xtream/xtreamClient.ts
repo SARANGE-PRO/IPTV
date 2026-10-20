@@ -1,4 +1,5 @@
 import type { XtreamCredentials } from '@/types/xtream';
+import { apiUrl } from '@/services/apiBase';
 
 /**
  * Client bas niveau vers le proxy /api/xtream (metadonnees uniquement).
@@ -59,7 +60,7 @@ export async function callXtream<T>(
     action !== undefined && LIST_ACTIONS.has(action) ? LIST_REQUEST_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    response = await fetch('/api/xtream', {
+    response = await fetch(apiUrl('/api/xtream'), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ ...credentials, action, params }),

@@ -127,6 +127,11 @@ function clientIp(request: Request): string {
   return fwd.split(',')[0]?.trim() || 'unknown';
 }
 
+/** Preflight CORS (coquille statique) : en-tetes via next.config.mjs. */
+export function OPTIONS(): Response {
+  return new Response(null, { status: 204 });
+}
+
 export async function POST(request: Request): Promise<NextResponse> {
   if (TMDB_API_KEY === '') {
     return fail(503, 'not_configured', 'TMDB non configuré sur le serveur.');

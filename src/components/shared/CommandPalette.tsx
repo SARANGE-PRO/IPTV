@@ -8,6 +8,7 @@ import * as catalogService from '@/services/data/catalogService';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useFilterStore } from '@/stores/filterStore';
 import { displayChannelName, displayTitle } from '@/utils/displayTitle';
+import { liveHref, movieHref, seriesHref } from '@/utils/appRoutes';
 
 /**
  * Palette de commandes universelle (Cmd/Ctrl+K) : recherche instantanee
@@ -24,7 +25,7 @@ interface Hit {
 
 const KIND_ICON = { live: IconTv, movie: IconFilm, series: IconSeries } as const;
 const hrefFor = (h: Hit): string =>
-  h.kind === 'live' ? `/live/${h.id}` : h.kind === 'movie' ? `/movies/${h.id}` : `/series/${h.id}`;
+  h.kind === 'live' ? liveHref(h.id) : h.kind === 'movie' ? movieHref(h.id, '/movies') : seriesHref(h.id, '/series');
 
 export function CommandPalette() {
   const router = useRouter();

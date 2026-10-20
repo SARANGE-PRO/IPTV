@@ -28,6 +28,7 @@ import type { ChannelTheme } from '@/utils/channelTheme';
 import { compareLiveChannels, isFootballChannel, isMainFrenchChannel } from '@/utils/channelPriority';
 import { displayChannelName } from '@/utils/displayTitle';
 import { formatCount } from '@/utils/format';
+import { liveHref } from '@/utils/appRoutes';
 
 /**
  * Filtres rapides Live — l'entree principale (remplace la navigation rigide par
@@ -149,7 +150,7 @@ function ChannelGroupRow({ group, onHide }: { group: ChannelGroup; onHide: () =>
   return (
     <div className="rounded-xl transition-colors hover:bg-ink-800">
       <div className="group flex items-center gap-2 px-2 py-2">
-        <Link href={`/live/${best.id}`} className="flex min-w-0 flex-1 items-center gap-3">
+        <Link href={liveHref(best.id)} className="flex min-w-0 flex-1 items-center gap-3">
           <ChannelLogo channel={best} className="h-11 w-11 shrink-0" />
           <span className="min-w-0 flex-1 truncate text-sm text-fg">{displayChannelName(group.name)}</span>
           {group.isFrench === 1 && (
@@ -185,7 +186,7 @@ function ChannelGroupRow({ group, onHide }: { group: ChannelGroup; onHide: () =>
           {group.versions.map((version) => (
             <Link
               key={version.channel.id}
-              href={`/live/${version.channel.id}`}
+              href={liveHref(version.channel.id)}
               className="rounded-lg bg-ink-700 px-3 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:bg-ink-600 hover:text-fg"
             >
               {version.label}
@@ -200,7 +201,7 @@ function ChannelGroupRow({ group, onHide }: { group: ChannelGroup; onHide: () =>
 function ChannelRow({ channel, onHide }: { channel: LiveChannel; onHide: () => void }) {
   return (
     <div className="group flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-ink-800">
-      <Link href={`/live/${channel.id}`} className="flex min-w-0 flex-1 items-center gap-3">
+      <Link href={liveHref(channel.id)} className="flex min-w-0 flex-1 items-center gap-3">
         <ChannelLogo channel={channel} className="h-11 w-11 shrink-0" />
         <span className="min-w-0 flex-1 truncate text-sm text-fg">{displayChannelName(channel.name)}</span>
         {channel.isFrench === 1 && (

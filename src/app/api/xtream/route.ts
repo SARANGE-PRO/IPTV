@@ -160,6 +160,12 @@ function fail(status: number, code: string, message: string): NextResponse {
   return NextResponse.json({ ok: false, error: { code, message } }, { status, headers: NO_STORE });
 }
 
+/** Preflight CORS (coquille statique cross-origin) : les en-tetes
+ *  Access-Control-* viennent de next.config.mjs (CORS_ALLOWED_ORIGIN). */
+export function OPTIONS(): Response {
+  return new Response(null, { status: 204 });
+}
+
 export async function POST(request: Request): Promise<NextResponse> {
   let body: unknown;
   try {

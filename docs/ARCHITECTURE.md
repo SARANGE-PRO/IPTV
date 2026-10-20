@@ -74,14 +74,22 @@ Jamais l'inverse. Les composants n'accèdent jamais directement à fetch/Dexie.
 | Cible | Page | Flux HTTP du Xtream | MKV |
 |---|---|---|---|
 | **Vercel** (défaut) | HTTPS | Bloqué par le mixed-content → **passerelle** `infra/media-gateway` obligatoire | Passerelle (transcodage) sinon VLC |
-| **Coquille HTTP** `infra/http-shell` (Docker, `NEXT_PUBLIC_PLAIN_HTTP=1`) | HTTP pur | **Direct** depuis l'IP du client, sans passerelle | Passerelle si joignable, sinon VLC |
+| **Coquille HTTP** `infra/http-shell` (`NEXT_PUBLIC_PLAIN_HTTP=1`) : statique sur GitHub Pages (`build:static`, `/api` restant sur Vercel + CORS) ou Docker | HTTP pur | **Direct** depuis l'IP du client, sans passerelle | Passerelle si joignable, sinon VLC |
 
 La coquille HTTP supprime le besoin de passerelle pour tout ce qui est MP4/HLS :
 le flux part du téléphone (IP résidentielle/mobile acceptée par le CDN). Elle
 perd le service worker (hors ligne, notifications) mais reste installable sur
 l'écran d'accueil. La logique est centralisée dans `utils/secureUrl.ts` (option
-`transcode` de `secureMediaUrl`) et `next.config.mjs` (CSP sans
-`upgrade-insecure-requests`).
+`transcode` de `secureMediaUrl`), `services/apiBase.ts` (origine des routes
+`/api`) et `next.config.mjs` (CSP sans `upgrade-insecure-requests`, CORS).
+
+### Routage sans route dynamique (export statique)
+Aucun segment `[id]` : film et série s'ouvrent via `?vod=<id>` / `?series=<id>`
+(lien **relatif**, donc modal `DetailModalHost` par-dessus la page courante qui
+reste montée : liste, scroll et filtres préservés), le Live via
+`/live/watch?id=<id>`. Tous les liens passent par `utils/appRoutes.ts`. Les
+types partagés client/serveur des routes API vivent dans `src/types/`, jamais
+dans `app/api`.
 
 ### Stockage de session — forme minimale (amendement)
 Table `sessions`, un seul enregistrement actif :

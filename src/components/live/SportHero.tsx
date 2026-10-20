@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { ReminderButton } from '@/components/notifications/ReminderButton';
 import { cn } from '@/lib/cn';
 import type { SportEvent } from '@/services/live/sportEventsService';
+import { liveHref } from '@/utils/appRoutes';
 
 /**
  * Billboard immersif des gros evenements sportifs a venir (foot / MMA), en haut
@@ -94,7 +95,7 @@ export function SportHero({ events }: { events: SportEvent[] }) {
 
         <div className="relative mt-5 flex items-center gap-3">
           <Link
-            href={`/live/${ev.channelId}`}
+            href={liveHref(ev.channelId)}
             className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-ink-950 transition-transform hover:scale-[1.03] active:scale-95"
           >
             <svg viewBox="0 0 24 24" className="h-4 w-4" fill="currentColor" aria-hidden>

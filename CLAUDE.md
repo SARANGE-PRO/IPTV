@@ -22,6 +22,11 @@ Gestionnaire de paquets : **npm**.
    HTTP) et coquille HTTP pure (`infra/http-shell`, `NEXT_PUBLIC_PLAIN_HTTP=1`
    → flux directs sans passerelle). Toute logique de schéma vit dans
    `utils/secureUrl.ts`, jamais dans les composants.
+8. **Export statique possible** : aucune route dynamique `[id]`. Détail film/
+   série = `?vod=` / `?series=` (modal `DetailModalHost`), Live =
+   `/live/watch?id=`. Liens uniquement via `utils/appRoutes.ts`. Les appels
+   `/api/*` passent par `services/apiBase.ts`. Jamais d'import depuis `app/api`
+   hors des routes (types partagés dans `src/types/`).
 3. **Session locale minimale** (table `sessions`) : `serverUrl`, `username`,
    `password` **seulement si « Se souvenir de moi »**, `createdAt`,
    `lastValidatedAt`, `sessionStatus`. Manipulée uniquement via

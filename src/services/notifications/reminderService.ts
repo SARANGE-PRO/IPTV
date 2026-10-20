@@ -1,5 +1,6 @@
 import * as reminderRepository from '@/db/repositories/reminderRepository';
 import type { Reminder } from '@/types/models';
+import { liveHref } from '@/utils/appRoutes';
 
 /**
  * Rappels d'evenements (sport). Notifie AU PREMIER PLAN (pendant que la PWA est
@@ -105,7 +106,7 @@ export async function showReminderNotification(reminder: Reminder): Promise<void
     tag: reminder.id,
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
-    data: { url: reminder.channelId !== null ? `/live/${reminder.channelId}` : '/' },
+    data: { url: reminder.channelId !== null ? liveHref(reminder.channelId) : '/' },
   };
   try {
     const reg =

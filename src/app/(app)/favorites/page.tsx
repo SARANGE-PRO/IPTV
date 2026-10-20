@@ -13,6 +13,7 @@ import * as favoritesRepository from '@/services/data/favoritesDataService';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import type { LiveChannel, Movie, Series } from '@/types/models';
 import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
+import { liveHref, movieHref, seriesHref } from '@/utils/appRoutes';
 
 type Tab = 'live' | 'vod' | 'series';
 
@@ -125,7 +126,7 @@ export default function FavoritesPage() {
             {ordered(liveItems).map((c) => (
               <Link
                 key={c.id}
-                href={`/live/${c.id}`}
+                href={liveHref(c.id)}
                 className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-ink-800"
               >
                 <ChannelLogo channel={c} className="h-10 w-10 shrink-0" />
@@ -140,7 +141,7 @@ export default function FavoritesPage() {
               ? ordered(movieItems).map((m) => (
                   <MediaCard
                     key={m.id}
-                    href={`/movies/${m.id}`}
+                    href={movieHref(m.id)}
                     title={displayTitle(m.name)}
                     posterUrl={m.posterUrl}
                     subtitle={displayYear(m.name, m.year)?.toString() ?? null}
@@ -150,7 +151,7 @@ export default function FavoritesPage() {
               : ordered(seriesItems).map((s) => (
                   <MediaCard
                     key={s.id}
-                    href={`/series/${s.id}`}
+                    href={seriesHref(s.id)}
                     title={displayTitle(s.name)}
                     posterUrl={s.posterUrl}
                     subtitle={s.releaseDate?.slice(0, 4) ?? null}

@@ -1,8 +1,13 @@
 import type { Metadata, Viewport } from 'next';
+import Script from 'next/script';
 import type { ReactNode } from 'react';
 import { ServiceWorkerRegister } from '@/components/layout/ServiceWorkerRegister';
 import { SplashIntro } from '@/components/layout/SplashIntro';
 import './globals.css';
+
+/** Coquille HTTP pure : si la page est ouverte en https://, on repasse en http://
+ *  avant tout (sinon mixed-content -> flux bloques). Script absent des autres builds. */
+const PLAIN_HTTP_SHELL = process.env.NEXT_PUBLIC_PLAIN_HTTP === '1';
 
 export const metadata: Metadata = {
   title: { default: 'ZiBTV', template: '%s · ZiBTV' },
@@ -36,6 +41,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="fr" suppressHydrationWarning>
+      {PLAIN_HTTP_SHELL && <Script src="/plain-http.js" strategy="beforeInteractive" />}
       <body>
         <SplashIntro />
         {children}

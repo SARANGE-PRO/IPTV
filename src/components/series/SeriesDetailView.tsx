@@ -30,6 +30,7 @@ import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { Episode, PlaybackEntry, Series, SeriesDetails } from '@/types/models';
 import { displayTitle } from '@/utils/displayTitle';
 import { formatClock } from '@/utils/format';
+import { seriesHref } from '@/utils/appRoutes';
 
 function episodeStatus(prog: PlaybackEntry | undefined): { label: string; className: string } | null {
   if (prog === undefined || (prog.positionSec <= 0 && prog.finished === 0)) return null;
@@ -42,10 +43,10 @@ function episodeStatus(prog: PlaybackEntry | undefined): { label: string; classN
 }
 
 /**
- * Contenu detail d'une serie — reutilise par la PAGE plein ecran ET le MODAL
- * (intercepting route). L'identifiant arrive en prop.
+ * Contenu detail d'une serie — rendu en MODAL par DetailModalHost
+ * (`?series=<id>`, voir utils/appRoutes). `onBack` : fermeture fournie par l'hote.
  */
-export function SeriesDetailView({ seriesId }: { seriesId: string }) {
+export function SeriesDetailView({ seriesId, onBack }: { seriesId: string; onBack?: () => void }) {
   const credentials = useAuthStore((s) => s.credentials);
   const saveProgress = usePlaybackStore((s) => s.saveProgress);
   const markFinished = usePlaybackStore((s) => s.markFinished);
@@ -191,7 +192,7 @@ export function SeriesDetailView({ seriesId }: { seriesId: string }) {
       <div className={cn('px-4 pb-8 md:px-8', inPlayer ? 'pt-6' : 'relative -mt-16 sm:-mt-24')}>
         <div className="mb-4 flex items-center gap-3">
           <button
-            onClick={() => router.back()}
+            onClick={() => (onBack !== undefined ? onBack() : router.back())}
             aria-label="Retour"
             className="glass rounded-full p-2 text-fg-muted transition-colors hover:text-fg"
           >
@@ -309,7 +310,7 @@ export function SeriesDetailView({ seriesId }: { seriesId: string }) {
                   <LanguageVariantSwitcher
                     variants={variants}
                     activeId={seriesId}
-                    onSelect={(v) => router.replace(`/series/${v.id}`)}
+                    onSelect={(v) => router.replace(seriesHref(v.id))}
                   />
                 </div>
               )}

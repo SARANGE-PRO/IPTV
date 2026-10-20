@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useEffect, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { NowPlaying } from '@/components/live/NowPlaying';
@@ -18,11 +18,22 @@ import { usePlaybackStore } from '@/stores/playbackStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { ChannelVersion } from '@/types/liveGrouping';
 import type { LiveChannel } from '@/types/models';
+import { liveHref } from '@/utils/appRoutes';
 import { displayChannelName } from '@/utils/displayTitle';
 import { supportsNativeHls } from '@/utils/playerSupport';
 
+/** Lecture d'une chaine : `/live/watch?id=<streamId>` (route statique, voir
+ *  utils/appRoutes). Suspense : exige par useSearchParams au prerendu. */
 export default function LiveWatchPage() {
-  const { streamId } = useParams<{ streamId: string }>();
+  return (
+    <Suspense fallback={null}>
+      <LiveWatch />
+    </Suspense>
+  );
+}
+
+function LiveWatch() {
+  const streamId = useSearchParams().get('id') ?? '';
   const credentials = useAuthStore((s) => s.credentials);
   const recordLiveWatch = usePlaybackStore((s) => s.recordLiveWatch);
   const showVlcButton = useUiSettingsStore((s) => s.showVlcButton);
@@ -43,6 +54,10 @@ export default function LiveWatchPage() {
 
   useEffect(() => {
     setFailed(false);
+    if (streamId === '') {
+      setChannel(null);
+      return;
+    }
     let active = true;
     void catalogRepository.getLiveChannelById(streamId).then((c) => {
       if (active) setChannel(c ?? null);
@@ -93,8 +108,8 @@ export default function LiveWatchPage() {
   }, [channel]);
 
   // Player : extension selon le navigateur. VLC : toujours .ts (universel).
-  const src = credentials !== null ? buildLiveStreamUrl(credentials, streamId, liveExt) : null;
-  const vlcSrc = credentials !== null ? buildLiveStreamUrl(credentials, streamId, 'ts') : null;
+  const src = credentials !== null && streamId !== '' ? buildLiveStreamUrl(credentials, streamId, liveExt) : null;
+  const vlcSrc = credentials !== null && streamId !== '' ? buildLiveStreamUrl(credentials, streamId, 'ts') : null;
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8">
@@ -109,7 +124,7 @@ export default function LiveWatchPage() {
         <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg">
           {channel != null ? displayChannelName(channel.name) : 'Chaîne'}
         </h1>
-        <FavoriteButton type="live" itemId={streamId} />
+        {streamId !== '' && <FavoriteButton type="live" itemId={streamId} />}
       </div>
 
       {channel === null ? (
@@ -155,7 +170,7 @@ export default function LiveWatchPage() {
                   {versions.map((version) => (
                     <Link
                       key={version.channel.id}
-                      href={`/live/${version.channel.id}`}
+                      href={liveHref(version.channel.id)}
                       className={cn(
                         'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
                         version.channel.id === streamId
@@ -174,7 +189,7 @@ export default function LiveWatchPage() {
                 type="button"
                 disabled={neighbors.previous === null}
                 onClick={() => {
-                  if (neighbors.previous !== null) router.push(`/live/${neighbors.previous.id}`);
+                  if (neighbors.previous !== null) router.push(liveHref(neighbors.previous.id));
                 }}
                 className="min-w-0 rounded-xl bg-ink-800 px-4 py-3 text-left text-xs text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg disabled:opacity-35"
               >
@@ -187,7 +202,7 @@ export default function LiveWatchPage() {
                 type="button"
                 disabled={neighbors.next === null}
                 onClick={() => {
-                  if (neighbors.next !== null) router.push(`/live/${neighbors.next.id}`);
+                  if (neighbors.next !== null) router.push(liveHref(neighbors.next.id));
                 }}
                 className="min-w-0 rounded-xl bg-ink-800 px-4 py-3 text-right text-xs text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg disabled:opacity-35"
               >

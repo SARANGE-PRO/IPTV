@@ -3,6 +3,7 @@ import { sportChannelMatchKey } from '@/services/live/channelNormalizer';
 import { findUpcomingSportEvents, type SportEvent } from '@/services/live/sportEventsService';
 import type { SportKind } from '@/utils/sportClassify';
 import type { XtreamCredentials } from '@/types/xtream';
+import { apiUrl } from '@/services/apiBase';
 
 /**
  * Source EXTERNE d'evenements sportifs (route /api/sport-events, XMLTV public) +
@@ -24,7 +25,7 @@ const FR_POOL_CAP = 4000;
 
 async function fetchExternal(): Promise<RouteEvent[]> {
   try {
-    const res = await fetch('/api/sport-events', { cache: 'no-store' });
+    const res = await fetch(apiUrl('/api/sport-events'), { cache: 'no-store' });
     if (!res.ok) return [];
     const data = (await res.json()) as { ok?: boolean; events?: RouteEvent[] };
     return Array.isArray(data.events) ? data.events : [];

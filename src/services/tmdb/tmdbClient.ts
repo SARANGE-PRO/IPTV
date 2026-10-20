@@ -1,3 +1,4 @@
+import { apiUrl } from '@/services/apiBase';
 /** Client vers le proxy /api/tmdb. La cle reste cote serveur ; ici, aucun secret. */
 
 export class TmdbError extends Error {
@@ -117,7 +118,7 @@ async function call<T>(body: Record<string, unknown>): Promise<T | null> {
 
     let res: Response;
     try {
-      res = await fetch('/api/tmdb', {
+      res = await fetch(apiUrl('/api/tmdb'), {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),

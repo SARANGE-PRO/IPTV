@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { FootballTeam } from '@/app/api/football/route';
+import type { FootballTeam } from '@/types/football';
 import { cn } from '@/lib/cn';
 import { loadCompetitionTeams } from '@/services/football/footballService';
 import { FOOTBALL_COMPETITIONS, useFootballStore, type CompetitionInfo } from '@/stores/footballStore';

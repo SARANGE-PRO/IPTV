@@ -7,6 +7,7 @@ import type { CatalogFilter, FlatSort } from '@/services/data/catalogService';
 import { enrichVisibleMovies } from '@/services/tmdb/tmdbEnrichmentService';
 import type { Movie } from '@/types/models';
 import { displayYear } from '@/utils/displayTitle';
+import { movieHref } from '@/utils/appRoutes';
 
 const fetchFlatPage = (
   offset: number,
@@ -26,7 +27,7 @@ const enrichVisible = (items: Movie[]) => {
   void enrichVisibleMovies(items);
 };
 
-const hrefFor = (m: Movie) => `/movies/${m.id}`;
+const hrefFor = (m: Movie) => movieHref(m.id);
 const subtitleFor = (m: Movie) => {
   const year = displayYear(m.name, m.tmdbYear ?? m.year);
   return year !== null ? String(year) : null;

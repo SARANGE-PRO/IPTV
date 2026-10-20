@@ -17,6 +17,7 @@ import { detectFrenchVariant } from '@/services/media/languageDetectionService';
 import { useFilterStore } from '@/stores/filterStore';
 import type { LiveChannel, Movie, Series } from '@/types/models';
 import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
+import { liveHref, movieHref, seriesHref } from '@/utils/appRoutes';
 
 /**
  * Recherche globale : chaines + films + series en une fois. Chaque source passe
@@ -138,7 +139,7 @@ export default function SearchPage() {
           <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4">
             {live.map((c) => (
               <div key={c.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-ink-800">
-                <Link href={`/live/${c.id}`} className="flex min-w-0 flex-1 items-center gap-3">
+                <Link href={liveHref(c.id)} className="flex min-w-0 flex-1 items-center gap-3">
                   <ChannelLogo channel={c} className="h-11 w-11 shrink-0" />
                   <span className="min-w-0 flex-1 truncate text-sm text-fg">{displayChannelName(c.name)}</span>
                   {c.isFrench === 1 && (
@@ -159,7 +160,7 @@ export default function SearchPage() {
             {movies.map((m) => (
               <MediaCard
                 key={m.id}
-                href={`/movies/${m.id}`}
+                href={movieHref(m.id)}
                 title={displayTitle(m.name)}
                 posterUrl={m.posterUrl}
                 subtitle={displayYear(m.name, m.year)?.toString() ?? null}
@@ -178,7 +179,7 @@ export default function SearchPage() {
             {series.map((s) => (
               <MediaCard
                 key={s.id}
-                href={`/series/${s.id}`}
+                href={seriesHref(s.id)}
                 title={displayTitle(s.name)}
                 posterUrl={s.posterUrl}
                 subtitle={s.releaseDate?.slice(0, 4) ?? null}

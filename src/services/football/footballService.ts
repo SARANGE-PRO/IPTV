@@ -1,17 +1,18 @@
-import type { FootballMatch, FootballTeam } from '@/app/api/football/route';
+import type { FootballMatch, FootballTeam } from '@/types/football';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import { getFullChannelEpg } from '@/services/epg/epgService';
 import { detectQuality, sportChannelMatchKey } from '@/services/live/channelNormalizer';
 import type { XtreamCredentials } from '@/types/xtream';
 import { broadcastersFor } from '@/utils/footballBroadcasters';
 import { epgMentionsMatch, teamNameForms } from '@/utils/footballMatch';
+import { apiUrl } from '@/services/apiBase';
 
 /** Acces client a la route /api/football (jamais d'appel direct a l'API foot). */
 
 export async function loadFootballMatches(comps: string[]): Promise<FootballMatch[]> {
   if (comps.length === 0) return [];
   try {
-    const res = await fetch(`/api/football?comps=${encodeURIComponent(comps.join(','))}`, { cache: 'no-store' });
+    const res = await fetch(apiUrl(`/api/football?comps=${encodeURIComponent(comps.join(','))}`), { cache: 'no-store' });
     if (!res.ok) return [];
     const data = (await res.json()) as { matches?: FootballMatch[] };
     return Array.isArray(data.matches) ? data.matches : [];
@@ -22,7 +23,7 @@ export async function loadFootballMatches(comps: string[]): Promise<FootballMatc
 
 export async function loadCompetitionTeams(code: string): Promise<FootballTeam[]> {
   try {
-    const res = await fetch(`/api/football?teams=${encodeURIComponent(code)}`, { cache: 'no-store' });
+    const res = await fetch(apiUrl(`/api/football?teams=${encodeURIComponent(code)}`), { cache: 'no-store' });
     if (!res.ok) return [];
     const data = (await res.json()) as { teams?: FootballTeam[] };
     return Array.isArray(data.teams) ? data.teams : [];

@@ -1,8 +1,9 @@
-import type { TrendingEntry } from '@/app/api/trending/route';
+import type { TrendingEntry } from '@/types/trending';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import type { Movie, Series } from '@/types/models';
 import { displayYear } from '@/utils/displayTitle';
 import { vodKeysMatch, vodMatchKey } from '@/utils/vodMatchKey';
+import { apiUrl } from '@/services/apiBase';
 
 /**
  * TENDANCES : on part de TMDB trending (ce qui est chaud mondialement, affiches
@@ -23,7 +24,7 @@ export interface TrendingItem {
 
 async function fetchTrending(): Promise<{ movies: TrendingEntry[]; series: TrendingEntry[] }> {
   try {
-    const res = await fetch('/api/trending', { cache: 'no-store' });
+    const res = await fetch(apiUrl('/api/trending'), { cache: 'no-store' });
     if (!res.ok) return { movies: [], series: [] };
     const data = (await res.json()) as { movies?: TrendingEntry[]; series?: TrendingEntry[] };
     return { movies: data.movies ?? [], series: data.series ?? [] };

@@ -37,11 +37,11 @@ import { displayTitle, displayYear } from '@/utils/displayTitle';
 import { formatClock } from '@/utils/format';
 
 /**
- * Contenu detail d'un film — reutilise par la PAGE plein ecran (movies/[vodId])
- * ET par le MODAL (intercepting route @modal/(.)movies/[vodId]). L'identifiant
- * arrive en prop (les deux routes le fournissent via useParams).
+ * Contenu detail d'un film — rendu en MODAL par DetailModalHost (`?vod=<id>`,
+ * voir utils/appRoutes). `onBack` : fermeture fournie par l'hote (depile
+ * l'historique, ou retire le parametre en acces direct).
  */
-export function MovieDetailView({ vodId }: { vodId: string }) {
+export function MovieDetailView({ vodId, onBack }: { vodId: string; onBack?: () => void }) {
   const credentials = useAuthStore((s) => s.credentials);
   const saveProgress = usePlaybackStore((s) => s.saveProgress);
   const markFinished = usePlaybackStore((s) => s.markFinished);
@@ -205,7 +205,7 @@ export function MovieDetailView({ vodId }: { vodId: string }) {
       <div className={cn('px-4 pb-8 md:px-8', playing ? 'pt-6' : 'relative -mt-16 sm:-mt-24')}>
         <div className="mb-4 flex items-center gap-3">
           <button
-            onClick={() => router.back()}
+            onClick={() => (onBack !== undefined ? onBack() : router.back())}
             aria-label="Retour"
             className="glass rounded-full p-2 text-fg-muted transition-colors hover:text-fg"
           >

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { FOOTBALL_API_KEY } from '@/config/env';
+import type { FootballMatch, FootballTeam } from '@/types/football';
 
 /**
  * Football en direct via football-data.org (v4). La cle reste SERVEUR
@@ -55,28 +56,6 @@ interface FdMatch {
     halfTime?: { home?: number | null; away?: number | null };
   };
   referees?: { name?: string; type?: string }[];
-}
-
-export interface FootballMatch {
-  id: number;
-  start: number; // epoch ms
-  status: string; // SCHEDULED | TIMED | IN_PLAY | PAUSED | FINISHED | ...
-  minute: number | null;
-  stage: string | null;
-  matchday: number | null;
-  venue: string | null;
-  referee: string | null;
-  halfTime: { home: number | null; away: number | null } | null;
-  competition: string;
-  competitionCode: string;
-  home: { id: number | null; name: string; short: string; crest: string | null; goals: number | null };
-  away: { id: number | null; name: string; short: string; crest: string | null; goals: number | null };
-}
-export interface FootballTeam {
-  id: number;
-  name: string;
-  short: string;
-  crest: string | null;
 }
 
 function ymd(d: Date): string {

@@ -1,7 +1,9 @@
 node_modules
 .next
 out
+.api-excluded
 .git
+.github
 .env
 .env*.local
 infra

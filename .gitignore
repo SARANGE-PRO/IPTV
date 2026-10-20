@@ -6,6 +6,8 @@
 # next.js
 /.next/
 /out/
+# routes API ecartees le temps d'un build statique (scripts/build-static.mjs)
+/.api-excluded/
 /build
 next-env.d.ts
 

@@ -28,9 +28,11 @@ saisis dans l'interface puis stockés localement.
 
 - **Vercel** (HTTPS) : cible par défaut. Un Xtream HTTP-only y impose la passerelle
   média (`infra/media-gateway`) pour relayer les flux.
-- **Coquille HTTP pure** (`infra/http-shell`, Docker) : sert l'app en HTTP, donc
-  les flux MP4/HLS se lisent **en direct sans passerelle**. Voir le README du
-  dossier pour les pièges (HSTS, redirections, Private Relay).
+- **Coquille HTTP pure** (`infra/http-shell`) : sert l'app en HTTP, donc les
+  flux MP4/HLS se lisent **en direct sans passerelle**. Gratuit en statique sur
+  GitHub Pages (`npm run build:static`, routes `/api` laissées sur Vercel), ou
+  en Docker sur une VM. Voir le README du dossier pour les pièges (HSTS,
+  redirections, Private Relay).
 
 ## Documentation
 
