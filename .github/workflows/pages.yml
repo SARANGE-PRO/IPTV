@@ -1,11 +1,10 @@
 # Coquille HTTP statique sur GitHub Pages (voir infra/http-shell/README.md).
-# Prerequis (Settings du depot) :
-#  - Pages -> Source : « GitHub Actions ».
-#  - Pages -> Custom domain : ton sous-domaine, et « Enforce HTTPS » DECOCHE.
-#  - Variables (Settings -> Secrets and variables -> Actions -> Variables) :
-#      NEXT_PUBLIC_API_BASE_URL      https://<app>.vercel.app   (obligatoire)
-#      PAGES_CUSTOM_DOMAIN           tv.exemple.fr               (obligatoire)
-#      NEXT_PUBLIC_MEDIA_GATEWAY_URL https://…                   (optionnel)
+#
+# Deploiement par BRANCHE `gh-pages` (et non par l'artefact « GitHub Actions ») :
+# aucun reglage n'est necessaire dans Settings → Pages, GitHub publie la branche
+# et lit le fichier CNAME qu'elle contient (domaine HTTP). Les valeurs non
+# secretes (origine de l'API Vercel, domaine) sont versionnees dans
+# infra/http-shell/pages.env — pas de « Variables » de depot a configurer.
 name: Pages (coquille HTTP)
 
 on:
@@ -14,16 +13,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -32,22 +29,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --no-audit --no-fund
-      - run: npm run build:static
-        env:
-          NEXT_PUBLIC_API_BASE_URL: ${{ vars.NEXT_PUBLIC_API_BASE_URL }}
-          NEXT_PUBLIC_MEDIA_GATEWAY_URL: ${{ vars.NEXT_PUBLIC_MEDIA_GATEWAY_URL }}
-          PAGES_CUSTOM_DOMAIN: ${{ vars.PAGES_CUSTOM_DOMAIN }}
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - name: Build statique (variables lues dans infra/http-shell/pages.env)
+        run: |
+          set -a
+          . infra/http-shell/pages.env
+          set +a
+          npm run build:static
+      - name: Publier out/ sur la branche gh-pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: out
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./out
+          force_orphan: true
+          commit_message: 'deploy: coquille HTTP statique'

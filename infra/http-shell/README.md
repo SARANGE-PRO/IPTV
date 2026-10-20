@@ -52,60 +52,73 @@ Le conteneur ne fait que servir la page et le proxy métadonnées (`/api/*`).
 ## Option 0 — GitHub Pages, 100 % gratuit, sans serveur (recommandé)
 
 La coquille est exportée en **statique** (`npm run build:static` → `out/`) et
-publiée par GitHub Actions (`.github/workflows/pages.yml`). Les routes `/api/*`
+publiée sur la branche **`gh-pages`** par GitHub Actions
+(`.github/workflows/pages.yml`) à chaque push sur `main`. Les routes `/api/*`
 (proxy Xtream, TMDB, foot, EPG) restent sur **Vercel** : la page HTTP les
 appelle en cross-origin (une page HTTP peut appeler une API HTTPS). Aucune
 vidéo ne transite ni par GitHub ni par Vercel.
 
 Il faut un **nom de domaine à toi** pour servir du HTTP : `*.github.io` est
-forcé en HTTPS par les navigateurs (HSTS préchargé). Deux possibilités
-gratuites : un sous-domaine d'un domaine que tu possèdes (ex. `tv.sarange.fr`),
-ou un nom gratuit chez [DuckDNS](https://www.duckdns.org) (`zibtv.duckdns.org`).
+forcé en HTTPS par les navigateurs (HSTS préchargé). Nom gratuit retenu :
+**`zibtv.duckdns.org`** ([DuckDNS](https://www.duckdns.org)). Un sous-domaine
+d'un domaine à toi (ex. `tv.sarange.fr`) marche aussi : il suffit de changer la
+valeur aux deux endroits ci-dessous.
 
-### 1. DNS
+### État de la configuration (fait / à faire)
 
-Chez ton registrar (ou DuckDNS, qui ne gère que des enregistrements A) : des
-enregistrements **A** du sous-domaine vers les IP de GitHub Pages
-`185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153`.
-(Un CNAME vers `<compte>.github.io` fonctionne aussi si le DNS le permet.)
-**Ne pas** passer par le proxy Cloudflare (nuage orange) : il imposerait sa
-propre politique HTTPS.
+| Où | Quoi | État |
+|---|---|---|
+| Dépôt | `infra/http-shell/pages.env` : origine API `https://iptv-zib.vercel.app`, domaine `zibtv.duckdns.org` | ✅ versionné |
+| Dépôt | Workflow `pages.yml` → branche `gh-pages` + `CNAME` | ✅ versionné |
+| Vercel (projet `iptv`, Production) | `CORS_ALLOWED_ORIGIN=http://zibtv.duckdns.org` | ✅ posé |
+| DuckDNS | créer `zibtv` et pointer sur `185.199.108.153` | ⬜ **toi** (compte requis) |
+| GitHub → Settings → Pages | vérifier Source = branche `gh-pages`, domaine `zibtv.duckdns.org`, **Enforce HTTPS décoché** | ⬜ **toi** (API bloquée depuis la session) |
 
-### 2. Dépôt GitHub (Settings)
+### 1. DuckDNS (2 minutes)
 
-- **Pages → Build and deployment → Source : GitHub Actions.**
-- **Pages → Custom domain** : ton sous-domaine. Une fois le DNS vérifié,
-  laisser **« Enforce HTTPS » DÉCOCHÉ** (c'est tout l'intérêt).
-- **Secrets and variables → Actions → Variables** :
+1. <https://www.duckdns.org> → se connecter (GitHub/Google).
+2. *sub domain* : `zibtv` → **add domain**. Si le nom est pris, en choisir un
+   autre et changer `PAGES_CUSTOM_DOMAIN` dans `pages.env` **et**
+   `CORS_ALLOWED_ORIGIN` sur Vercel.
+3. Dans *current ip*, mettre **`185.199.108.153`** (IP de GitHub Pages ; DuckDNS
+   n'accepte qu'un seul enregistrement A, c'est suffisant) → **update ip**.
 
-  | Variable | Valeur |
-  |---|---|
-  | `NEXT_PUBLIC_API_BASE_URL` | `https://<ton-app>.vercel.app` (sans slash final) |
-  | `PAGES_CUSTOM_DOMAIN` | `tv.exemple.fr` (écrit dans `out/CNAME`) |
-  | `NEXT_PUBLIC_MEDIA_GATEWAY_URL` | optionnel, passerelle MKV |
+Avec un domaine à toi : enregistrements **A** vers `185.199.108.153`,
+`185.199.109.153`, `185.199.110.153`, `185.199.111.153`, **sans** proxy
+Cloudflare (nuage orange), qui imposerait sa politique HTTPS.
 
-### 3. Vercel (Settings → Environment Variables, Production)
+### 2. GitHub → Settings → Pages (1 minute, à vérifier)
 
-`CORS_ALLOWED_ORIGIN=http://tv.exemple.fr` (ton origine HTTP exacte, une
-seule, jamais `*` : le proxy relaie des identifiants), puis **redéployer** : la
-variable est lue au build (`next.config.mjs`) et ajoute les en-têtes CORS sur
-`/api/*`, y compris le preflight `OPTIONS` des routes POST.
+La branche `gh-pages` contient `CNAME`, GitHub la publie normalement tout seul.
+Vérifier dans **Settings → Pages** :
 
-### 4. Publier
+- *Build and deployment* → Source **Deploy from a branch**, branche **`gh-pages`**
+  (dossier `/ (root)`).
+- *Custom domain* = `zibtv.duckdns.org` (pré-rempli par `CNAME`).
+- **« Enforce HTTPS » DÉCOCHÉ.** C'est tout l'intérêt. Si la case est grisée,
+  c'est que le certificat n'est pas encore émis : laisser tel quel.
 
-Pousser sur `main` (ou lancer le workflow à la main : Actions → « Pages
-(coquille HTTP) » → Run workflow). Vérifier :
+### 3. Vercel
+
+Déjà fait : `CORS_ALLOWED_ORIGIN=http://zibtv.duckdns.org` (origine HTTP
+exacte, une seule, jamais `*` : le proxy relaie des identifiants). La variable
+est lue au **build** (`next.config.mjs`) : tout déploiement de `main` postérieur
+l'embarque et ajoute les en-têtes CORS sur `/api/*`, preflight `OPTIONS`
+compris.
+
+### 4. Vérifier
 
 ```bash
-curl -I http://tv.exemple.fr/            # 200, pas de Location: https://…
-curl -I -X OPTIONS -H "Origin: http://tv.exemple.fr" \
-     -H "Access-Control-Request-Method: POST" https://<app>.vercel.app/api/xtream
-#  -> 204 + Access-Control-Allow-Origin: http://tv.exemple.fr
+curl -I http://zibtv.duckdns.org/        # 200, pas de Location: https://…
+curl -I -X OPTIONS -H "Origin: http://zibtv.duckdns.org" \
+     -H "Access-Control-Request-Method: POST" https://iptv-zib.vercel.app/api/xtream
+#  -> 204 + Access-Control-Allow-Origin: http://zibtv.duckdns.org
 ```
 
-Sur l'iPhone : Safari → `http://tv.exemple.fr/` (bien taper `http://`) →
+Sur l'iPhone : Safari → `http://zibtv.duckdns.org/` (bien taper `http://`) →
 Partager → **Sur l'écran d'accueil**. Si la page s'ouvre quand même en
 `https://`, `public/plain-http.js` la rebascule en `http://` automatiquement.
+Pour republier à la main : Actions → « Pages (coquille HTTP) » → Run workflow.
 
 ### Ce que ça change dans le code (en plus du mode HTTP)
 
@@ -118,7 +131,7 @@ Partager → **Sur l'écran d'accueil**. Si la page s'ouvre quand même en
 - `services/apiBase.ts` préfixe les appels `/api/*` par
   `NEXT_PUBLIC_API_BASE_URL`.
 
-Test local : `NEXT_PUBLIC_API_BASE_URL=https://<app>.vercel.app npm run build:static`
+Test local : `set -a; . infra/http-shell/pages.env; set +a; npm run build:static`
 puis `cd out && python3 -m http.server 8080` → `http://localhost:8080/`.
 
 ## Option A — Docker sur une VM gratuite (Oracle Cloud Always Free)
