@@ -144,7 +144,9 @@ export function MovieDetailView({ vodId, onBack }: { vodId: string; onBack?: () 
 
   // Plan de lecture adaptatif : MP4 -> direct ; MKV -> passerelle si joignable,
   // sinon VLC. Sonde la passerelle une seule fois (cache), aucune connexion Xtream.
-  const plan = usePlaybackPlan(activeContainer, planRetry);
+  // Echec du remux MKV direct (codecs/CORS/MSE) : on retombe sur passerelle/VLC.
+  const [directMkvFailed, setDirectMkvFailed] = useState(false);
+  const plan = usePlaybackPlan(activeContainer, planRetry, { directMkvAllowed: !directMkvFailed });
 
   // Changer de variante : on stoppe la lecture (le lecteur envoie son beacon
   // d'arret -> libere la connexion Xtream) ; l'utilisateur relance en un tap.
@@ -246,6 +248,8 @@ export function MovieDetailView({ vodId, onBack }: { vodId: string; onBack?: () 
               <VideoPlayer
                 src={src}
                 transcode={plan === 'gateway'}
+                directMkv={plan === 'direct-mkv'}
+                onDirectMkvFailed={() => setDirectMkvFailed(true)}
                 preferHls={plan === 'gateway' && supportsNativeHls()}
                 contentType="vod"
                 container={movie.containerExtension}

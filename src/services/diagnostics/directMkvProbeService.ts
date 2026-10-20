@@ -5,7 +5,7 @@ import type {
   MatroskaSummary,
   MseCapabilities,
 } from '@/types/directMkvProbe';
-import { parseMatroskaHeader } from '@/utils/matroska';
+import { parseMatroskaHeader, toSummary } from '@/utils/matroska';
 
 /**
  * Sonde « lecture directe d'un MKV » : depuis le NAVIGATEUR (IP du client,
@@ -199,13 +199,13 @@ export async function probeDirectMkv(streamUrl: string): Promise<DirectMkvProbeR
   let matroska: MatroskaSummary | null = null;
   let bytesRead = read?.bytes.byteLength ?? 0;
   if (read !== null && read.bytes.byteLength > 0) {
-    matroska = parseMatroskaHeader(read.bytes);
+    matroska = toSummary(parseMatroskaHeader(read.bytes));
     // Pistes absentes du 1er Mo : on lit plus loin (si Range marche).
     if (!matroska.tracksFound && outcome === 'range-ok') {
       try {
         const more = await readSlice(streamUrl, 0, SECOND_CHUNK, true);
         if (more.bytes.byteLength > read.bytes.byteLength) {
-          matroska = parseMatroskaHeader(more.bytes);
+          matroska = toSummary(parseMatroskaHeader(more.bytes));
           bytesRead = more.bytes.byteLength;
         }
       } catch {

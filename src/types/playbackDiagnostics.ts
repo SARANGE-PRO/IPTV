@@ -14,6 +14,9 @@ export type PlaybackErrorCode =
   | 'hls_unsupported'
   | 'hls_module_failed'
   | 'native_error'
+  | 'mkv_direct_unsupported'
+  | 'mkv_direct_network'
+  | 'mkv_direct_media'
   | 'unknown';
 
 /** Detail structure d'un echec, rempli au plus pres de la source. */

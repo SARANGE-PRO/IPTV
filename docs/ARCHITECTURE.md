@@ -74,7 +74,7 @@ Jamais l'inverse. Les composants n'accèdent jamais directement à fetch/Dexie.
 | Cible | Page | Flux HTTP du Xtream | MKV |
 |---|---|---|---|
 | **Vercel** (défaut) | HTTPS | Bloqué par le mixed-content → **passerelle** `infra/media-gateway` obligatoire | Passerelle (transcodage) sinon VLC |
-| **Coquille HTTP** `infra/http-shell` (`NEXT_PUBLIC_PLAIN_HTTP=1`) : statique sur GitHub Pages (`build:static`, `/api` restant sur Vercel + CORS) ou Docker | HTTP pur | **Direct** depuis l'IP du client, sans passerelle | Passerelle si joignable, sinon VLC |
+| **Coquille HTTP** `infra/http-shell` (`NEXT_PUBLIC_PLAIN_HTTP=1`) : statique sur GitHub Pages (`build:static`, `/api` restant sur Vercel + CORS) ou Docker | HTTP pur | **Direct** depuis l'IP du client, sans passerelle | **Remux navigateur** (`services/player/mkvDirectEngine.ts` : fetch Range → `utils/matroska` → `utils/fmp4` → MediaSource) si codecs décodables, sinon passerelle si joignable, sinon VLC |
 
 La coquille HTTP supprime le besoin de passerelle pour tout ce qui est MP4/HLS :
 le flux part du téléphone (IP résidentielle/mobile acceptée par le CDN). Elle

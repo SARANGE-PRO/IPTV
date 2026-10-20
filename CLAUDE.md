@@ -42,7 +42,11 @@ Gestionnaire de paquets : **npm**.
    Sélecteurs fins, `Set` pour favoris/blacklist, debounce sur la recherche.
 7. **Lecteur** : préférer `.m3u8` (compat Safari natif) ; hls.js seulement si
    nécessaire ; `mpegts.js` en option pour flux MPEG-TS bruts. Toujours gérer
-   flux mort / timeout / format non supporté sans crash.
+   flux mort / timeout / format non supporté sans crash. MKV sur coquille HTTP :
+   remux navigateur (`utils/matroska.ts`, `utils/fmp4.ts`, `utils/mkvRemuxer.ts`
+   = briques PURES, imports relatifs, testables en Node avec ffmpeg ;
+   `services/player/mkvDirectEngine.ts` = liaison MediaSource). Jamais de
+   décodage en JS.
 
 ## Méthode de travail
 - Avancer **module par module**, jamais tout d'un coup. Indiquer les fichiers

@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "lib": ["ES2022", "DOM"],
+    "strict": false,
+    "skipLibCheck": true,
+    "noEmitOnError": false,
+    "outDir": "../../.mkv-remux-test/js",
+    "rootDir": "../../src",
+    "baseUrl": "../../src",
+    "paths": { "@/*": ["./*"] }
+  },
+  "files": [
+    "../../src/utils/matroska.ts",
+    "../../src/utils/audioCodecs.ts",
+    "../../src/utils/fmp4.ts",
+    "../../src/utils/mkvRemuxer.ts"
+  ]
+}

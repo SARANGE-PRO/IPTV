@@ -1,10 +1,12 @@
-import type { MatroskaSummary, MatroskaVideoTrack } from '@/types/directMkvProbe';
+import type { MatroskaSummary } from '@/types/directMkvProbe';
+import type { CuePoint, MatroskaBlock, MatroskaHeader, MatroskaTrack } from '@/types/mkvDirect';
 
 /**
- * Lecteur EBML/Matroska minimal : parcourt l'EN-TETE d'un fichier (les premiers
- * Mo) pour en extraire les pistes (codecs, resolution, langues) — rien d'autre.
- * Pur (aucune I/O), utilise par la sonde de lecture directe et, plus tard, par
- * le remuxeur cote client.
+ * Lecteur EBML/Matroska minimal, PUR (aucune I/O, aucun DOM) :
+ *  - `parseMatroskaHeader` : en-tete (pistes, codecs, SeekHead -> Cues, 1er Cluster) ;
+ *  - `parseCues` : index de seek ;
+ *  - `MatroskaClusterReader` : lecture INCREMENTALE des Clusters (blocs/trames) ;
+ *  - `toSummary` / `codecLabel` : vue anonymisee pour le diagnostic.
  *
  * Reference : https://www.matroska.org/technical/elements.html
  */
@@ -13,13 +15,19 @@ const ID = {
   EBML: 0x1a45dfa3,
   DocType: 0x4282,
   Segment: 0x18538067,
+  SeekHead: 0x114d9b74,
+  Seek: 0x4dbb,
+  SeekID: 0x53ab,
+  SeekPosition: 0x53ac,
   Info: 0x1549a966,
   TimecodeScale: 0x2ad7b1,
   Duration: 0x4489,
   Tracks: 0x1654ae6b,
   TrackEntry: 0xae,
+  TrackNumber: 0xd7,
   TrackType: 0x83,
   FlagDefault: 0x88,
+  DefaultDuration: 0x23e383,
   CodecID: 0x86,
   CodecPrivate: 0x63a2,
   Language: 0x22b59c,
@@ -30,12 +38,26 @@ const ID = {
   PixelHeight: 0xba,
   Audio: 0xe1,
   SamplingFrequency: 0xb5,
+  OutputSamplingFrequency: 0x78b5,
   Channels: 0x9f,
   Cluster: 0x1f43b675,
+  ClusterTimestamp: 0xe7,
+  SimpleBlock: 0xa3,
+  BlockGroup: 0xa0,
+  Block: 0xa1,
+  ReferenceBlock: 0xfb,
+  Cues: 0x1c53bb6b,
+  CuePoint: 0xbb,
+  CueTime: 0xb3,
+  CueTrackPositions: 0xb7,
+  CueTrack: 0xf7,
+  CueClusterPosition: 0xf1,
 } as const;
 
-/** Elements « maitres » dans lesquels on DESCEND (les autres sont sautes). */
-const MASTER = new Set<number>([ID.EBML, ID.Segment, ID.Info, ID.Tracks, ID.TrackEntry, ID.Video, ID.Audio]);
+/** Elements « maitres » de l'en-tete dans lesquels on DESCEND. */
+const HEADER_MASTER = new Set<number>([
+  ID.EBML, ID.Segment, ID.SeekHead, ID.Seek, ID.Info, ID.Tracks, ID.TrackEntry, ID.Video, ID.Audio,
+]);
 
 const UNKNOWN_SIZE = -1;
 
@@ -45,7 +67,7 @@ interface Vint {
 }
 
 /** Identifiant EBML : longueur donnee par les bits de tete, marqueur CONSERVE. */
-function readId(buf: Uint8Array, pos: number): Vint | null {
+export function readId(buf: Uint8Array, pos: number): Vint | null {
   const first = buf[pos];
   if (first === undefined || first === 0) return null;
   let length = 1;
@@ -60,8 +82,8 @@ function readId(buf: Uint8Array, pos: number): Vint | null {
   return { value, length };
 }
 
-/** Taille EBML : marqueur retire ; tous bits a 1 = taille inconnue. */
-function readSize(buf: Uint8Array, pos: number): Vint | null {
+/** Taille EBML : marqueur retire ; tous bits a 1 = taille inconnue (UNKNOWN_SIZE). */
+export function readSize(buf: Uint8Array, pos: number): Vint | null {
   const first = buf[pos];
   if (first === undefined || first === 0) return null;
   let length = 1;
@@ -98,109 +120,87 @@ function readString(buf: Uint8Array, pos: number, len: number): string {
   return new TextDecoder('utf-8').decode(buf.subarray(pos, pos + len)).replace(/\0+$/, '');
 }
 
-/** Profil/niveau/bit depth depuis un HEVCDecoderConfigurationRecord (hvcC). */
-function parseHvcC(p: Uint8Array): Pick<MatroskaVideoTrack, 'profile' | 'level' | 'bitDepth'> {
-  if (p.length < 23) return { profile: null, level: null, bitDepth: null };
-  return { profile: (p[1] ?? 0) & 0x1f, level: p[12] ?? null, bitDepth: ((p[17] ?? 0) & 0x07) + 8 };
+function bytesEqual(a: Uint8Array, b: number[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
+  return true;
 }
 
-/** Profil/niveau depuis un AVCDecoderConfigurationRecord (avcC). */
-function parseAvcC(p: Uint8Array): Pick<MatroskaVideoTrack, 'profile' | 'level' | 'bitDepth'> {
-  if (p.length < 4) return { profile: null, level: null, bitDepth: null };
-  return { profile: p[1] ?? null, level: p[3] ?? null, bitDepth: 8 };
+function trackType(t: number | null): MatroskaTrack['type'] {
+  if (t === 1) return 'video';
+  if (t === 2) return 'audio';
+  if (t === 17) return 'subtitle';
+  return 'other';
 }
 
-interface TrackDraft {
-  type: number | null;
-  codecId: string | null;
-  codecPrivate: Uint8Array | null;
-  language: string | null;
-  languageIetf: string | null;
-  name: string | null;
-  isDefault: boolean;
-  width: number | null;
-  height: number | null;
-  channels: number | null;
-  sampleRate: number | null;
-}
-
-function emptyDraft(): TrackDraft {
+function emptyTrack(): MatroskaTrack {
   return {
-    type: null,
-    codecId: null,
+    number: 0,
+    type: 'other',
+    codecId: '',
     codecPrivate: null,
+    defaultDurationNs: null,
     language: null,
-    languageIetf: null,
     name: null,
     isDefault: true,
     width: null,
     height: null,
     channels: null,
     sampleRate: null,
+    outputSampleRate: null,
   };
 }
 
 /**
- * Parse l'en-tete Matroska contenu dans `buf` (debut du fichier). Tolerant :
- * s'arrete proprement si le tampon est tronque. `tracksFound` dit si l'element
- * Tracks a ete rencontre en entier (sinon, il faut lire plus loin).
+ * Parse l'en-tete Matroska contenu dans `buf` (debut du fichier, offset 0).
+ * Tolerant : s'arrete proprement si le tampon est tronque. S'arrete au premier
+ * Cluster (dont il note la position absolue).
  */
-export function parseMatroskaHeader(buf: Uint8Array): MatroskaSummary {
-  const summary: MatroskaSummary = {
+export function parseMatroskaHeader(buf: Uint8Array): MatroskaHeader {
+  const header: MatroskaHeader = {
     docType: null,
-    segmentSize: null,
+    timecodeScale: 1_000_000,
     durationSecs: null,
+    segmentDataStart: null,
+    segmentSize: null,
+    tracks: [],
     tracksFound: false,
-    video: [],
-    audio: [],
-    subtitles: [],
+    firstClusterPos: null,
+    cuesPos: null,
   };
   const head = readId(buf, 0);
-  if (head === null || head.value !== ID.EBML) return summary;
+  if (head === null || head.value !== ID.EBML) return header;
 
-  let timecodeScale = 1_000_000; // ns par unite (defaut Matroska)
   let rawDuration: number | null = null;
-  let draft: TrackDraft | null = null;
+  let draft: MatroskaTrack | null = null;
+  let seekId: Uint8Array | null = null;
+  let seekPos: number | null = null;
+  let languageIetf: string | null = null;
 
-  const flush = () => {
-    if (draft === null || draft.codecId === null) return;
-    const lang = draft.languageIetf ?? draft.language;
-    if (draft.type === 1) {
-      const priv = draft.codecPrivate;
-      const extra =
-        priv !== null && /HEVC/i.test(draft.codecId)
-          ? parseHvcC(priv)
-          : priv !== null && /AVC/i.test(draft.codecId)
-            ? parseAvcC(priv)
-            : { profile: null, level: null, bitDepth: null };
-      summary.video.push({ codecId: draft.codecId, width: draft.width, height: draft.height, ...extra });
-    } else if (draft.type === 2) {
-      summary.audio.push({
-        codecId: draft.codecId,
-        channels: draft.channels,
-        sampleRate: draft.sampleRate,
-        language: lang,
-        name: draft.name,
-        isDefault: draft.isDefault,
-      });
-    } else if (draft.type === 17) {
-      summary.subtitles.push({ codecId: draft.codecId, language: lang, name: draft.name });
+  const flushTrack = () => {
+    if (draft !== null && draft.codecId !== '') {
+      if (languageIetf !== null) draft.language = languageIetf;
+      header.tracks.push(draft);
     }
+    draft = null;
+    languageIetf = null;
+  };
+  const flushSeek = () => {
+    if (seekId !== null && seekPos !== null && header.segmentDataStart !== null) {
+      if (bytesEqual(seekId, [0x1c, 0x53, 0xbb, 0x6b])) header.cuesPos = header.segmentDataStart + seekPos;
+    }
+    seekId = null;
+    seekPos = null;
   };
 
-  // Pile des fins d'elements maitres (pour savoir quand on sort d'un TrackEntry).
   const ends: { id: number; end: number }[] = [];
   let pos = 0;
   while (pos < buf.length) {
-    // Sortie d'elements maitres termines.
     while (ends.length > 0 && pos >= (ends[ends.length - 1]?.end ?? Infinity)) {
       const done = ends.pop();
-      if (done?.id === ID.TrackEntry) {
-        flush();
-        draft = null;
-      } else if (done?.id === ID.Tracks) {
-        summary.tracksFound = true;
-      }
+      if (done?.id === ID.TrackEntry) flushTrack();
+      else if (done?.id === ID.Tracks) header.tracksFound = true;
+      else if (done?.id === ID.Seek) flushSeek();
     }
     const id = readId(buf, pos);
     if (id === null) break;
@@ -209,34 +209,56 @@ export function parseMatroskaHeader(buf: Uint8Array): MatroskaSummary {
     const dataStart = pos + id.length + size.length;
     const dataEnd = size.value === UNKNOWN_SIZE ? Number.MAX_SAFE_INTEGER : dataStart + size.value;
 
-    if (id.value === ID.Cluster) break; // les donnees commencent : fini.
-
-    if (MASTER.has(id.value)) {
-      if (id.value === ID.Segment && size.value !== UNKNOWN_SIZE) summary.segmentSize = size.value;
-      if (id.value === ID.TrackEntry) draft = emptyDraft();
+    if (id.value === ID.Cluster) {
+      header.firstClusterPos = pos;
+      break;
+    }
+    if (HEADER_MASTER.has(id.value)) {
+      if (id.value === ID.Segment) {
+        header.segmentDataStart = dataStart;
+        if (size.value !== UNKNOWN_SIZE) header.segmentSize = size.value;
+      }
+      if (id.value === ID.TrackEntry) {
+        draft = emptyTrack();
+        languageIetf = null;
+      }
+      if (id.value === ID.Seek) {
+        seekId = null;
+        seekPos = null;
+      }
       ends.push({ id: id.value, end: dataEnd });
       pos = dataStart;
       continue;
     }
-
-    // Element feuille : tronque -> on ne peut plus rien lire de fiable.
-    if (dataEnd > buf.length) break;
+    if (dataEnd > buf.length) break; // feuille tronquee
     const len = size.value;
     switch (id.value) {
       case ID.DocType:
-        summary.docType = readString(buf, dataStart, len);
+        header.docType = readString(buf, dataStart, len);
         break;
       case ID.TimecodeScale:
-        timecodeScale = readUint(buf, dataStart, len);
+        header.timecodeScale = readUint(buf, dataStart, len) || 1_000_000;
         break;
       case ID.Duration:
         rawDuration = readFloat(buf, dataStart, len);
         break;
+      case ID.SeekID:
+        seekId = buf.slice(dataStart, dataEnd);
+        break;
+      case ID.SeekPosition:
+        seekPos = readUint(buf, dataStart, len);
+        break;
+      case ID.TrackNumber:
+        if (draft) draft.number = readUint(buf, dataStart, len);
+        break;
       case ID.TrackType:
-        if (draft) draft.type = readUint(buf, dataStart, len);
+        if (draft) draft.type = trackType(readUint(buf, dataStart, len));
         break;
       case ID.FlagDefault:
         if (draft) draft.isDefault = readUint(buf, dataStart, len) !== 0;
+        break;
+      case ID.DefaultDuration:
+        if (draft) draft.defaultDurationNs = readUint(buf, dataStart, len);
         break;
       case ID.CodecID:
         if (draft) draft.codecId = readString(buf, dataStart, len);
@@ -248,7 +270,7 @@ export function parseMatroskaHeader(buf: Uint8Array): MatroskaSummary {
         if (draft) draft.language = readString(buf, dataStart, len);
         break;
       case ID.LanguageIETF:
-        if (draft) draft.languageIetf = readString(buf, dataStart, len);
+        languageIetf = readString(buf, dataStart, len);
         break;
       case ID.Name:
         if (draft) draft.name = readString(buf, dataStart, len);
@@ -265,15 +287,307 @@ export function parseMatroskaHeader(buf: Uint8Array): MatroskaSummary {
       case ID.SamplingFrequency:
         if (draft) draft.sampleRate = readFloat(buf, dataStart, len);
         break;
+      case ID.OutputSamplingFrequency:
+        if (draft) draft.outputSampleRate = readFloat(buf, dataStart, len);
+        break;
       default:
         break;
     }
     pos = dataEnd;
   }
-  // Fin de tampon au milieu d'un TrackEntry : on garde ce qu'on a lu.
-  if (draft !== null) flush();
-  if (rawDuration !== null) summary.durationSecs = (rawDuration * timecodeScale) / 1e9;
-  return summary;
+  if (draft !== null) flushTrack(); // tampon fini au milieu d'une piste : on garde ce qu'on a
+  if (rawDuration !== null) header.durationSecs = (rawDuration * header.timecodeScale) / 1e9;
+  return header;
+}
+
+/** Profil/niveau/bit depth depuis un HEVCDecoderConfigurationRecord (hvcC). */
+export function parseHvcC(p: Uint8Array): { profile: number | null; level: number | null; bitDepth: number | null } {
+  if (p.length < 23) return { profile: null, level: null, bitDepth: null };
+  return { profile: (p[1] ?? 0) & 0x1f, level: p[12] ?? null, bitDepth: ((p[17] ?? 0) & 0x07) + 8 };
+}
+
+/** Profil/niveau depuis un AVCDecoderConfigurationRecord (avcC). */
+export function parseAvcC(p: Uint8Array): { profile: number | null; level: number | null; bitDepth: number | null } {
+  if (p.length < 4) return { profile: null, level: null, bitDepth: null };
+  return { profile: p[1] ?? null, level: p[3] ?? null, bitDepth: 8 };
+}
+
+/** Vue anonymisee (diagnostic) d'un en-tete : aucune donnee binaire, aucun chemin. */
+export function toSummary(h: MatroskaHeader): MatroskaSummary {
+  return {
+    docType: h.docType,
+    segmentSize: h.segmentSize,
+    durationSecs: h.durationSecs,
+    tracksFound: h.tracksFound,
+    video: h.tracks
+      .filter((t) => t.type === 'video')
+      .map((t) => {
+        const extra =
+          t.codecPrivate !== null && /HEVC/i.test(t.codecId)
+            ? parseHvcC(t.codecPrivate)
+            : t.codecPrivate !== null && /AVC/i.test(t.codecId)
+              ? parseAvcC(t.codecPrivate)
+              : { profile: null, level: null, bitDepth: null };
+        return { codecId: t.codecId, width: t.width, height: t.height, ...extra };
+      }),
+    audio: h.tracks
+      .filter((t) => t.type === 'audio')
+      .map((t) => ({
+        codecId: t.codecId,
+        channels: t.channels,
+        sampleRate: t.sampleRate,
+        language: t.language,
+        name: t.name,
+        isDefault: t.isDefault,
+      })),
+    subtitles: h.tracks
+      .filter((t) => t.type === 'subtitle')
+      .map((t) => ({ codecId: t.codecId, language: t.language, name: t.name })),
+  };
+}
+
+/**
+ * Parse un element Cues (tampon commencant a l'ID 0x1C53BB6B). Renvoie les
+ * points de seek du `trackNumber` demande (ou de n'importe quelle piste si
+ * absent), tries par temps. `segmentDataStart` convertit les positions en
+ * offsets absolus.
+ */
+export function parseCues(buf: Uint8Array, segmentDataStart: number, timecodeScale: number, trackNumber: number | null): CuePoint[] {
+  const out: CuePoint[] = [];
+  const id = readId(buf, 0);
+  if (id === null || id.value !== ID.Cues) return out;
+  const size = readSize(buf, id.length);
+  if (size === null) return out;
+  let pos = id.length + size.length;
+  const end = size.value === UNKNOWN_SIZE ? buf.length : Math.min(buf.length, pos + size.value);
+  while (pos < end) {
+    const cid = readId(buf, pos);
+    if (cid === null) break;
+    const csize = readSize(buf, pos + cid.length);
+    if (csize === null || csize.value === UNKNOWN_SIZE) break;
+    const cStart = pos + cid.length + csize.length;
+    const cEnd = cStart + csize.value;
+    if (cEnd > buf.length) break;
+    if (cid.value === ID.CuePoint) {
+      let time: number | null = null;
+      let clusterPos: number | null = null;
+      let p = cStart;
+      while (p < cEnd) {
+        const eid = readId(buf, p);
+        if (eid === null) break;
+        const esize = readSize(buf, p + eid.length);
+        if (esize === null || esize.value === UNKNOWN_SIZE) break;
+        const eStart = p + eid.length + esize.length;
+        const eEnd = eStart + esize.value;
+        if (eid.value === ID.CueTime) time = readUint(buf, eStart, esize.value);
+        else if (eid.value === ID.CueTrackPositions) {
+          let track: number | null = null;
+          let cpos: number | null = null;
+          let q = eStart;
+          while (q < eEnd) {
+            const tid = readId(buf, q);
+            if (tid === null) break;
+            const tsize = readSize(buf, q + tid.length);
+            if (tsize === null || tsize.value === UNKNOWN_SIZE) break;
+            const tStart = q + tid.length + tsize.length;
+            if (tid.value === ID.CueTrack) track = readUint(buf, tStart, tsize.value);
+            else if (tid.value === ID.CueClusterPosition) cpos = readUint(buf, tStart, tsize.value);
+            q = tStart + tsize.value;
+          }
+          if (cpos !== null && clusterPos === null && (trackNumber === null || track === null || track === trackNumber)) {
+            clusterPos = cpos;
+          }
+        }
+        p = eEnd;
+      }
+      if (time !== null && clusterPos !== null) {
+        out.push({ timeMs: (time * timecodeScale) / 1e6, clusterPos: segmentDataStart + clusterPos });
+      }
+    }
+    pos = cEnd;
+  }
+  out.sort((a, b) => a.timeMs - b.timeMs);
+  return out;
+}
+
+/** Nombre de trames et tailles d'un bloc lace (Xiph / fixe / EBML). */
+function laceSizes(data: Uint8Array, start: number, lacing: number, totalEnd: number): { sizes: number[]; dataStart: number } | null {
+  const count = (data[start] ?? 0) + 1;
+  let p = start + 1;
+  const sizes: number[] = [];
+  if (lacing === 1) {
+    // Xiph : chaque taille = somme d'octets jusqu'a un octet < 255.
+    for (let i = 0; i < count - 1; i += 1) {
+      let s = 0;
+      let b: number;
+      do {
+        b = data[p] ?? 0;
+        p += 1;
+        s += b;
+      } while (b === 255 && p < totalEnd);
+      sizes.push(s);
+    }
+  } else if (lacing === 3) {
+    // EBML : 1re taille = vint, suivantes = deltas signes.
+    const first = readSize(data, p);
+    if (first === null) return null;
+    sizes.push(first.value);
+    p += first.length;
+    for (let i = 1; i < count - 1; i += 1) {
+      const d = readSize(data, p);
+      if (d === null) return null;
+      const bias = 2 ** (7 * d.length - 1) - 1;
+      sizes.push((sizes[i - 1] ?? 0) + (d.value - bias));
+      p += d.length;
+    }
+  } else if (lacing === 2) {
+    const each = Math.floor((totalEnd - p) / count);
+    for (let i = 0; i < count - 1; i += 1) sizes.push(each);
+  }
+  const used = sizes.reduce((a, b) => a + b, 0);
+  sizes.push(totalEnd - p - used);
+  if (sizes.some((s) => s < 0)) return null;
+  return { sizes, dataStart: p };
+}
+
+/**
+ * Lecture INCREMENTALE des Clusters : on lui pousse des morceaux du fichier
+ * (a partir d'un Cluster) et il rend les blocs complets, dans l'ordre du
+ * fichier (ordre de DECODAGE). Les elements inconnus/volumineux (Cues en fin
+ * de fichier, Tags…) sont sautes, meme s'ils depassent le tampon courant.
+ */
+export class MatroskaClusterReader {
+  private buf = new Uint8Array(0);
+  private pos = 0;
+  /** Octets restant a ignorer dans le flux (element saute plus grand que le tampon). */
+  private skip = 0;
+  private clusterTime = 0;
+  /** Duree d'une trame lacee par piste (ms), pour horodater les trames d'un bloc lace. */
+  private readonly laceDurationMs: Map<number, number>;
+
+  constructor(
+    private readonly timecodeScale: number,
+    laceDurationMs: Map<number, number> = new Map(),
+  ) {
+    this.laceDurationMs = laceDurationMs;
+  }
+
+  reset(): void {
+    this.buf = new Uint8Array(0);
+    this.pos = 0;
+    this.skip = 0;
+    this.clusterTime = 0;
+  }
+
+  push(chunk: Uint8Array): MatroskaBlock[] {
+    // Saut d'un element volumineux en cours.
+    let c = chunk;
+    if (this.skip > 0) {
+      const take = Math.min(this.skip, c.length);
+      this.skip -= take;
+      c = c.subarray(take);
+      if (c.length === 0) return [];
+    }
+    // Concatenation (compactage du prefixe consomme).
+    const rest = this.buf.subarray(this.pos);
+    const merged = new Uint8Array(rest.length + c.length);
+    merged.set(rest, 0);
+    merged.set(c, rest.length);
+    this.buf = merged;
+    this.pos = 0;
+
+    const out: MatroskaBlock[] = [];
+    const buf = this.buf;
+    for (;;) {
+      if (this.pos >= buf.length) break;
+      const id = readId(buf, this.pos);
+      if (id === null) {
+        if ((buf[this.pos] ?? 1) === 0) {
+          this.pos += 1; // octet nul : resynchronisation grossiere
+          continue;
+        }
+        break; // ID incomplet : attendre
+      }
+      const size = readSize(buf, this.pos + id.length);
+      if (size === null) break;
+      const dataStart = this.pos + id.length + size.length;
+      const unknown = size.value === UNKNOWN_SIZE;
+      const dataEnd = unknown ? Number.MAX_SAFE_INTEGER : dataStart + size.value;
+
+      if (id.value === ID.Cluster || (unknown && id.value !== ID.SimpleBlock && id.value !== ID.BlockGroup)) {
+        // Cluster (ou maitre de taille inconnue) : on descend.
+        this.pos = dataStart;
+        continue;
+      }
+      if (id.value === ID.ClusterTimestamp || id.value === ID.SimpleBlock || id.value === ID.BlockGroup) {
+        if (dataEnd > buf.length) break; // element incomplet : attendre
+        if (id.value === ID.ClusterTimestamp) {
+          this.clusterTime = readUint(buf, dataStart, size.value);
+        } else if (id.value === ID.SimpleBlock) {
+          this.parseBlock(buf, dataStart, dataEnd, null, out);
+        } else {
+          this.parseBlockGroup(buf, dataStart, dataEnd, out);
+        }
+        this.pos = dataEnd;
+        continue;
+      }
+      // Autre element : on saute (eventuellement au-dela du tampon).
+      if (dataEnd <= buf.length) {
+        this.pos = dataEnd;
+      } else {
+        this.skip = dataEnd - buf.length;
+        this.pos = buf.length;
+      }
+    }
+    return out;
+  }
+
+  private parseBlockGroup(buf: Uint8Array, start: number, end: number, out: MatroskaBlock[]): void {
+    let p = start;
+    let block: { s: number; e: number } | null = null;
+    let hasReference = false;
+    while (p < end) {
+      const id = readId(buf, p);
+      if (id === null) break;
+      const size = readSize(buf, p + id.length);
+      if (size === null || size.value === UNKNOWN_SIZE) break;
+      const s = p + id.length + size.length;
+      const e = s + size.value;
+      if (e > end) break;
+      if (id.value === ID.Block) block = { s, e };
+      else if (id.value === ID.ReferenceBlock) hasReference = true;
+      p = e;
+    }
+    if (block !== null) this.parseBlock(buf, block.s, block.e, !hasReference, out);
+  }
+
+  /** `keyOverride` : BlockGroup (pas de drapeau keyframe dans le bloc). */
+  private parseBlock(buf: Uint8Array, start: number, end: number, keyOverride: boolean | null, out: MatroskaBlock[]): void {
+    const tn = readSize(buf, start);
+    if (tn === null) return;
+    let p = start + tn.length;
+    if (p + 3 > end) return;
+    const view = new DataView(buf.buffer, buf.byteOffset + p, 2);
+    const relative = view.getInt16(0);
+    const flags = buf[p + 2] ?? 0;
+    p += 3;
+    const keyframe = keyOverride ?? (flags & 0x80) !== 0;
+    const lacing = (flags & 0x06) >> 1;
+    const baseMs = ((this.clusterTime + relative) * this.timecodeScale) / 1e6;
+    const trackNumber = tn.value;
+    if (lacing === 0) {
+      out.push({ trackNumber, timeMs: baseMs, keyframe, data: buf.slice(p, end) });
+      return;
+    }
+    const laced = laceSizes(buf, p, lacing, end);
+    if (laced === null) return;
+    const step = this.laceDurationMs.get(trackNumber) ?? 0;
+    let q = laced.dataStart;
+    laced.sizes.forEach((sz, i) => {
+      out.push({ trackNumber, timeMs: baseMs + i * step, keyframe, data: buf.slice(q, q + sz) });
+      q += sz;
+    });
+  }
 }
 
 /** Libelle court d'un CodecID Matroska. */

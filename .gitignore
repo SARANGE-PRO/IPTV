@@ -36,3 +36,4 @@ chaines-fr-zibtv.json
 .vscode/*
 !.vscode/extensions.json
 .idea/
+/.mkv-remux-test/

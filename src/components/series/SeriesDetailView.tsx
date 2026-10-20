@@ -158,7 +158,9 @@ export function SeriesDetailView({ seriesId, onBack }: { seriesId: string; onBac
       : null;
 
   // Plan de lecture adaptatif selon le conteneur de l'episode courant.
-  const plan = usePlaybackPlan(playingEp?.containerExtension ?? null, planRetry);
+  // Echec du remux MKV direct (codecs/CORS/MSE) : on retombe sur passerelle/VLC.
+  const [directMkvFailed, setDirectMkvFailed] = useState(false);
+  const plan = usePlaybackPlan(playingEp?.containerExtension ?? null, planRetry, { directMkvAllowed: !directMkvFailed });
 
   if (series === null) {
     return (
@@ -246,6 +248,8 @@ export function SeriesDetailView({ seriesId, onBack }: { seriesId: string; onBac
               <VideoPlayer
                 src={src}
                 transcode={plan === 'gateway'}
+                directMkv={plan === 'direct-mkv'}
+                onDirectMkvFailed={() => setDirectMkvFailed(true)}
                 preferHls={plan === 'gateway' && supportsNativeHls()}
                 contentType="episode"
                 container={playingEp.containerExtension}

@@ -9,6 +9,8 @@ import { nativeDurationSeconds } from '@/services/player/mediaDurationService';
 import { isSeekable } from '@/services/player/playbackCapabilityService';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { PlaybackErrorCode, PlaybackFailure } from '@/types/playbackDiagnostics';
+import type { MkvDirectEngine } from '@/services/player/mkvDirectEngine';
+import type { MkvDirectErrorCode } from '@/types/mkvDirect';
 import { mediaGatewayStopUrl, secureImageSrc, secureMediaUrl } from '@/utils/secureUrl';
 
 /**
@@ -48,6 +50,15 @@ export interface VideoPlayerProps {
    * natif). Sans effet pour le direct/Chrome.
    */
   preferHls?: boolean;
+  /**
+   * MKV lu DIRECTEMENT dans le navigateur (coquille HTTP) : fetch depuis
+   * l'appareil, remux fMP4 in-app, MediaSource. Decide par la page
+   * (plan 'direct-mkv'). Jamais via la passerelle.
+   */
+  directMkv?: boolean;
+  /** Appele si le remux direct echoue (codecs non lus, CORS, MSE) : la page
+   *  retombe sur passerelle/VLC. */
+  onDirectMkvFailed?: () => void;
   /** Contexte pour le diagnostic d'erreur (bouton "i"). */
   contentType?: 'live' | 'vod' | 'episode';
   container?: string | null;
@@ -109,13 +120,19 @@ export function VideoPlayer({
   onError,
   transcode = false,
   preferHls = false,
+  directMkv = false,
+  onDirectMkvFailed,
   contentType,
   container = null,
   className,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
+  const mkvEngineRef = useRef<MkvDirectEngine | null>(null);
   const autoPip = useUiSettingsStore((s) => s.autoPip);
+  const preferredLanguage = useUiSettingsStore((s) => s.preferredLanguage);
+  const onDirectMkvFailedRef = useRef(onDirectMkvFailed);
+  onDirectMkvFailedRef.current = onDirectMkvFailed;
   const [status, setStatus] = useState<PlayerStatus>('loading');
   const [message, setMessage] = useState<string | null>(null);
   const [failure, setFailure] = useState<PlaybackFailure | null>(null);
@@ -191,7 +208,7 @@ export function VideoPlayer({
     // Garde conteneur : inutile de tenter la lecture d'un format que le
     // navigateur ne decode pas — message clair immediat (pas un faux "erreur reseau").
     const badContainer = unsupportedContainer(src);
-    if (badContainer !== null && !live && !transcode) {
+    if (badContainer !== null && !live && !transcode && !directMkv) {
       fail(
         'unsupported_container',
         `Format ${badContainer} non lisible dans un navigateur (transcodage requis). ` +
@@ -305,7 +322,36 @@ export function VideoPlayer({
     const canNativeHls = video.canPlayType('application/vnd.apple.mpegurl') !== '';
 
     const setup = async () => {
-      if (!isHls || canNativeHls) {
+      if (directMkv) {
+        // MKV direct : le moteur alimente MediaSource ; aucune URL ne transite
+        // ailleurs que vers le serveur Xtream, depuis l'IP de l'appareil.
+        try {
+          const mod = await import('@/services/player/mkvDirectEngine');
+          if (cancelled) return;
+          const engine = new mod.MkvDirectEngine({
+            url: streamUrl,
+            preferredLanguage,
+            onFatal: (code: MkvDirectErrorCode, detail: string) => {
+              const unsupported = code === 'header' || code === 'no_video' || code === 'unsupported_video' || code === 'unsupported_audio';
+              fail(
+                unsupported ? 'mkv_direct_unsupported' : code === 'network' ? 'mkv_direct_network' : 'mkv_direct_media',
+                unsupported
+                  ? 'Ce MKV contient un format que cet appareil ne décode pas dans le navigateur (vidéo ou audio). Ouvre-le dans VLC, ou allume la passerelle.'
+                  : code === 'network'
+                    ? 'Le flux MKV ne répond plus (réseau, serveur ou limite de connexions). Réessaie, ou ouvre dans VLC.'
+                    : 'Le lecteur du navigateur a refusé ce MKV (mémoire ou décodage). Réessaie, ou ouvre dans VLC.',
+                { detail: `${code}: ${detail}` },
+              );
+              onDirectMkvFailedRef.current?.();
+            },
+          });
+          mkvEngineRef.current = engine;
+          await engine.attach(video);
+        } catch {
+          fail('mkv_direct_media', 'Impossible de charger le lecteur MKV direct.');
+          return;
+        }
+      } else if (!isHls || canNativeHls) {
         // Safari/iOS conserve ainsi son lecteur HLS natif.
         video.src = streamUrl;
       } else {
@@ -398,6 +444,10 @@ export function VideoPlayer({
         hlsRef.current.destroy();
         hlsRef.current = null;
       }
+      if (mkvEngineRef.current !== null) {
+        mkvEngineRef.current.dispose();
+        mkvEngineRef.current = null;
+      }
       // Un zapping/changement de flux ne doit pas laisser une fenetre PiP
       // orpheline pointant sur une <video> qu'on detruit.
       exitPipFor(video);
@@ -406,7 +456,7 @@ export function VideoPlayer({
       video.removeAttribute('src');
       video.load();
     };
-  }, [streamUrl, attempt]);
+  }, [streamUrl, attempt, directMkv, preferredLanguage]);
 
   // Incrustation AUTO (PiP) quand la PWA passe en arriere-plan pendant la lecture
   // — comme YouTube. Declaratif (autoPictureInPicture) quand supporte + tentative

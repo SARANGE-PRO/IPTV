@@ -9,10 +9,30 @@ disparaissent si l'app est servie en **HTTP pur** au lieu de HTTPS :
 |---|---|---|
 | Contenu mixte (flux HTTP sur page HTTPS) | Bloqué → passerelle obligatoire | **N'existe pas** : flux HTTP lu en direct |
 | CDN qui refuse les IP datacenter (456) | Passerelle sur IP résidentielle | **Sans objet** : le flux part de l'IP du téléphone |
-| MKV/AVI illisibles par Safari | Transcodage passerelle | Passerelle **si allumée**, sinon VLC (inchangé) |
+| MKV illisibles par Safari | Transcodage passerelle | **Remux dans le navigateur** (H.264/HEVC + AAC/AC-3/E-AC-3), sinon passerelle si allumée, sinon VLC |
 
-Résultat : **films MP4, séries MP4 et Live HLS se lisent dans l'app sans aucune
-passerelle allumée.** Seuls les MKV gardent besoin de la passerelle ou de VLC.
+Résultat : **films, séries et Live se lisent dans l'app sans aucune passerelle
+allumée**, MKV compris quand leurs codecs sont décodables par l'appareil (le cas
+courant : H.264 ou HEVC avec AAC, AC-3 ou E-AC-3). Restent sur VLC ou la
+passerelle : DTS, TrueHD, Vorbis, Xvid, sous-titres bitmap.
+
+### Lecture directe des MKV (sans passerelle)
+
+Le MKV est lu par `fetch` depuis l'appareil (requêtes Range, autorisées par les
+serveurs Xtream testés), démuxé (`utils/matroska.ts`), remuxé en MP4 fragmenté
+(`utils/fmp4.ts`, `utils/mkvRemuxer.ts`) et poussé dans ManagedMediaSource
+(iPhone iOS 17.1+) ou MediaSource. Aucun décodage en JavaScript : seul le
+conteneur change, le décodeur matériel fait le reste. Le seek passe par les
+Cues du fichier. Le moteur navigateur vit dans
+`services/player/mkvDirectEngine.ts`, le plan de lecture dans
+`hooks/usePlaybackPlan.ts` (`direct-mkv`, uniquement sur page HTTP). En cas de
+codec non décodable, l'app retombe sur la passerelle ou VLC. Le bouton
+« Analyser ce MKV » de l'encart VLC donne le diagnostic (CORS, codecs, MSE).
+
+Validation hors Safari : `npm run test:mkv` (Node + ffmpeg) génère des MKV
+H.264 + AAC/AC-3 avec B-frames et HEVC + E-AC-3, les remuxe (lecture complète et
+reprise à un cue) et fait décoder la sortie par ffmpeg : zéro erreur, DTS
+monotones, PTS ≥ DTS, nombre de trames et keyframes exacts.
 
 Le conteneur ne fait que servir la page et le proxy métadonnées (`/api/*`).
 **Aucun flux vidéo ne le traverse** (invariant #2 inchangé).
