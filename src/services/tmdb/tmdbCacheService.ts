@@ -45,7 +45,12 @@ function completePartial(key: string, type: 'movie' | 'tv', partial: TmdbMetadat
   const request = (async (): Promise<TmdbMetadata | null> => {
     try {
       const full = await enrichByTmdbId(type, partial.tmdbId);
-      if (full === null) return partial;
+      if (full === null) {
+        // Detail introuvable : on fige l'entree (plus de nouvelle tentative a chaque ouverture).
+        const frozen: TmdbMetadata = { ...partial, trailerKey: partial.trailerKey ?? null, collection: partial.collection ?? null };
+        await tmdbRepository.putTmdbEntry({ key, type, status: 'found', data: frozen, fetchedAt: Date.now(), partial: false });
+        return frozen;
+      }
       await tmdbRepository.putTmdbEntry({ key, type, status: 'found', data: full, fetchedAt: Date.now(), partial: false });
       return full;
     } catch {
@@ -71,7 +76,11 @@ async function getOrFetch(
     if (cached.status === 'found' && age < CACHE_TTL.tmdb) {
       // Entree issue du backfill allege (recherche seule) : la fiche a besoin du
       // casting / de la duree -> UNE requete detail par id, puis cache complet.
-      if (cached.partial === true && cached.data !== null) return completePartial(key, type, cached.data);
+      // Idem pour une entree d'avant P5 (sans `trailerKey`/`collection`) : un
+      // seul appel par id, puis cache complet.
+      if (cached.data !== null && (cached.partial === true || cached.data.trailerKey === undefined)) {
+        return completePartial(key, type, cached.data);
+      }
       return cached.data;
     }
     if (cached.status === 'notfound' && age < NEGATIVE_RETRY_MS) return null;

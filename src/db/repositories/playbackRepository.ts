@@ -72,6 +72,16 @@ export async function getSeriesEpisodeProgress(
   return map;
 }
 
+/** Marque des episodes/films comme VUS (entree terminee) en une transaction. */
+export async function markWatched(entries: PlaybackEntry[]): Promise<void> {
+  await db.playback_history.bulkPut(entries);
+}
+
+/** Marque comme NON VUS : supprime la progression. */
+export async function markUnwatched(type: MediaType, itemIds: string[]): Promise<void> {
+  await db.playback_history.bulkDelete(itemIds.map((id) => [type, id] as [MediaType, string]));
+}
+
 /** Masque une entree de « Continuer a regarder » (progression conservee). */
 export async function dismissEntry(type: MediaType, itemId: string): Promise<void> {
   await db.playback_history.update([type, itemId], { dismissedAt: Date.now() });

@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { LanguageVariantSwitcher } from '@/components/media/LanguageVariantSwitcher';
+import { TitleRail } from '@/components/media/TitleRail';
+import { TrailerButton } from '@/components/media/TrailerButton';
 import { PosterImage } from '@/components/shared/PosterImage';
 import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { DirectMkvProbe } from '@/components/player/DirectMkvProbe';
@@ -30,6 +32,8 @@ import { buildVodStreamUrl } from '@/services/xtream/xtreamUrls';
 import { supportsNativeHls } from '@/utils/playerSupport';
 import { usePlaybackPlan } from '@/hooks/usePlaybackPlan';
 import { useTmdbMetadata } from '@/hooks/useTmdbMetadata';
+import { useCollection, useSimilarMovies } from '@/hooks/useTitleExtras';
+import { youtubeId } from '@/utils/youtube';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
@@ -68,6 +72,7 @@ export function MovieDetailView({
   const [xtreamPoster, setXtreamPoster] = useState<string | null>(null);
   const [xtreamBackdrop, setXtreamBackdrop] = useState<string | null>(null);
   const [xtreamDurationSecs, setXtreamDurationSecs] = useState<number | null>(null);
+  const [xtreamTrailer, setXtreamTrailer] = useState<string | null>(null);
   const [playing, setPlaying] = useState(false);
   const [startAt, setStartAt] = useState(0);
   const [failed, setFailed] = useState(false);
@@ -119,6 +124,7 @@ export function MovieDetailView({
         setXtreamDurationSecs(
           parseDurationToSeconds(info.info?.duration_secs ?? info.info?.duration ?? null),
         );
+        setXtreamTrailer(youtubeId(info.info?.youtube_trailer ?? null));
       })
       .catch(() => {
         // silencieux : le detail reste utilisable sans synopsis
@@ -136,6 +142,12 @@ export function MovieDetailView({
   const posterUrl = movie?.posterUrl ?? xtreamPoster ?? tmdbPosterUrl;
   const backdropUrl = tmdbBackdrop(tmdb?.backdropPath ?? null) ?? xtreamBackdrop;
   const overview = tmdb?.overview ?? plot;
+  const trailerKey = tmdb?.trailerKey ?? xtreamTrailer;
+  const similar = useSimilarMovies(
+    movie?.groupKey ?? null,
+    movie !== null && movie !== undefined && movie.tmdbGenreIds.length > 0 ? movie.tmdbGenreIds : (tmdb?.genreIds ?? []),
+  );
+  const collection = useCollection(tmdb?.collection?.id ?? null);
   const rating = movie !== null && movie !== undefined && movie.ratingSort > 0 ? movie.ratingSort : null;
 
   // Entree active = variante de langue selectionnee (a defaut, le film ouvert).
@@ -405,12 +417,17 @@ export function MovieDetailView({
                     Recommencer
                   </Button>
                 )}
+                {trailerKey !== null && <TrailerButton videoId={trailerKey} />}
                 {showVlcButton && src !== null && <ExternalPlayer streamUrl={src} label="Lire dans VLC" />}
               </div>
             </div>
           </div>
         )
       )}
+      {!playing && collection !== null && (
+        <TitleRail title={collection.name} movies={collection.entries.map((e) => e.movie)} currentGroupKey={movie?.groupKey} />
+      )}
+      <TitleRail title="Titres similaires" movies={similar} />
       </div>
     </div>
   );

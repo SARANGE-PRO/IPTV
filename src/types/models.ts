@@ -195,6 +195,8 @@ export interface SeriesDetails {
   seriesId: string;
   seasons: Season[];
   episodes: Episode[];
+  /** Cle YouTube de la bande-annonce fournie par le panel (non indexe). */
+  youtubeTrailer?: string | null;
   /** Pilote le TTL du detail (ms). */
   fetchedAt: number;
 }
@@ -267,6 +269,13 @@ export interface TmdbMetadata {
   genreIds: number[];
   runtimeMinutes: number | null;
   cast: TmdbCastMember[];
+  /**
+   * Cle YouTube de la bande-annonce (FR d'abord). `undefined` = entree ancienne
+   * ou partielle (pas encore demandee) ; `null` = aucune bande-annonce.
+   */
+  trailerKey?: string | null;
+  /** Saga TMDB (films). `undefined` = non demande, `null` = aucune. */
+  collection?: { id: number; name: string } | null;
 }
 
 /**

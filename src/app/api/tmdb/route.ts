@@ -25,8 +25,10 @@ type Action =
   | 'movie_detail'
   | 'tv_detail'
   | 'genre_movie_list'
-  | 'genre_tv_list';
+  | 'genre_tv_list'
+  | 'collection_detail';
 const ALLOWED_ACTIONS = new Set<Action>([
+  'collection_detail',
   'search_movie',
   'search_tv',
   'movie_detail',
@@ -75,6 +77,8 @@ function endpointPath(req: TmdbProxyRequest): string {
       return `${TMDB_BASE}/genre/movie/list`;
     case 'genre_tv_list':
       return `${TMDB_BASE}/genre/tv/list`;
+    case 'collection_detail':
+      return `${TMDB_BASE}/collection/${req.id}`;
   }
 }
 
@@ -89,7 +93,9 @@ function buildUrl(req: TmdbProxyRequest): string {
       url.searchParams.set(req.action === 'search_movie' ? 'year' : 'first_air_date_year', String(req.year));
     }
   } else if (req.action === 'movie_detail' || req.action === 'tv_detail') {
-    url.searchParams.set('append_to_response', 'credits');
+    // videos : bande-annonce (FR d'abord, sinon EN) — metadonnees uniquement.
+    url.searchParams.set('append_to_response', 'credits,videos');
+    url.searchParams.set('include_video_language', 'fr,en,null');
   }
   return url.toString();
 }

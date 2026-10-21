@@ -24,6 +24,13 @@ export interface SaveProgressInput {
   posterUrl: string | null;
 }
 
+export interface SetWatchedInput {
+  type: 'vod' | 'episode';
+  seriesId: string | null;
+  items: { itemId: string; durationSec: number | null; label: string | null }[];
+  posterUrl: string | null;
+}
+
 interface PlaybackState {
   continueWatching: PlaybackEntry[];
   recentChannels: PlaybackEntry[];
@@ -32,6 +39,8 @@ interface PlaybackState {
   recordLiveWatch: (channelId: string, name: string, logoUrl: string | null) => void;
   markFinished: (type: MediaType, itemId: string) => Promise<void>;
   removeEntry: (type: MediaType, itemId: string) => Promise<void>;
+  /** Marque des episodes (ou un film) comme vus / non vus. */
+  setWatched: (input: SetWatchedInput, watched: boolean) => Promise<void>;
   /** Retire une carte de « Continuer a regarder » (progression conservee). */
   dismissContinue: (target: DismissTarget) => Promise<void>;
   clearHistory: () => Promise<void>;
@@ -94,6 +103,29 @@ export const usePlaybackStore = create<PlaybackState>()((set, get) => ({
 
   removeEntry: async (type, itemId) => {
     await playbackRepository.removeProgress(type, itemId);
+    await get().hydrateRails();
+  },
+
+  setWatched: async (input, watched) => {
+    if (watched) {
+      const now = Date.now();
+      await playbackRepository.markWatched(
+        input.items.map((it, i) => ({
+          type: input.type,
+          itemId: it.itemId,
+          seriesId: input.seriesId,
+          positionSec: it.durationSec ?? 0,
+          durationSec: it.durationSec,
+          finished: 1,
+          // Ordre conserve : le dernier de la liste devient le plus recent.
+          updatedAt: now + i,
+          label: it.label,
+          posterUrl: input.posterUrl,
+        })),
+      );
+    } else {
+      await playbackRepository.markUnwatched(input.type, input.items.map((it) => it.itemId));
+    }
     await get().hydrateRails();
   },
 

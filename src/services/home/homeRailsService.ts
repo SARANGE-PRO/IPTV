@@ -3,6 +3,7 @@ import * as favoritesRepository from '@/db/repositories/favoritesRepository';
 import * as playbackRepository from '@/db/repositories/playbackRepository';
 import * as tmdbRepository from '@/db/repositories/tmdbRepository';
 import type { TrendingItem } from '@/services/discovery/trendingService';
+import { loadSimilarMovies, loadSimilarSeries } from '@/services/media/similarTitlesService';
 import { getMovieTop10, getSeriesTop10 } from '@/services/ranking/smartRankingService';
 import { ensureGenres } from '@/services/tmdb/tmdbGenreService';
 import { tmdbBackdrop } from '@/services/tmdb/tmdbImage';
@@ -167,12 +168,7 @@ export async function loadBecauseYouWatched(
     .map((id) => movies.find((m) => m.id === id))
     .find((m): m is Movie => m !== undefined && m.tmdbGenreIds.length > 0);
   if (movieSource !== undefined) {
-    const items = await catalogRepository.findMovies(
-      similarTo(movieSource, visible(hiddenVod)),
-      RAIL_LIMIT,
-      order,
-      'rating',
-    );
+    const items = await loadSimilarMovies({ groupKey: movieSource.groupKey, genreIds: movieSource.tmdbGenreIds }, order, hiddenVod, RAIL_LIMIT);
     if (items.length >= RAIL_MIN) rails.push({ type: 'vod', sourceTitle: displayTitle(movieSource.name), items });
   }
 
@@ -180,30 +176,10 @@ export async function loadBecauseYouWatched(
     .map((id) => series.find((s) => s.id === id))
     .find((s): s is Series => s !== undefined && s.tmdbGenreIds.length > 0);
   if (seriesSource !== undefined) {
-    const items = await catalogRepository.findSeries(
-      similarTo(seriesSource, visible(hiddenSeries)),
-      RAIL_LIMIT,
-      order,
-      'rating',
-    );
+    const items = await loadSimilarSeries({ groupKey: seriesSource.groupKey, genreIds: seriesSource.tmdbGenreIds }, order, hiddenSeries, RAIL_LIMIT);
     if (items.length >= RAIL_MIN) rails.push({ type: 'series', sourceTitle: displayTitle(seriesSource.name), items });
   }
   return rails;
-}
-
-/** Au moins 2 genres en commun (1 si la source n'en a qu'un), hors le titre lui-meme. */
-function similarTo<T extends Movie | Series>(
-  source: T,
-  isVisible: (row: { posterUrl: string | null; categoryId: string }) => boolean,
-): (row: T) => boolean {
-  const genres = new Set(source.tmdbGenreIds);
-  const needed = Math.min(2, genres.size);
-  return (row) => {
-    if (row.groupKey === source.groupKey || !isVisible(row) || row.ratingSort < 5) return false;
-    let shared = 0;
-    for (const g of row.tmdbGenreIds) if (genres.has(g)) shared += 1;
-    return shared >= needed;
-  };
 }
 
 // --- Billboard -----------------------------------------------------------------

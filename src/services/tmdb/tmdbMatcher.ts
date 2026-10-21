@@ -3,6 +3,7 @@ import { normalizeText } from '@/utils/text';
 import { cleanTitle } from '@/utils/titleCleaner';
 import { ensureGenres } from './tmdbGenreService';
 import {
+  type TmdbVideoRaw,
   movieDetail,
   searchMovie,
   searchTv,
@@ -68,6 +69,19 @@ function pickBest(
   return bestScore >= 30 ? best : null;
 }
 
+/** Meilleure bande-annonce YouTube : FR > EN > autre, Trailer > Teaser, officielle d'abord. */
+function pickTrailer(videos: TmdbVideoRaw[] | undefined): string | null {
+  const score = (v: TmdbVideoRaw): number =>
+    (v.iso_639_1 === 'fr' ? 100 : v.iso_639_1 === 'en' ? 50 : 0) +
+    (v.type === 'Trailer' ? 20 : v.type === 'Teaser' ? 10 : 0) +
+    (v.official === true ? 5 : 0);
+  const best = (videos ?? [])
+    .filter((v) => v.site === 'YouTube' && typeof v.key === 'string' && v.key !== '')
+    .filter((v) => v.type === 'Trailer' || v.type === 'Teaser')
+    .sort((a, b) => score(b) - score(a))[0];
+  return best?.key ?? null;
+}
+
 function mapDetail(raw: TmdbDetailRaw): TmdbMetadata {
   const runtime = raw.runtime ?? (raw.episode_run_time?.[0] ?? null);
   return {
@@ -85,6 +99,11 @@ function mapDetail(raw: TmdbDetailRaw): TmdbMetadata {
       .slice(0, CAST_LIMIT)
       .map((c) => ({ name: c.name ?? '', character: c.character ?? null }))
       .filter((c) => c.name !== ''),
+    trailerKey: pickTrailer(raw.videos?.results),
+    collection:
+      raw.belongs_to_collection != null
+        ? { id: raw.belongs_to_collection.id, name: raw.belongs_to_collection.name ?? 'Saga' }
+        : null,
   };
 }
 

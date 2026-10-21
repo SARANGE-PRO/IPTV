@@ -136,3 +136,22 @@ export const IconPlay = ({ className }: IconProps) => (
     <path d="M8 5v14l11-7-11-7z" />
   </svg>
 );
+
+export const IconCheck = ({ className }: IconProps) => (
+  <Svg className={className}>
+    <path d="m5 12.5 4.5 4.5L19 7.5" />
+  </Svg>
+);
+
+export const IconFilmReel = ({ className }: IconProps) => (
+  <Svg className={className}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <path d="m10 9.5 4.5 2.5-4.5 2.5z" />
+  </Svg>
+);
+
+export const IconSkipNext = ({ className }: IconProps) => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden className={className ?? 'h-5 w-5'}>
+    <path d="M6 5v14l9-7-9-7zM16 5h2v14h-2z" />
+  </svg>
+);

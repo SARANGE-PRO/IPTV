@@ -14,6 +14,7 @@ import { detectCountry, detectLanguage } from '@/utils/countryDetection';
 import { isFrenchLabel } from '@/utils/frenchDetection';
 import { mediaGroupKey, parseMediaTitle, titleGroupKey } from '@/utils/mediaTitle';
 import { buildSearchTokens, normalizeText } from '@/utils/text';
+import { youtubeId } from '@/utils/youtube';
 
 /** Infos de la categorie parente, transmises a la normalisation des items. */
 export interface CategoryContext {
@@ -241,5 +242,5 @@ export function normalizeSeriesDetails(seriesId: string, raw: XtreamSeriesInfo):
   }
   seasons.sort((a, b) => a.seasonNumber - b.seasonNumber);
 
-  return { seriesId, seasons, episodes, fetchedAt: Date.now() };
+  return { seriesId, seasons, episodes, youtubeTrailer: youtubeId(raw.info?.youtube_trailer ?? null), fetchedAt: Date.now() };
 }

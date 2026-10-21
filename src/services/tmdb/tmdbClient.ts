@@ -64,6 +64,29 @@ export interface TmdbDetailRaw {
   episode_run_time?: number[]; // tv
   genres?: TmdbGenre[];
   credits?: { cast?: TmdbCastRaw[] };
+  videos?: { results?: TmdbVideoRaw[] };
+  belongs_to_collection?: { id: number; name?: string } | null;
+}
+
+export interface TmdbVideoRaw {
+  key?: string;
+  site?: string;
+  type?: string;
+  official?: boolean;
+  iso_639_1?: string | null;
+}
+
+export interface TmdbCollectionPartRaw {
+  id: number;
+  title?: string;
+  release_date?: string;
+  poster_path?: string | null;
+}
+
+export interface TmdbCollectionRaw {
+  id: number;
+  name?: string;
+  parts?: TmdbCollectionPartRaw[];
 }
 
 interface Envelope<T> {
@@ -169,6 +192,10 @@ export function searchMovie(query: string, year?: number): Promise<{ results?: T
 
 export function searchTv(query: string, year?: number): Promise<{ results?: TmdbSearchItem[] } | null> {
   return call<TmdbSearchResponse>({ action: 'search_tv', query, year });
+}
+
+export function collectionDetail(id: number): Promise<TmdbCollectionRaw | null> {
+  return call<TmdbCollectionRaw>({ action: 'collection_detail', id });
 }
 
 export function movieDetail(id: number): Promise<TmdbDetailRaw | null> {
