@@ -1,23 +1,20 @@
 import { create } from 'zustand';
-import type { CatalogFilter, FlatSort } from '@/db/repositories/catalogRepository';
+import type { CatalogFilter, FlatSort, LaneFilter } from '@/db/repositories/catalogRepository';
 import * as settingsRepository from '@/db/repositories/settingsRepository';
 import { ensureGenres } from '@/services/tmdb/tmdbGenreService';
 
 /**
- * Etat de filtrage FRONTEND de la VOD (refonte, etape 4). Remplace la navigation
- * par categories fournisseur : filtres bases sur les metadonnees TMDB (genres,
- * annee, note) appliques a plat sur toute la collection.
+ * Etat de filtrage FRONTEND de la VOD (refonte, etape 4 ; chantier 1 : pill de
+ * langue). Navigation a plat sur toute la collection : pill de langue
+ * (Tout / VF / VOSTFR / VO), tri global, genres TMDB, bornes annee/note, PAR
+ * SECTION (Films = 'vod', Series = 'series').
  *
  * Perimetre volontairement limite (les etats a CONSERVER restent ailleurs) :
- *  - pays / blacklist categories -> filterStore (inchange) ;
- *  - langue preferee VF/VOSTFR   -> uiSettingsStore (inchange) ;
+ *  - blacklist categories        -> filterStore (inchange) ;
+ *  - langue preferee VF/VOSTFR   -> uiSettingsStore (ordre des tiers « Tout ») ;
  *  - etat de sync / backfill      -> catalogStore (inchange).
- * Ici : uniquement le tri, les genres selectionnes et les bornes annee/note, PAR
- * SECTION (Films = 'vod', Series = 'series'). Le tri est memorise ; les filtres
- * sont transitoires (une session de navigation). L'ancienne "categorie
- * selectionnee" (state local de MediaBrowser) disparaitra a l'etape 5 (UI).
- *
- * Ce store N'EST PAS encore branche a l'UI : le cablage se fait a l'etape 5.
+ * Le tri et la pill de langue sont memorises ; les autres filtres sont
+ * transitoires (une session de navigation).
  */
 
 export type VodSection = 'vod' | 'series';
@@ -30,28 +27,32 @@ export interface Genre {
 /** Filtres d'une section. `genreMatch` : 'any' = OU (defaut), 'all' = ET. */
 export interface SectionFilters {
   sort: FlatSort;
+  lane: LaneFilter;
   genreIds: number[];
   genreMatch: 'any' | 'all';
   minYear: number | null;
   maxYear: number | null;
   minRating: number | null;
-  frenchOnly: boolean;
   unclassifiedOnly: boolean;
 }
 
 const defaultFilters = (): SectionFilters => ({
   sort: 'recent',
+  lane: 'all',
   genreIds: [],
   genreMatch: 'any',
   minYear: null,
   maxYear: null,
   minRating: null,
-  frenchOnly: false,
   unclassifiedOnly: false,
 });
 
 const sortSettingKey = (section: VodSection): string => `vodSort:${section}`;
+const laneSettingKey = (section: VodSection): string => `vodLane:${section}`;
 const genreType = (section: VodSection): 'movie' | 'tv' => (section === 'vod' ? 'movie' : 'tv');
+
+const LANES: readonly LaneFilter[] = ['all', 'fr', 'vost', 'vo', 'other'];
+const isLane = (value: unknown): value is LaneFilter => LANES.includes(value as LaneFilter);
 
 interface VodFilterState {
   filters: Record<VodSection, SectionFilters>;
@@ -59,25 +60,25 @@ interface VodFilterState {
   genresLoaded: Record<VodSection, boolean>;
   hydrated: boolean;
 
-  /** Charge les tris memorises (Dexie). Ne touche pas au reseau. */
+  /** Charge les tris / pills memorises (Dexie). Ne touche pas au reseau. */
   hydrate: () => Promise<void>;
   /** Charge la liste des genres TMDB d'une section (pour les pills). Idempotent. */
   loadGenres: (section: VodSection) => Promise<void>;
 
   setSort: (section: VodSection, sort: FlatSort) => void;
+  setLane: (section: VodSection, lane: LaneFilter) => void;
   toggleGenre: (section: VodSection, id: number) => void;
   setGenres: (section: VodSection, ids: number[]) => void;
   clearGenres: (section: VodSection) => void;
   setGenreMatch: (section: VodSection, match: 'any' | 'all') => void;
   setYearRange: (section: VodSection, min: number | null, max: number | null) => void;
   setMinRating: (section: VodSection, rating: number | null) => void;
-  setFrenchOnly: (section: VodSection, value: boolean) => void;
   setUnclassifiedOnly: (section: VodSection, value: boolean) => void;
   resetFilters: (section: VodSection) => void;
 
   /** Traduit l'etat d'une section en CatalogFilter pour le repository (getAll*Page / search*Filtered). */
   buildFilter: (section: VodSection) => CatalogFilter;
-  /** Vrai si au moins un filtre (hors tri) est actif. */
+  /** Vrai si au moins un filtre (hors tri et pill de langue) est actif. */
   hasActiveFilter: (section: VodSection) => boolean;
 }
 
@@ -96,14 +97,24 @@ export const useVodFilterStore = create<VodFilterState>()((set, get) => {
     hydrated: false,
 
     hydrate: async () => {
-      const [vodSort, seriesSort] = await Promise.all([
+      const [vodSort, seriesSort, vodLane, seriesLane] = await Promise.all([
         settingsRepository.getSetting<FlatSort>(sortSettingKey('vod')),
         settingsRepository.getSetting<FlatSort>(sortSettingKey('series')),
+        settingsRepository.getSetting<unknown>(laneSettingKey('vod')),
+        settingsRepository.getSetting<unknown>(laneSettingKey('series')),
       ]);
       set((state) => ({
         filters: {
-          vod: { ...state.filters.vod, sort: vodSort ?? state.filters.vod.sort },
-          series: { ...state.filters.series, sort: seriesSort ?? state.filters.series.sort },
+          vod: {
+            ...state.filters.vod,
+            sort: vodSort ?? state.filters.vod.sort,
+            lane: isLane(vodLane) ? vodLane : state.filters.vod.lane,
+          },
+          series: {
+            ...state.filters.series,
+            sort: seriesSort ?? state.filters.series.sort,
+            lane: isLane(seriesLane) ? seriesLane : state.filters.series.lane,
+          },
         },
         hydrated: true,
       }));
@@ -126,6 +137,11 @@ export const useVodFilterStore = create<VodFilterState>()((set, get) => {
       void settingsRepository.setSetting(sortSettingKey(section), sort);
     },
 
+    setLane: (section, lane) => {
+      patch(section, { lane });
+      void settingsRepository.setSetting(laneSettingKey(section), lane);
+    },
+
     toggleGenre: (section, id) => {
       const current = get().filters[section].genreIds;
       const next = current.includes(id) ? current.filter((g) => g !== id) : [...current, id];
@@ -137,14 +153,13 @@ export const useVodFilterStore = create<VodFilterState>()((set, get) => {
     setGenreMatch: (section, match) => patch(section, { genreMatch: match }),
     setYearRange: (section, min, max) => patch(section, { minYear: min, maxYear: max }),
     setMinRating: (section, rating) => patch(section, { minRating: rating }),
-    setFrenchOnly: (section, value) => patch(section, { frenchOnly: value }),
     setUnclassifiedOnly: (section, value) => patch(section, { unclassifiedOnly: value }),
 
     resetFilters: (section) => {
-      // Conserve le tri (preference memorisee), remet les filtres a zero.
-      const sort = get().filters[section].sort;
+      // Conserve le tri et la pill de langue (preferences memorisees), remet les filtres a zero.
+      const { sort, lane } = get().filters[section];
       set((state) => ({
-        filters: { ...state.filters, [section]: { ...defaultFilters(), sort } },
+        filters: { ...state.filters, [section]: { ...defaultFilters(), sort, lane } },
       }));
     },
 
@@ -158,7 +173,6 @@ export const useVodFilterStore = create<VodFilterState>()((set, get) => {
       if (f.minYear !== null) cf.minYear = f.minYear;
       if (f.maxYear !== null) cf.maxYear = f.maxYear;
       if (f.minRating !== null) cf.minRating = f.minRating;
-      if (f.frenchOnly) cf.frenchOnly = true;
       if (f.unclassifiedOnly) cf.unclassifiedOnly = true;
       return cf;
     },
@@ -166,12 +180,7 @@ export const useVodFilterStore = create<VodFilterState>()((set, get) => {
     hasActiveFilter: (section) => {
       const f = get().filters[section];
       return (
-        f.genreIds.length > 0 ||
-        f.minYear !== null ||
-        f.maxYear !== null ||
-        f.minRating !== null ||
-        f.frenchOnly ||
-        f.unclassifiedOnly
+        f.genreIds.length > 0 || f.minYear !== null || f.maxYear !== null || f.minRating !== null || f.unclassifiedOnly
       );
     },
   };

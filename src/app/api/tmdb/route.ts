@@ -105,7 +105,9 @@ function fail(status: number, code: string, message: string): NextResponse {
  * grossier d'un endpoint public (proteger le quota TMDB de l'utilisateur).
  */
 const RATE_WINDOW_MS = 60_000;
-const RATE_MAX = 60; // requetes / minute / IP
+// 240/min : le backfill client s'espace a ~214/min (tmdbClient). TMDB lui-meme
+// accepte ~50 req/s ; ce plafond ne protege que contre un abus grossier.
+const RATE_MAX = 240; // requetes / minute / IP
 const rateHits = new Map<string, number[]>();
 
 function isRateLimited(ip: string): boolean {

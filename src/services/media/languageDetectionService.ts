@@ -1,24 +1,20 @@
 import type { FrenchVariant, MediaLanguage } from '@/types/mediaLanguage';
+import { parseMediaTitle } from '@/utils/mediaTitle';
 import { normalizeText } from '@/utils/text';
 
 /**
- * Detection de langue/variante depuis les metadonnees IPTV (titre + categorie).
- * On privilegie les TAGS IPTV explicites (VF/VOSTFR/MULTI/TRUEFRENCH) plutot que
- * les mots reels pour eviter les faux positifs (ex. "The French Dispatch").
+ * Detection de langue/variante — facade DIAGNOSTIC au-dessus du parseur unique
+ * (utils/mediaTitle.ts). Les films/series persistent desormais leur `variant`
+ * a la normalisation : l'UI lit la ligne Dexie, elle n'appelle plus ceci.
  */
 
-// Tags fiables (IPTV), jamais des mots courants.
-const TAG_MULTI = /\bmulti\b/;
-const TAG_VF = /\b(vf|vff|vfq|vf2|truefrench|vostf)\b/;
-const TAG_VOSTFR = /\b(vostfr|subfrench|vost)\b/;
-
-/** Variante francophone mise en avant sur les cartes (VF/MULTI/VOSTFR) ou null. */
+/** Variante francophone portee par le TITRE seul (VF/MULTI/VOSTFR) ou null. */
 export function detectFrenchVariant(name: string): FrenchVariant | null {
-  const n = ` ${normalizeText(name)} `;
-  if (TAG_MULTI.test(n)) return 'MULTI';
-  if (TAG_VOSTFR.test(n)) return 'VOSTFR';
-  if (TAG_VF.test(n)) return 'VF';
-  return null;
+  const parsed = parseMediaTitle(name);
+  if (parsed.variantSource !== 2) return null;
+  return parsed.variant === 'VF' || parsed.variant === 'MULTI' || parsed.variant === 'VOSTFR'
+    ? parsed.variant
+    : null;
 }
 
 /** Vrai si le contenu a (probablement) une piste audio francaise. */

@@ -1,7 +1,7 @@
 import { CACHE_TTL } from '@/config/constants';
 import * as tmdbRepository from '@/db/repositories/tmdbRepository';
 import type { TmdbMetadata } from '@/types/models';
-import { enrichMovie, enrichSeries, tmdbCacheKey } from './tmdbMatcher';
+import { enrichByTmdbId, enrichMovie, enrichSeries, tmdbCacheKey } from './tmdbMatcher';
 
 /**
  * Enrichissement TMDB A LA DEMANDE, jamais massif. Resultats (y compris
@@ -38,6 +38,26 @@ async function fetchAndCache(
   }
 }
 
+/** Complete une entree partielle par son id TMDB (dedoublonne en vol ; repli = la version partielle). */
+function completePartial(key: string, type: 'movie' | 'tv', partial: TmdbMetadata): Promise<TmdbMetadata | null> {
+  const pending = inFlight.get(key);
+  if (pending !== undefined) return pending;
+  const request = (async (): Promise<TmdbMetadata | null> => {
+    try {
+      const full = await enrichByTmdbId(type, partial.tmdbId);
+      if (full === null) return partial;
+      await tmdbRepository.putTmdbEntry({ key, type, status: 'found', data: full, fetchedAt: Date.now(), partial: false });
+      return full;
+    } catch {
+      return partial;
+    } finally {
+      inFlight.delete(key);
+    }
+  })();
+  inFlight.set(key, request);
+  return request;
+}
+
 async function getOrFetch(
   type: 'movie' | 'tv',
   rawName: string,
@@ -48,7 +68,12 @@ async function getOrFetch(
   const cached = await tmdbRepository.getTmdbEntry(key);
   if (cached !== undefined) {
     const age = Date.now() - cached.fetchedAt;
-    if (cached.status === 'found' && age < CACHE_TTL.tmdb) return cached.data;
+    if (cached.status === 'found' && age < CACHE_TTL.tmdb) {
+      // Entree issue du backfill allege (recherche seule) : la fiche a besoin du
+      // casting / de la duree -> UNE requete detail par id, puis cache complet.
+      if (cached.partial === true && cached.data !== null) return completePartial(key, type, cached.data);
+      return cached.data;
+    }
     if (cached.status === 'notfound' && age < NEGATIVE_RETRY_MS) return null;
   }
 

@@ -180,6 +180,46 @@ export class IptvDatabase extends Dexie {
       xtream_series:
         'id, categoryId, name, normalizedName, lastModifiedAt, rating, isFrench, tmdbState, tmdbYear, tmdbRating, [categoryId+normalizedName], [categoryId+lastModifiedAt], [categoryId+rating], [isFrench+lastModifiedAt], [isFrench+rating], *searchTokens, *tmdbGenreIds',
     });
+
+    // v10 : FONDATION LANGUE + REGROUPEMENT DES VERSIONS (chantiers 1-2).
+    //  - `variant` (VF/MULTI/VOSTFR/VO/OTHER) et `lane` persistes a la
+    //    normalisation (titre puis categorie), jamais recalcules a l'affichage.
+    //  - `groupKey` (id TMDB sinon titre+annee) + `groupRank`/`laneRank` : une
+    //    carte par titre (rang 0 = version representative selon la preference).
+    //  - `ratingSort`/`yearSort` : TMDB si enrichi SINON fournisseur -> les tris
+    //    « Mieux notes » / « Annee » n'excluent plus les lignes non enrichies.
+    //  - Index composes [groupRank+variant+X] (navigation « Tout », tiers par
+    //    preference), [laneRank+lane+X] (pills VF / VOSTFR / VO) ; tri « Titre »
+    //    sur `titleKey` (titre NETTOYE : « FR - Dune » se classe sous D),
+    //    [tmdbState+variant+X] (file de backfill priorisee VF d'abord).
+    //  - Les index par categorie fournisseur et les anciens [isFrench+X]
+    //    disparaissent (navigation a plat uniquement).
+    // PATTERN v6/v8 : champs issus de la normalisation -> PURGE films/series +
+    // leurs metadonnees de sync ; le Live, les favoris, l'historique, les
+    // reglages et le cache TMDB sont PRESERVES. Cout : une resync films/series.
+    this.version(10)
+      .stores({
+        xtream_vod_streams:
+          'id, categoryId, addedAt, isFrench, tmdbState, variant, groupKey, ' +
+          '[groupRank+variant+addedAt], [groupRank+variant+ratingSort], [groupRank+variant+yearSort], [groupRank+titleKey], ' +
+          '[laneRank+lane+addedAt], [laneRank+lane+ratingSort], [laneRank+lane+yearSort], [laneRank+lane+titleKey], ' +
+          '[tmdbState+variant+addedAt], *searchTokens, *tmdbGenreIds',
+        xtream_series:
+          'id, categoryId, lastModifiedAt, isFrench, tmdbState, variant, groupKey, ' +
+          '[groupRank+variant+lastModifiedAt], [groupRank+variant+ratingSort], [groupRank+variant+yearSort], [groupRank+titleKey], ' +
+          '[laneRank+lane+lastModifiedAt], [laneRank+lane+ratingSort], [laneRank+lane+yearSort], [laneRank+lane+titleKey], ' +
+          '[tmdbState+variant+lastModifiedAt], *searchTokens, *tmdbGenreIds',
+      })
+      .upgrade(async (tx) => {
+        await Promise.all([
+          tx.table('xtream_vod_categories').clear(),
+          tx.table('xtream_vod_streams').clear(),
+          tx.table('xtream_series_categories').clear(),
+          tx.table('xtream_series').clear(),
+          tx.table('xtream_series_details').clear(),
+          tx.table('sync_metadata').bulkDelete(['vod', 'series']),
+        ]);
+      });
   }
 }
 

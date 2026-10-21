@@ -13,11 +13,12 @@ import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import * as catalogRepository from '@/services/data/catalogService';
 import { useDebounce } from '@/hooks/useDebounce';
-import { detectFrenchVariant } from '@/services/media/languageDetectionService';
 import { useFilterStore } from '@/stores/filterStore';
+import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { LiveChannel, Movie, Series } from '@/types/models';
 import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
 import { liveHref, movieHref, seriesHref } from '@/utils/appRoutes';
+import { variantBadge, variantOrder } from '@/utils/variantPreference';
 
 /**
  * Recherche globale : chaines + films + series en une fois. Chaque source passe
@@ -47,6 +48,7 @@ export default function SearchPage() {
   const hiddenLive = useFilterStore((s) => s.hidden.live);
   const hiddenVod = useFilterStore((s) => s.hidden.vod);
   const hiddenSeries = useFilterStore((s) => s.hidden.series);
+  const preferredLanguage = useUiSettingsStore((s) => s.preferredLanguage);
 
   const [live, setLive] = useState<LiveChannel[]>([]);
   const [movies, setMovies] = useState<Movie[]>([]);
@@ -68,10 +70,12 @@ export default function SearchPage() {
     setError(false);
     // Exclusion des categories masquees passee AU repository (avant .limit()),
     // sinon une grosse categorie blacklistee viderait la fenetre de resultats.
+    // Films/series : une carte par titre, version preferee en tete (chantiers 1-2).
+    const order = variantOrder(preferredLanguage);
     void Promise.all([
       catalogRepository.searchLiveChannels(debounced, 24, hiddenLive),
-      catalogRepository.searchMovies(debounced, 24, hiddenVod),
-      catalogRepository.searchSeries(debounced, 24, hiddenSeries),
+      catalogRepository.searchMovies(debounced, 24, hiddenVod, order),
+      catalogRepository.searchSeries(debounced, 24, hiddenSeries, order),
     ])
       .then(([liveRows, movieRows, seriesRows]) => {
         if (!active) return;
@@ -94,7 +98,7 @@ export default function SearchPage() {
     return () => {
       active = false;
     };
-  }, [debounced, searching, hiddenLive, hiddenVod, hiddenSeries, retry]);
+  }, [debounced, searching, hiddenLive, hiddenVod, hiddenSeries, preferredLanguage, retry]);
 
   const noResult =
     searching && !loading && !error && live.length === 0 && movies.length === 0 && series.length === 0;
@@ -164,7 +168,8 @@ export default function SearchPage() {
                 title={displayTitle(m.name)}
                 posterUrl={m.posterUrl}
                 subtitle={displayYear(m.name, m.year)?.toString() ?? null}
-                tag={detectFrenchVariant(m.name) ?? (m.isFrench === 1 ? 'FR' : null)}
+                rating={m.ratingSort > 0 ? m.ratingSort : null}
+                tag={variantBadge(m.variant, m.variantSource)}
                 favorite={{ type: 'vod', itemId: m.id }}
               />
             ))}
@@ -182,8 +187,9 @@ export default function SearchPage() {
                 href={seriesHref(s.id)}
                 title={displayTitle(s.name)}
                 posterUrl={s.posterUrl}
-                subtitle={s.releaseDate?.slice(0, 4) ?? null}
-                tag={detectFrenchVariant(s.name) ?? (s.isFrench === 1 ? 'FR' : null)}
+                subtitle={s.year !== null ? String(s.year) : null}
+                rating={s.ratingSort > 0 ? s.ratingSort : null}
+                tag={variantBadge(s.variant, s.variantSource)}
                 favorite={{ type: 'series', itemId: s.id }}
               />
             ))}

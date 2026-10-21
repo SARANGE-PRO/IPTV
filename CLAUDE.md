@@ -36,7 +36,12 @@ Gestionnaire de paquets : **npm**.
    liens de flux/tokens. Voir `utils/redaction.ts` + `utils/sensitiveDataGuards.ts`.
 5. **Priorité France** : tri par pertinence (flag `isFrench`), pas de suppression.
    Les autres pays restent accessibles via le sélecteur. Blacklist = masquage
-   durable et réactivable, distinct du sélecteur pays.
+   durable et réactivable, distinct du sélecteur pays. Films/séries : la
+   **variante de langue** (`VF|MULTI|VOSTFR|VO|OTHER`) est calculée UNE fois à
+   la normalisation par `utils/mediaTitle.ts` (parseur unique, pur) et
+   persistée/indexée ; jamais recalculée à l'affichage. Une carte par titre :
+   versions regroupées par `groupKey` (`groupRank`/`laneRank`, service
+   `catalogGroupingService`), représentant choisi selon la préférence de langue.
 6. **Performance gros volumes** : les listes lourdes (chaînes/films) vivent dans
    **Dexie**, lues paginées/virtualisées — **jamais** en masse dans Zustand.
    Sélecteurs fins, `Set` pour favoris/blacklist, debounce sur la recherche.
@@ -66,3 +71,7 @@ npm run typecheck  # tsc --noEmit
 Étape 0 ✅ Fondations · 1 Dexie · 2 Auth · 3 Diagnostic · 4 Sync · 5 Live ·
 6 Player · 7 VOD · 8 Séries · 9 TMDB · 10 Accueil · 11 Favoris/Recherche/Réglages
 · 12 PWA · 13 Durcissement.
+Chantier « niveau Netflix » (oct. 2026) : P1 ✅ fondation langue · P2 ✅ dédup
+versions · P3 ✅ enrichissement TMDB fiable · P4 accueil · P5 fiches/séries ·
+P6 lecteur · P7 recherche · P8 catch-up (optionnel). Schéma Dexie v10 = purge
+films/séries + resync.

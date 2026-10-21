@@ -159,9 +159,12 @@ sessions                 id
 xtream_live_categories   id, name, isFrench
 xtream_live_streams      id, categoryId, name, isFrench
 xtream_vod_categories    id, name, isFrench
-xtream_vod_streams       id, categoryId, name, added, isFrench
+xtream_vod_streams       id, categoryId, addedAt, isFrench, tmdbState, variant, groupKey,
+                         [groupRank+variant+addedAt|ratingSort|yearSort], [groupRank+titleKey],
+                         [laneRank+lane+addedAt|ratingSort|yearSort], [laneRank+lane+titleKey],
+                         [tmdbState+variant+addedAt], *searchTokens, *tmdbGenreIds
 xtream_series_categories id, name, isFrench
-xtream_series            id, categoryId, name, isFrench
+xtream_series            idem (lastModifiedAt a la place d'addedAt)
 xtream_series_details    seriesId
 tmdb_cache               key, type, fetchedAt
 favorites                [type+itemId], type, addedAt
@@ -187,6 +190,32 @@ Au moment de la normalisation, chaque catégorie/flux reçoit un flag `isFrench`
 (voir `FRENCH_KEYWORDS`). **Tri par pertinence, pas suppression** : le FR remonte,
 les autres pays restent accessibles via `filterStore.country`. La **blacklist**
 (`hidden_categories`) est un masquage durable et réactivable, distinct du sélecteur.
+
+### 6 bis. Langue et versions des films / séries (fondation langue)
+
+- **Parseur unique** `utils/mediaTitle.ts` (pur, testé en Node) : titre propre,
+  année, **variante** `VF | MULTI | VOSTFR | VO | OTHER` (tags du titre, sinon
+  catégorie fournisseur), qualité, clé titre+année. `cleanTitle` (TMDB) et
+  `displayTitle` (affichage) en dérivent : même titre partout.
+- **Persisté et indexé** sur `Movie`/`Series` (`variant`, `lane`, `groupKey`,
+  `groupRank`, `laneRank`, `ratingSort`, `yearSort`), jamais recalculé à
+  l'affichage. `isFrench` VOD = variante regardable en français (VF/MULTI/VOSTFR).
+- **Regroupement des versions** (`services/catalog/catalogGroupingService.ts`) :
+  `groupKey` = `t:<tmdbId>` sinon `k:<titre> #<année>`. `groupRank = 0` = version
+  représentative selon la **préférence de langue** (`uiSettingsStore.preferredLanguage`,
+  ordre dans `utils/variantPreference.ts`) ; `laneRank = 0` = meilleure version de
+  son couloir (`fr` / `vost` / `vo` / `other`). Score : variante ≫ conteneur MP4 ≫
+  qualité. Passe complète après sync et au changement de préférence ; incrémental
+  à l'enrichissement TMDB (une ligne change de groupe).
+- **Navigation** (`getAllMoviesPage`) : curseur multi-tiers `{tier, offset}` —
+  pill « Tout » = un tier par variante dans l'ordre de préférence (VF d'abord),
+  pills VF / VOSTFR / VO = plage `[laneRank+lane+…]`. Recherche et rails
+  dédoublonnent par `groupKey`. Les tris « Mieux notés » / « Année » utilisent
+  `ratingSort` / `yearSort` (TMDB sinon fournisseur) : rien n'est exclu.
+- **Enrichissement TMDB** : lancé par `catalogStore.startBackfill()` à chaque
+  ouverture (et après sync), file priorisée `[tmdbState+variant+…]` (VF puis
+  récents), mode allégé (recherche seule, cache `partial` complété à l'ouverture
+  de la fiche), ~214 req/min côté client / 240 req/min côté proxy.
 
 ---
 

@@ -1,3 +1,4 @@
+import { isFrenchWatchable, laneOf } from '@/types/mediaLanguage';
 import type { Category, Episode, LiveChannel, Movie, Season, Section, Series, SeriesDetails } from '@/types/models';
 import type {
   NumLike,
@@ -11,8 +12,8 @@ import type {
 import { detectChannelTheme, detectUhd } from '@/utils/channelTheme';
 import { detectCountry, detectLanguage } from '@/utils/countryDetection';
 import { isFrenchLabel } from '@/utils/frenchDetection';
+import { mediaGroupKey, parseMediaTitle, titleGroupKey } from '@/utils/mediaTitle';
 import { buildSearchTokens, normalizeText } from '@/utils/text';
-import { cleanTitle } from '@/utils/titleCleaner';
 
 /** Infos de la categorie parente, transmises a la normalisation des items. */
 export interface CategoryContext {
@@ -52,13 +53,26 @@ function rating10(raw10: NumLike | null | undefined, raw5: NumLike | null | unde
   const r10 = toNum(raw10);
   const r5 = toNum(raw5);
   const rating = r10 ?? (r5 !== null ? r5 * 2 : null);
-  return rating !== null ? Math.min(Math.max(rating, 0), 10) : null;
+  if (rating === null) return null;
+  const clamped = Math.min(Math.max(rating, 0), 10);
+  // 0 = « pas de note » chez la plupart des panels : on ne le fait pas passer
+  // pour une vraie note (sinon il polluerait les tris « mieux notes »).
+  return clamped > 0 ? clamped : null;
 }
 
 /** id TMDB fourni par le panel (`tmdb`) -> entier positif, sinon null. */
 function toTmdbId(value: NumLike | null | undefined): number | null {
   const n = toNum(value);
   return n !== null && n > 0 ? Math.trunc(n) : null;
+}
+
+function validYear(value: number | null): number | null {
+  return value !== null && value >= 1900 && value <= 2100 ? Math.trunc(value) : null;
+}
+
+function yearOfDate(value: string | null): number | null {
+  if (value === null || value.length < 4) return null;
+  return validYear(Number.parseInt(value.slice(0, 4), 10) || null);
 }
 
 export function normalizeCategory(section: Section, raw: XtreamCategory): Category {
@@ -94,11 +108,20 @@ export function normalizeLiveChannel(raw: XtreamLiveStream, category?: CategoryC
   };
 }
 
-export function normalizeMovie(raw: XtreamVodStream, categoryIsFrench: boolean): Movie {
+/**
+ * Film : titre/annee/variante/qualite issus du PARSEUR UNIQUE (utils/mediaTitle),
+ * la categorie servant de repli pour la langue. `groupRank`/`laneRank` partent
+ * a 0 (tout visible) : le service de regroupement les recalcule apres la sync.
+ */
+export function normalizeMovie(raw: XtreamVodStream, category?: CategoryContext): Movie {
   const name = strOrNull(raw.name) ?? `Film ${String(raw.stream_id)}`;
-  const rawYear = toNum(raw.year);
-  const year =
-    rawYear !== null && rawYear >= 1900 && rawYear <= 2100 ? Math.trunc(rawYear) : cleanTitle(name).year;
+  const parsed = parseMediaTitle(name, category?.name ?? null);
+  const year = validYear(toNum(raw.year)) ?? parsed.year;
+  const rating = rating10(raw.rating, raw.rating_5based);
+  const tmdbId = toTmdbId(raw.tmdb);
+  // Cle titre : annee du TITRE d'abord (identique entre versions soeurs), le
+  // champ `year` du panel pouvant manquer sur l'une d'elles.
+  const titleKey = titleGroupKey(parsed.title, parsed.year ?? year);
   return {
     id: String(raw.stream_id),
     categoryId: normalizeCategoryId(raw.category_id),
@@ -107,27 +130,43 @@ export function normalizeMovie(raw: XtreamVodStream, categoryIsFrench: boolean):
     searchTokens: buildSearchTokens(name),
     posterUrl: strOrNull(raw.stream_icon),
     containerExtension: strOrNull(raw.container_extension),
-    rating: rating10(raw.rating, raw.rating_5based),
+    rating,
     year,
     addedAt: epochToMs(raw.added),
-    isFrench: categoryIsFrench || isFrenchLabel(name) ? 1 : 0,
+    isFrench: isFrenchWatchable(parsed.variant) ? 1 : 0,
     country: detectCountry(name),
     language: detectLanguage(name),
-    // TMDB : id capte si le panel le fournit (matching fiable a l'enrichissement),
-    // le reste reste vide/en attente jusqu'au backfill (refonte VOD, etape 1).
-    tmdbId: toTmdbId(raw.tmdb),
+    tmdbId,
     tmdbGenreIds: [],
     tmdbYear: null,
     tmdbRating: null,
     tmdbState: 0,
+    variant: parsed.variant,
+    variantSource: parsed.variantSource,
+    lane: laneOf(parsed.variant),
+    qualityScore: parsed.qualityScore,
+    titleKey,
+    groupKey: mediaGroupKey(tmdbId, titleKey),
+    groupRank: 0,
+    laneRank: 0,
+    ratingSort: rating ?? 0,
+    yearSort: year ?? 0,
   };
 }
 
-export function normalizeSeries(raw: XtreamSeries, categoryIsFrench: boolean): Series {
+export function normalizeSeries(raw: XtreamSeries, category?: CategoryContext): Series {
   const name = strOrNull(raw.name) ?? `Serie ${String(raw.series_id)}`;
+  const parsed = parseMediaTitle(name, category?.name ?? null);
   const backdrop = Array.isArray(raw.backdrop_path)
     ? (raw.backdrop_path[0] ?? null)
     : (raw.backdrop_path ?? null);
+  const releaseDate = strOrNull(raw.releaseDate ?? raw.release_date);
+  const year = parsed.year ?? yearOfDate(releaseDate);
+  const rating = rating10(raw.rating, raw.rating_5based);
+  const tmdbId = toTmdbId(raw.tmdb);
+  // Series : l'annee ne figure presque jamais dans le nom et `releaseDate`
+  // varie d'une version a l'autre -> cle sur le titre (+ annee du titre seule).
+  const titleKey = titleGroupKey(parsed.title, parsed.year);
   return {
     id: String(raw.series_id),
     categoryId: normalizeCategoryId(raw.category_id),
@@ -138,18 +177,28 @@ export function normalizeSeries(raw: XtreamSeries, categoryIsFrench: boolean): S
     backdropUrl: strOrNull(backdrop),
     plot: strOrNull(raw.plot),
     genre: strOrNull(raw.genre),
-    releaseDate: strOrNull(raw.releaseDate ?? raw.release_date),
-    rating: rating10(raw.rating, raw.rating_5based),
+    releaseDate,
+    rating,
     lastModifiedAt: epochToMs(raw.last_modified),
-    isFrench: categoryIsFrench || isFrenchLabel(name) ? 1 : 0,
+    isFrench: isFrenchWatchable(parsed.variant) ? 1 : 0,
     country: detectCountry(name),
     language: detectLanguage(name),
-    // TMDB : voir normalizeMovie (refonte VOD, etape 1).
-    tmdbId: toTmdbId(raw.tmdb),
+    tmdbId,
     tmdbGenreIds: [],
     tmdbYear: null,
     tmdbRating: null,
     tmdbState: 0,
+    year,
+    variant: parsed.variant,
+    variantSource: parsed.variantSource,
+    lane: laneOf(parsed.variant),
+    qualityScore: parsed.qualityScore,
+    titleKey,
+    groupKey: mediaGroupKey(tmdbId, titleKey),
+    groupRank: 0,
+    laneRank: 0,
+    ratingSort: rating ?? 0,
+    yearSort: year ?? 0,
   };
 }
 

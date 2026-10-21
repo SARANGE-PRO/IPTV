@@ -37,6 +37,7 @@ const NAV = [
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const hydrateCatalog = useCatalogStore((s) => s.hydrate);
+  const startBackfill = useCatalogStore((s) => s.startBackfill);
   const hydrateFavorites = useFavoritesStore((s) => s.hydrate);
   const hydrateRails = usePlaybackStore((s) => s.hydrateRails);
   const hydrateHidden = useFilterStore((s) => s.hydrateHidden);
@@ -47,7 +48,13 @@ export function AppShell({ children }: { children: ReactNode }) {
   useReminderScheduler();
 
   useEffect(() => {
-    void hydrateCatalog();
+    // Enrichissement TMDB : reprend la ou il s'etait arrete, a CHAQUE lancement
+    // (chantier 3) et au retour au premier plan (iOS gele le JS en arriere-plan).
+    void hydrateCatalog().then(() => startBackfill());
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void startBackfill();
+    };
+    document.addEventListener('visibilitychange', onVisible);
     void hydrateFavorites();
     void hydrateRails();
     void hydrateHidden();
@@ -55,7 +62,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     void hydrateUiSettings();
     // Reduit les purges de stockage iOS (moins de re-syncs surprises).
     void requestPersistentStorage();
-  }, [hydrateCatalog, hydrateFavorites, hydrateRails, hydrateHidden, hydrateDefaults, hydrateUiSettings]);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [hydrateCatalog, startBackfill, hydrateFavorites, hydrateRails, hydrateHidden, hydrateDefaults, hydrateUiSettings]);
 
   const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
 

@@ -1,4 +1,5 @@
 import type { ChannelTheme } from '@/utils/channelTheme';
+import type { AudioLane, MediaVariant, VariantSource } from '@/types/mediaLanguage';
 
 /**
  * Modeles internes NORMALISES — seule forme consommee par stores, services et
@@ -101,6 +102,26 @@ export interface Movie {
   tmdbRating: number | null;
   /** File de backfill + regroupement orphelins. Voir TmdbEnrichState. */
   tmdbState: TmdbEnrichState;
+  // --- Langue & regroupement des versions (chantiers 1-2) ---
+  /** Variante de langue persistee (titre puis categorie). Indexee. */
+  variant: MediaVariant;
+  variantSource: VariantSource;
+  /** Couloir audio derive de `variant` (fr / vost / vo / other). Indexe. */
+  lane: AudioLane;
+  /** Score qualite du fichier (4K > FHD > HD > SD), compare les versions. */
+  qualityScore: number;
+  /** Cle titre+annee (repli de `groupKey` tant que l'id TMDB est inconnu). */
+  titleKey: string;
+  /** Cle du GROUPE de versions : `t:<tmdbId>` sinon `titleKey`. Indexee. */
+  groupKey: string;
+  /** 0 = version representative du titre selon la preference de langue. */
+  groupRank: number;
+  /** 0 = meilleure version de son couloir audio (pills VF / VOSTFR / VO). */
+  laneRank: number;
+  /** Note de tri : TMDB si enrichi, sinon fournisseur, sinon 0 (jamais exclu des index). */
+  ratingSort: number;
+  /** Annee de tri : TMDB si enrichie, sinon fournisseur/titre, sinon 0. */
+  yearSort: number;
 }
 
 export interface Series {
@@ -133,6 +154,19 @@ export interface Series {
   tmdbRating: number | null;
   /** File de backfill + regroupement orphelins. Voir TmdbEnrichState. */
   tmdbState: TmdbEnrichState;
+  // --- Langue & regroupement des versions (chantiers 1-2) — voir Movie ---
+  /** Annee (titre, sinon releaseDate fournisseur). */
+  year: number | null;
+  variant: MediaVariant;
+  variantSource: VariantSource;
+  lane: AudioLane;
+  qualityScore: number;
+  titleKey: string;
+  groupKey: string;
+  groupRank: number;
+  laneRank: number;
+  ratingSort: number;
+  yearSort: number;
 }
 
 export interface Season {
@@ -250,6 +284,12 @@ export interface TmdbCacheEntry {
   status: 'found' | 'notfound';
   data: TmdbMetadata | null;
   fetchedAt: number;
+  /**
+   * Vrai si `data` vient de la seule reponse de RECHERCHE TMDB (backfill
+   * allege : genres/annee/note/affiche, sans casting ni duree). La fiche detail
+   * complete alors l'entree en une requete (chantier 3).
+   */
+  partial?: boolean;
 }
 
 // --- Preferences & maintenance --------------------------------------------------------

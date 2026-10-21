@@ -1,6 +1,7 @@
 import type { TmdbMetadata } from '@/types/models';
 import { normalizeText } from '@/utils/text';
 import { cleanTitle } from '@/utils/titleCleaner';
+import { ensureGenres } from './tmdbGenreService';
 import {
   movieDetail,
   searchMovie,
@@ -141,4 +142,49 @@ export function enrichMovie(rawName: string, year: number | null): Promise<TmdbM
 
 export function enrichSeries(rawName: string, year: number | null): Promise<TmdbMetadata | null> {
   return enrich('tv', rawName, year);
+}
+
+/**
+ * Enrichissement ALLEGE (chantier 3) : recherche SEULE, sans requete detail.
+ * Suffit au catalogue (genres, annee, note, affiche, synopsis) et divise par
+ * deux le cout du backfill. Les noms de genres viennent de la table locale
+ * tmdb_genres. Casting/duree restent vides : la fiche detail les complete
+ * (cache `partial`, voir tmdbCacheService).
+ */
+async function enrichLite(type: 'movie' | 'tv', rawName: string, fallbackYear: number | null): Promise<TmdbMetadata | null> {
+  const { title, year } = cleanTitle(rawName);
+  const wantedTitle = normalizeText(title);
+  const wantedYear = year ?? fallbackYear;
+  if (wantedTitle === '') return null;
+
+  let response = await (type === 'movie' ? searchMovie(title, wantedYear ?? undefined) : searchTv(title, wantedYear ?? undefined));
+  if ((response?.results?.length ?? 0) === 0 && wantedYear !== null) {
+    response = await (type === 'movie' ? searchMovie(title) : searchTv(title));
+  }
+  const best = pickBest(response?.results, wantedTitle, wantedYear);
+  if (best === null) return null;
+
+  const genreIds = best.genre_ids ?? [];
+  const names = await ensureGenres(type);
+  return {
+    tmdbId: best.id,
+    title: itemTitle(best),
+    overview: best.overview !== undefined && best.overview !== '' ? best.overview : null,
+    posterPath: best.poster_path ?? null,
+    backdropPath: best.backdrop_path ?? null,
+    releaseDate: best.release_date ?? best.first_air_date ?? null,
+    voteAverage: best.vote_average ?? null,
+    genres: genreIds.map((id) => names.get(id)).filter((n): n is string => n !== undefined),
+    genreIds,
+    runtimeMinutes: null,
+    cast: [],
+  };
+}
+
+export function enrichMovieLite(rawName: string, year: number | null): Promise<TmdbMetadata | null> {
+  return enrichLite('movie', rawName, year);
+}
+
+export function enrichSeriesLite(rawName: string, year: number | null): Promise<TmdbMetadata | null> {
+  return enrichLite('tv', rawName, year);
 }

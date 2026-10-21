@@ -2,8 +2,9 @@ import * as catalogRepository from '@/db/repositories/catalogRepository';
 import * as favoritesRepository from '@/db/repositories/favoritesRepository';
 import * as playbackRepository from '@/db/repositories/playbackRepository';
 import * as settingsRepository from '@/db/repositories/settingsRepository';
-import { baseTitleKey } from '@/services/media/languageVariantService';
+import { loadPreferredLanguage } from '@/services/catalog/catalogGroupingService';
 import type { BoolNum, FavoriteEntry, Movie, PlaybackEntry, Series } from '@/types/models';
+import { variantOrder } from '@/utils/variantPreference';
 
 /**
  * Top 10 / selections « a voir » — donnees SOLIDES et explicables. Aucun scraping
@@ -28,9 +29,12 @@ interface RankingCache {
 interface Rankable {
   id: string;
   name: string;
-  rating: number | null;
+  /** Note de tri (TMDB si enrichi, sinon fournisseur, sinon 0). */
+  ratingSort: number;
   isFrench: BoolNum;
   posterUrl: string | null;
+  /** Cle de groupe des versions (chantier 2) : dedup « une entree par film ». */
+  groupKey: string;
 }
 
 async function cachedByIds<T extends { id: string }>(
@@ -77,7 +81,7 @@ function scoreOf<T extends Rankable>(
   now: number,
   signals: { favoriteIds: Set<string>; watchedIds: Set<string> },
 ): number {
-  const ratingScore = (item.rating ?? 0) / 10; // 0..1
+  const ratingScore = item.ratingSort / 10; // 0..1
   return (
     ratingScore * 3.0 +
     freshness(timestamp(item), now) * 1.0 +
@@ -99,13 +103,13 @@ function curate<T extends Rankable>(
   limit: number,
 ): T[] {
   const now = Date.now();
-  // Dedup par titre canonique : on garde la meilleure entree (score) par film.
+  // Dedup par groupe de versions (id TMDB sinon titre+annee) : la meilleure entree (score) par film.
   const bestByTitle = new Map<string, { item: T; score: number; solid: boolean }>();
   for (const item of candidates) {
     if (item.posterUrl === null) continue; // pas d'affiche -> jamais « a la une »
-    const key = baseTitleKey(item.name) || item.id;
+    const key = item.groupKey || item.id;
     const score = scoreOf(item, timestamp, now, signals);
-    const solid = item.rating !== null && item.rating >= MIN_RATING;
+    const solid = item.ratingSort >= MIN_RATING;
     const existing = bestByTitle.get(key);
     if (existing === undefined || score > existing.score) bestByTitle.set(key, { item, score, solid });
   }
@@ -136,9 +140,10 @@ function curate<T extends Rankable>(
 export async function getMovieTop10(limit = 10): Promise<Movie[]> {
   const cached = await cachedByIds('rankingTopMovies', limit, catalogRepository.getMoviesByIds);
   if (cached !== null) return cached;
+  const order = variantOrder(await loadPreferredLanguage());
   const [rated, recent, favorites, history] = await Promise.all([
-    catalogRepository.getTopRatedMovies(CANDIDATE_LIMIT),
-    catalogRepository.getRecentMovies(CANDIDATE_LIMIT),
+    catalogRepository.getTopRatedMovies(CANDIDATE_LIMIT, order),
+    catalogRepository.getRecentMovies(CANDIDATE_LIMIT, order),
     favoritesRepository.getAllFavorites(),
     playbackRepository.getRecentHistory(120),
   ]);
@@ -153,9 +158,10 @@ export async function getMovieTop10(limit = 10): Promise<Movie[]> {
 export async function getSeriesTop10(limit = 10): Promise<Series[]> {
   const cached = await cachedByIds('rankingTopSeries', limit, catalogRepository.getSeriesByIds);
   if (cached !== null) return cached;
+  const order = variantOrder(await loadPreferredLanguage());
   const [rated, recent, favorites, history] = await Promise.all([
-    catalogRepository.getTopRatedSeries(CANDIDATE_LIMIT),
-    catalogRepository.getRecentSeries(CANDIDATE_LIMIT),
+    catalogRepository.getTopRatedSeries(CANDIDATE_LIMIT, order),
+    catalogRepository.getRecentSeries(CANDIDATE_LIMIT, order),
     favoritesRepository.getAllFavorites(),
     playbackRepository.getRecentHistory(120),
   ]);

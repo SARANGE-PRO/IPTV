@@ -16,6 +16,7 @@ import { useCatalogStore } from '@/stores/catalogStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import { useFilterStore } from '@/stores/filterStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
+import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import * as catalogRepository from '@/services/data/catalogService';
 import * as playbackRepository from '@/services/data/playbackDataService';
 import { getMovieTop10, getSeriesTop10 } from '@/services/ranking/smartRankingService';
@@ -25,6 +26,7 @@ import type { LiveChannel, Movie, PlaybackEntry, Series } from '@/types/models';
 import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
 import { formatCount } from '@/utils/format';
 import { liveHref, movieHref, seriesHref } from '@/utils/appRoutes';
+import { variantBadge, variantOrder } from '@/utils/variantPreference';
 
 function hrefForEntry(entry: PlaybackEntry): string {
   if (entry.type === 'episode') return seriesHref(entry.seriesId ?? '');
@@ -79,6 +81,7 @@ export default function HomePage() {
   const hiddenLive = useFilterStore((s) => s.hidden.live);
   const hiddenVod = useFilterStore((s) => s.hidden.vod);
   const hiddenSeries = useFilterStore((s) => s.hidden.series);
+  const preferredLanguage = useUiSettingsStore((s) => s.preferredLanguage);
   const [discovery, setDiscovery] = useState<DiscoveryRails>(EMPTY_RAILS);
   const [trending, setTrending] = useState<{ movies: TrendingItem[]; series: TrendingItem[] }>({
     movies: [],
@@ -118,6 +121,7 @@ export default function HomePage() {
       return;
     }
     let active = true;
+    const order = variantOrder(preferredLanguage);
     const loadResumeSeries = async (): Promise<Series[]> => {
       const ids = await playbackRepository.getInProgressSeriesIds(12);
       if (ids.length === 0) return [];
@@ -127,11 +131,11 @@ export default function HomePage() {
     void Promise.all([
       getMovieTop10(10),
       catalogRepository.getFrenchMovies(18),
-      catalogRepository.getRecentMovies(18),
-      catalogRepository.getTopRatedMovies(18),
+      catalogRepository.getRecentMovies(18, order),
+      catalogRepository.getTopRatedMovies(18, order),
       loadResumeSeries(),
       catalogRepository.getFrenchSeries(18),
-      catalogRepository.getRecentSeries(18),
+      catalogRepository.getRecentSeries(18, order),
       getSeriesTop10(12),
       catalogRepository.getLiveChannelsPage({ kind: 'frenchTheme', theme: 'sport' }, 0, 12),
     ]).then(
@@ -202,6 +206,7 @@ export default function HomePage() {
     hiddenLive,
     hiddenVod,
     hiddenSeries,
+    preferredLanguage,
     sections.live.itemCount,
     sections.vod.itemCount,
     sections.series.itemCount,
@@ -322,7 +327,7 @@ export default function HomePage() {
               href={movieHref(movie.id)}
               title={displayTitle(movie.name)}
               posterUrl={movie.posterUrl}
-              rating={movie.rating}
+              rating={movie.ratingSort > 0 ? movie.ratingSort : null} tag={variantBadge(movie.variant, movie.variantSource)}
               subtitle={displayYear(movie.name, movie.year)?.toString()}
               badge={`#${index + 1}`}
             />
@@ -333,7 +338,7 @@ export default function HomePage() {
       {discovery.frenchMovies.length > 0 && (
         <Rail title="Films FR à découvrir">
           {discovery.frenchMovies.map((movie) => (
-            <MediaCard key={movie.id} className="w-32 shrink-0" href={movieHref(movie.id)} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} rating={movie.rating} subtitle={displayYear(movie.name, movie.year)?.toString()} />
+            <MediaCard key={movie.id} className="w-32 shrink-0" href={movieHref(movie.id)} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} rating={movie.ratingSort > 0 ? movie.ratingSort : null} tag={variantBadge(movie.variant, movie.variantSource)} subtitle={displayYear(movie.name, movie.year)?.toString()} />
           ))}
         </Rail>
       )}
@@ -341,7 +346,7 @@ export default function HomePage() {
       {discovery.recentMovies.length > 0 && (
         <Rail title="Films récemment ajoutés">
           {discovery.recentMovies.map((movie) => (
-            <MediaCard key={movie.id} className="w-32 shrink-0" href={movieHref(movie.id)} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} rating={movie.rating} subtitle={displayYear(movie.name, movie.year)?.toString()} />
+            <MediaCard key={movie.id} className="w-32 shrink-0" href={movieHref(movie.id)} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} rating={movie.ratingSort > 0 ? movie.ratingSort : null} tag={variantBadge(movie.variant, movie.variantSource)} subtitle={displayYear(movie.name, movie.year)?.toString()} />
           ))}
         </Rail>
       )}
@@ -349,7 +354,7 @@ export default function HomePage() {
       {discovery.popularMovies.length > 0 && (
         <Rail title="Films populaires" action={<Link href="/movies" className="text-xs text-fg-faint hover:text-fg">Voir les films</Link>}>
           {discovery.popularMovies.map((movie) => (
-            <MediaCard key={movie.id} className="w-32 shrink-0" href={movieHref(movie.id)} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} rating={movie.rating} subtitle={displayYear(movie.name, movie.year)?.toString()} />
+            <MediaCard key={movie.id} className="w-32 shrink-0" href={movieHref(movie.id)} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} rating={movie.ratingSort > 0 ? movie.ratingSort : null} tag={variantBadge(movie.variant, movie.variantSource)} subtitle={displayYear(movie.name, movie.year)?.toString()} />
           ))}
         </Rail>
       )}
@@ -357,7 +362,7 @@ export default function HomePage() {
       {discovery.resumeSeries.length > 0 && (
         <Rail title="Séries à reprendre" action={<Link href="/series" className="text-xs text-fg-faint hover:text-fg">Voir les séries</Link>}>
           {discovery.resumeSeries.map((series) => (
-            <MediaCard key={series.id} className="w-32 shrink-0" href={seriesHref(series.id)} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.rating} subtitle={series.releaseDate?.slice(0, 4)} />
+            <MediaCard key={series.id} className="w-32 shrink-0" href={seriesHref(series.id)} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.ratingSort > 0 ? series.ratingSort : null} tag={variantBadge(series.variant, series.variantSource)} subtitle={series.year !== null ? String(series.year) : undefined} />
           ))}
         </Rail>
       )}
@@ -365,7 +370,7 @@ export default function HomePage() {
       {discovery.frenchSeries.length > 0 && (
         <Rail title="Séries FR">
           {discovery.frenchSeries.map((series) => (
-            <MediaCard key={series.id} className="w-32 shrink-0" href={seriesHref(series.id)} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.rating} subtitle={series.releaseDate?.slice(0, 4)} />
+            <MediaCard key={series.id} className="w-32 shrink-0" href={seriesHref(series.id)} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.ratingSort > 0 ? series.ratingSort : null} tag={variantBadge(series.variant, series.variantSource)} subtitle={series.year !== null ? String(series.year) : undefined} />
           ))}
         </Rail>
       )}
@@ -373,7 +378,7 @@ export default function HomePage() {
       {discovery.recentSeries.length > 0 && (
         <Rail title="Séries récemment ajoutées">
           {discovery.recentSeries.map((series) => (
-            <MediaCard key={series.id} className="w-32 shrink-0" href={seriesHref(series.id)} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.rating} subtitle={series.releaseDate?.slice(0, 4)} />
+            <MediaCard key={series.id} className="w-32 shrink-0" href={seriesHref(series.id)} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.ratingSort > 0 ? series.ratingSort : null} tag={variantBadge(series.variant, series.variantSource)} subtitle={series.year !== null ? String(series.year) : undefined} />
           ))}
         </Rail>
       )}
@@ -381,7 +386,7 @@ export default function HomePage() {
       {discovery.topSeries.length > 0 && (
         <Rail title="Séries mieux notées" action={<Link href="/series" className="text-xs text-fg-faint hover:text-fg">Voir les séries</Link>}>
           {discovery.topSeries.map((series) => (
-            <MediaCard key={series.id} className="w-32 shrink-0" href={seriesHref(series.id)} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.rating} subtitle={series.releaseDate?.slice(0, 4)} />
+            <MediaCard key={series.id} className="w-32 shrink-0" href={seriesHref(series.id)} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.ratingSort > 0 ? series.ratingSort : null} tag={variantBadge(series.variant, series.variantSource)} subtitle={series.year !== null ? String(series.year) : undefined} />
           ))}
         </Rail>
       )}

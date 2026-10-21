@@ -82,7 +82,7 @@ export function MovieDetailView({ vodId, onBack }: { vodId: string; onBack?: () 
   useEffect(() => {
     if (movie === null || movie === undefined) return;
     let active = true;
-    void findMovieVariants(movie).then((vs) => {
+    void findMovieVariants(movie, preferredLanguage).then((vs) => {
       if (!active) return;
       setVariants(vs);
       setActiveId(pickPreferredVariant(vs, movie.id, preferredLanguage)?.id ?? movie.id);
@@ -124,7 +124,7 @@ export function MovieDetailView({ vodId, onBack }: { vodId: string; onBack?: () 
   const posterUrl = movie?.posterUrl ?? xtreamPoster ?? tmdbPosterUrl;
   const backdropUrl = tmdbBackdrop(tmdb?.backdropPath ?? null) ?? xtreamBackdrop;
   const overview = tmdb?.overview ?? plot;
-  const rating = movie?.rating ?? null;
+  const rating = movie !== null && movie !== undefined && movie.ratingSort > 0 ? movie.ratingSort : null;
 
   // Entree active = variante de langue selectionnee (a defaut, le film ouvert).
   const activeEntry = useMemo(

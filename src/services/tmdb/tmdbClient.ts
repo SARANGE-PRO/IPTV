@@ -76,12 +76,13 @@ const CLIENT_TIMEOUT_MS = 10_000;
 
 /**
  * LIMITEUR DE DEBIT (token-bucket a intervalle minimum). Le proxy plafonne a
- * 60 req/min/IP : on serialise l'ESPACEMENT de tous les appels (search ET detail
+ * 240 req/min/IP (chantier 3 — TMDB tolere ~50 req/s, le garde-fou est le
+ * notre) : on serialise l'ESPACEMENT de tous les appels (search ET detail
  * confondus, quelle que soit la concurrence appelante) a >= MIN_INTERVAL_MS.
- * 1150 ms => ~52 req/min, marge sous 60 pour ne jamais declencher de 429 en
+ * 280 ms => ~214 req/min, marge sous 240 pour ne jamais declencher de 429 en
  * regime normal. Un 429 residuel repousse en plus le prochain creneau (cooldown).
  */
-const MIN_INTERVAL_MS = 1150;
+const MIN_INTERVAL_MS = 280;
 const RATE_RETRIES = 4; // tentatives max sur 429 avant d'abandonner l'appel
 let nextSlotAt = 0;
 

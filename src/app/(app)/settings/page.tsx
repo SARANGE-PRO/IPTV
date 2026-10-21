@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { FootballCard } from '@/components/settings/FootballCard';
 import { NotificationsCard } from '@/components/settings/NotificationsCard';
 import { TrackDiagnosticPanel } from '@/components/settings/TrackDiagnosticPanel';
@@ -24,6 +24,7 @@ import { useCatalogStore } from '@/stores/catalogStore';
 import { useFilterStore } from '@/stores/filterStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
+import type { MediaVariant } from '@/types/mediaLanguage';
 import type { HiddenCategoryEntry, Section } from '@/types/models';
 import type { XtreamCredentials } from '@/types/xtream';
 import { formatCount } from '@/utils/format';
@@ -55,16 +56,12 @@ function downloadSafeJsonReport(report: unknown, filename: string, hints: Creden
   URL.revokeObjectURL(url);
 }
 
-const LANGUAGES: { value: string; label: string }[] = [
-  { value: '', label: 'Toutes' },
-  { value: 'fr', label: 'Français' },
-  { value: 'en', label: 'Anglais' },
-  { value: 'es', label: 'Espagnol' },
-  { value: 'de', label: 'Allemand' },
-  { value: 'it', label: 'Italien' },
-  { value: 'ar', label: 'Arabe' },
-  { value: 'tr', label: 'Turc' },
-  { value: 'pt', label: 'Portugais' },
+const VARIANT_ROWS: { key: MediaVariant; label: string }[] = [
+  { key: 'VF', label: 'VF' },
+  { key: 'MULTI', label: 'MULTI' },
+  { key: 'VOSTFR', label: 'VOSTFR' },
+  { key: 'VO', label: 'VO / inconnue' },
+  { key: 'OTHER', label: 'Autres langues' },
 ];
 
 function Card({ title, children }: { title: string; children: React.ReactNode }) {
@@ -83,15 +80,17 @@ export default function SettingsPage() {
   const syncing = useCatalogStore((s) => s.syncing);
   const sync = useCatalogStore((s) => s.sync);
   const country = useFilterStore((s) => s.country);
-  const language = useFilterStore((s) => s.language);
   const setDefaultCountry = useFilterStore((s) => s.setDefaultCountry);
-  const setDefaultLanguage = useFilterStore((s) => s.setDefaultLanguage);
   const unhideCategory = useFilterStore((s) => s.unhideCategory);
   const clearHistory = usePlaybackStore((s) => s.clearHistory);
   const showVlcButton = useUiSettingsStore((s) => s.showVlcButton);
   const setShowVlcButton = useUiSettingsStore((s) => s.setShowVlcButton);
   const preferredLanguage = useUiSettingsStore((s) => s.preferredLanguage);
   const setPreferredLanguage = useUiSettingsStore((s) => s.setPreferredLanguage);
+  const regrouping = useUiSettingsStore((s) => s.regrouping);
+  const backfill = useCatalogStore((s) => s.backfill);
+  const startBackfill = useCatalogStore((s) => s.startBackfill);
+  const refreshBackfillCounts = useCatalogStore((s) => s.refreshBackfillCounts);
   const autoPip = useUiSettingsStore((s) => s.autoPip);
   const setAutoPip = useUiSettingsStore((s) => s.setAutoPip);
   const router = useRouter();
@@ -110,6 +109,21 @@ export default function SettingsPage() {
   const [cacheMessage, setCacheMessage] = useState<string | null>(null);
   const [storageLabel, setStorageLabel] = useState<string | null>(null);
   const [persisted, setPersisted] = useState<boolean | null>(null);
+  const [variantCounts, setVariantCounts] = useState<Record<'vod' | 'series', Record<MediaVariant, number>> | null>(null);
+
+  // Repartition des langues (chantier 1) + file d'enrichissement TMDB (chantier 3).
+  useEffect(() => {
+    let active = true;
+    void refreshBackfillCounts();
+    void Promise.all([catalogRepository.countByVariant('vod'), catalogRepository.countByVariant('series')]).then(
+      ([vod, series]) => {
+        if (active) setVariantCounts({ vod, series });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [refreshBackfillCounts, sections.vod.itemCount, sections.series.itemCount, regrouping]);
 
   const countries = useMemo(
     () =>
@@ -296,6 +310,51 @@ export default function SettingsPage() {
         </div>
       </Card>
 
+      <Card title="Langues détectées">
+        <p className="text-xs leading-relaxed text-fg-muted">
+          Variante déduite du titre puis de la catégorie fournisseur, à la synchronisation. Les versions
+          d&apos;un même titre sont regroupées : une seule carte, ta langue préférée en premier.
+        </p>
+        {variantCounts !== null && (
+          <div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-x-4 gap-y-1 text-xs">
+            <span className="text-fg-faint" />
+            <span className="text-right text-fg-faint">Films</span>
+            <span className="text-right text-fg-faint">Séries</span>
+            {VARIANT_ROWS.map((row) => (
+              <Fragment key={row.key}>
+                <span className="text-fg">{row.label}</span>
+                <span className="text-right tabular-nums text-fg-muted">{formatCount(variantCounts.vod[row.key])}</span>
+                <span className="text-right tabular-nums text-fg-muted">{formatCount(variantCounts.series[row.key])}</span>
+              </Fragment>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      <Card title="Enrichissement TMDB">
+        <p className="text-xs leading-relaxed text-fg-muted">
+          Genres, année et note TMDB sont récupérés en tâche de fond, films VF et récents d&apos;abord. Reprend à
+          chaque ouverture de l&apos;app là où il s&apos;était arrêté.
+        </p>
+        <p className="mt-3 text-xs text-fg-muted">
+          {backfill.moviesLeft === null || backfill.seriesLeft === null
+            ? 'Calcul…'
+            : backfill.moviesLeft + backfill.seriesLeft === 0
+              ? 'Catalogue entièrement enrichi.'
+              : `Restant : ${formatCount(backfill.moviesLeft)} films · ${formatCount(backfill.seriesLeft)} séries${
+                  backfill.running ? ` · en cours (${formatCount(backfill.processed)} traités)` : ' · en pause'
+                }`}
+        </p>
+        {!backfill.running && (backfill.moviesLeft ?? 0) + (backfill.seriesLeft ?? 0) > 0 && (
+          <div className="mt-3">
+            <Button variant="secondary" onClick={() => void startBackfill()}>
+              <IconRefresh className="mr-2 h-4 w-4" />
+              Reprendre l&apos;enrichissement
+            </Button>
+          </div>
+        )}
+      </Card>
+
       <Card title="Préférences">
         <div className="flex flex-col gap-4">
           <label className="flex flex-col gap-1.5">
@@ -306,20 +365,6 @@ export default function SettingsPage() {
               onChange={(c) => void setDefaultCountry(c)}
               className="w-full"
             />
-          </label>
-          <label className="flex flex-col gap-1.5">
-            <span className="text-xs font-medium text-fg-muted">Langue par défaut</span>
-            <select
-              value={language ?? ''}
-              onChange={(e) => void setDefaultLanguage(e.target.value === '' ? null : e.target.value)}
-              className="h-10 w-full rounded-xl border border-ink-600 bg-ink-800 px-3 text-sm text-fg outline-none focus:border-accent/70"
-            >
-              {LANGUAGES.map((l) => (
-                <option key={l.value} value={l.value}>
-                  {l.label}
-                </option>
-              ))}
-            </select>
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-xs font-medium text-fg-muted">Langue / audio préféré</span>
@@ -338,7 +383,9 @@ export default function SettingsPage() {
               <option value="PT">Portugais</option>
             </select>
             <span className="text-[11px] text-fg-faint">
-              Priorise cette version quand un film/série existe en plusieurs langues.
+              {regrouping
+                ? 'Réorganisation des versions en cours…'
+                : 'Met cette version en tête partout (navigation, recherche, accueil) et la choisit par défaut quand un film/série existe en plusieurs langues.'}
             </span>
           </label>
           <label className="flex items-center justify-between gap-3 pt-1">

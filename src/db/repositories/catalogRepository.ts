@@ -1,5 +1,6 @@
 import Dexie, { type Collection, type Table, type UpdateSpec } from 'dexie';
 import { db } from '@/db/database';
+import type { AudioLane, MediaVariant } from '@/types/mediaLanguage';
 import type {
   BoolNum,
   Category,
@@ -11,7 +12,9 @@ import type {
   TmdbEnrichState,
 } from '@/types/models';
 import type { ChannelTheme } from '@/utils/channelTheme';
+import { tmdbGroupKey } from '@/utils/mediaTitle';
 import { normalizeText, tokenizeQuery } from '@/utils/text';
+import { DEFAULT_VARIANT_ORDER, variantRank } from '@/utils/variantPreference';
 
 /**
  * Acces au catalogue (categories, chaines, films, series).
@@ -20,6 +23,11 @@ import { normalizeText, tokenizeQuery } from '@/utils/text';
  * facon atomique (clear + bulkPut). bulkPut plutot que bulkAdd : certains
  * panels Xtream renvoient des ids dupliques — dernier gagnant au lieu d'un
  * echec de sync.
+ *
+ * Films / series (chantiers 1-2) : navigation A PLAT uniquement, par index
+ * composes `[groupRank+variant+X]` (une carte par titre, tiers par preference
+ * de langue) et `[laneRank+lane+X]` (pills VF / VOSTFR / VO). Jamais de scan
+ * global : seule la page demandee est materialisee.
  */
 
 const categoryTables: Record<Section, Table<Category, string>> = {
@@ -184,10 +192,6 @@ export function replaceVodCatalog<R>(
   return replaceCatalogTx(categoryTables.vod, categories, db.xtream_vod_streams, rows, map);
 }
 
-export function getMoviesByCategory(categoryId: string): Promise<Movie[]> {
-  return db.xtream_vod_streams.where('categoryId').equals(categoryId).sortBy('name');
-}
-
 export function getMovieById(id: string): Promise<Movie | undefined> {
   return db.xtream_vod_streams.get(id);
 }
@@ -197,23 +201,9 @@ export async function getMoviesByIds(ids: string[]): Promise<Movie[]> {
   return rows.filter((m): m is Movie => m !== undefined);
 }
 
-/** Films recemment ajoutes (les entrees sans addedAt sont hors index, donc exclues). */
-export function getRecentMovies(limit: number): Promise<Movie[]> {
-  return db.xtream_vod_streams.orderBy('addedAt').reverse().limit(limit).toArray();
-}
-
-export function getTopRatedMovies(limit: number): Promise<Movie[]> {
-  return db.xtream_vod_streams.orderBy('rating').reverse().limit(limit).toArray();
-}
-
-export function getFrenchMovies(limit: number, order: 'recent' | 'rating' = 'recent'): Promise<Movie[]> {
-  const index = order === 'rating' ? '[isFrench+rating]' : '[isFrench+addedAt]';
-  return db.xtream_vod_streams
-    .where(index)
-    .between([1, Dexie.minKey], [1, Dexie.maxKey])
-    .reverse()
-    .limit(limit)
-    .toArray();
+/** Toutes les versions (VF/VOSTFR/4K…) d'un meme titre — selecteur de version. */
+export function getMoviesByGroupKey(groupKey: string): Promise<Movie[]> {
+  return db.xtream_vod_streams.where('groupKey').equals(groupKey).toArray();
 }
 
 // --- Series -------------------------------------------------------------------------
@@ -231,10 +221,6 @@ export function replaceSeriesCatalog<R>(
   return replaceCatalogTx(categoryTables.series, categories, db.xtream_series, rows, map);
 }
 
-export function getSeriesByCategory(categoryId: string): Promise<Series[]> {
-  return db.xtream_series.where('categoryId').equals(categoryId).sortBy('name');
-}
-
 export function getSeriesById(id: string): Promise<Series | undefined> {
   return db.xtream_series.get(id);
 }
@@ -244,23 +230,8 @@ export async function getSeriesByIds(ids: string[]): Promise<Series[]> {
   return rows.filter((s): s is Series => s !== undefined);
 }
 
-/** Series recemment modifiees (les entrees sans lastModifiedAt sont exclues). */
-export function getRecentSeries(limit: number): Promise<Series[]> {
-  return db.xtream_series.orderBy('lastModifiedAt').reverse().limit(limit).toArray();
-}
-
-export function getTopRatedSeries(limit: number): Promise<Series[]> {
-  return db.xtream_series.orderBy('rating').reverse().limit(limit).toArray();
-}
-
-export function getFrenchSeries(limit: number, order: 'recent' | 'rating' = 'recent'): Promise<Series[]> {
-  const index = order === 'rating' ? '[isFrench+rating]' : '[isFrench+lastModifiedAt]';
-  return db.xtream_series
-    .where(index)
-    .between([1, Dexie.minKey], [1, Dexie.maxKey])
-    .reverse()
-    .limit(limit)
-    .toArray();
+export function getSeriesByGroupKey(groupKey: string): Promise<Series[]> {
+  return db.xtream_series.where('groupKey').equals(groupKey).toArray();
 }
 
 export async function putSeriesDetails(details: SeriesDetails): Promise<void> {
@@ -381,112 +352,70 @@ export function countFrenchItems(section: Section): Promise<number> {
   return db.xtream_series.where('isFrench').equals(1).count();
 }
 
-// --- Pagination (gros catalogue : jamais de getAll global) --------------------------
-
-export type CatalogSort = 'recommended' | 'recent' | 'rating' | 'year' | 'title';
-
-function page<T>(collection: Collection<T, string>, offset: number, limit: number): Promise<T[]> {
-  return collection.offset(offset).limit(limit).toArray();
+/** Repartition des films/series par variante de langue (reglages / diagnostic). */
+export async function countByVariant(section: 'vod' | 'series'): Promise<Record<MediaVariant, number>> {
+  const table = section === 'vod' ? db.xtream_vod_streams : db.xtream_series;
+  const out: Record<MediaVariant, number> = { VF: 0, MULTI: 0, VOSTFR: 0, VO: 0, OTHER: 0 };
+  await Promise.all(
+    (Object.keys(out) as MediaVariant[]).map(async (v) => {
+      out[v] = await table.where('variant').equals(v).count();
+    }),
+  );
+  return out;
 }
 
-export function getMoviesPage(
-  categoryId: string,
-  offset: number,
-  limit: number,
-  sort: CatalogSort = 'recommended',
-): Promise<Movie[]> {
-  if (sort === 'title') {
-    return page(
-      db.xtream_vod_streams
-        .where('[categoryId+normalizedName]')
-        .between([categoryId, Dexie.minKey], [categoryId, Dexie.maxKey]),
-      offset,
-      limit,
-    );
-  }
-  if (sort === 'recent' || sort === 'rating' || sort === 'year') {
-    const field = sort === 'recent' ? 'addedAt' : sort;
-    return page(
-      db.xtream_vod_streams
-        .where(`[categoryId+${field}]`)
-        .between([categoryId, Dexie.minKey], [categoryId, Dexie.maxKey])
-        .reverse(),
-      offset,
-      limit,
-    );
-  }
-  return page(db.xtream_vod_streams.where('categoryId').equals(categoryId), offset, limit);
-}
+// --- Navigation A PLAT (chantiers 1-2 : tiers par langue, dedup, filtres TMDB) --------
 
-export function getSeriesPage(
-  categoryId: string,
-  offset: number,
-  limit: number,
-  sort: CatalogSort = 'recommended',
-): Promise<Series[]> {
-  if (sort === 'title') {
-    return page(
-      db.xtream_series
-        .where('[categoryId+normalizedName]')
-        .between([categoryId, Dexie.minKey], [categoryId, Dexie.maxKey]),
-      offset,
-      limit,
-    );
-  }
-  if (sort === 'recent' || sort === 'rating') {
-    const field = sort === 'recent' ? 'lastModifiedAt' : 'rating';
-    return page(
-      db.xtream_series
-        .where(`[categoryId+${field}]`)
-        .between([categoryId, Dexie.minKey], [categoryId, Dexie.maxKey])
-        .reverse(),
-      offset,
-      limit,
-    );
-  }
-  return page(db.xtream_series.where('categoryId').equals(categoryId), offset, limit);
-}
-
-export function countByCategory(section: Section, categoryId: string): Promise<number> {
-  if (section === 'live') return db.xtream_live_streams.where('categoryId').equals(categoryId).count();
-  if (section === 'vod') return db.xtream_vod_streams.where('categoryId').equals(categoryId).count();
-  return db.xtream_series.where('categoryId').equals(categoryId).count();
-}
-
-// --- Pagination A PLAT (refonte VOD, etape 2 : filtres TMDB, sans categorie) --------
-
-/** Tri global d'une collection a plat. `rating`/`year` s'appuient sur les metadonnees TMDB. */
+/** Tri global d'une collection a plat. `rating`/`year` = TMDB si enrichi, sinon fournisseur. */
 export type FlatSort = 'recent' | 'rating' | 'year' | 'title';
+
+/**
+ * Pill de langue : 'all' = une carte par titre (version representative,
+ * tiers dans l'ordre de preference) ; un couloir = une carte par titre
+ * disponible dans ce couloir (VF+MULTI / VOSTFR / VO).
+ */
+export type LaneFilter = 'all' | AudioLane;
 
 /**
  * Filtres frontend appliques sur TOUTE la collection, independamment des
  * categories fournisseur. Tous optionnels et cumulatifs (ET entre criteres) ; les
- * genres sont en OU (au moins un). La distinction FR de base est preservee via
- * `frenchOnly` (isFrench). Refonte VOD, etape 2.
+ * genres sont en OU (au moins un). Annee/note s'appuient sur `yearSort` /
+ * `ratingSort` (TMDB si enrichi, sinon fournisseur).
  */
 export interface CatalogFilter {
   /** Genres TMDB filtres. Vide/omis = pas de filtre genre. */
   genreIds?: number[];
   /** 'any' (OU, defaut) : au moins un genre ; 'all' (ET) : tous les genres. */
   genreMatch?: 'any' | 'all';
-  /** Annee TMDB minimale / maximale (inclusives). */
+  /** Annee minimale / maximale (inclusives). */
   minYear?: number;
   maxYear?: number;
-  /** Note TMDB minimale (/10). */
+  /** Note minimale (/10). */
   minRating?: number;
-  /** Restreint aux contenus FR (isFrench=1). */
-  frenchOnly?: boolean;
   /** Pseudo-filtre « Autres / Non classes » : items sans correspondance TMDB (tmdbState=2). */
   unclassifiedOnly?: boolean;
+}
+
+/** Curseur de pagination multi-tiers (opaque pour l'UI). */
+export interface PageCursor {
+  tier: number;
+  offset: number;
+}
+
+export const FIRST_PAGE: PageCursor = { tier: 0, offset: 0 };
+
+export interface CatalogPage<T> {
+  items: T[];
+  /** null = plus rien a charger. */
+  next: PageCursor | null;
 }
 
 /** Champs minimaux lus par le predicat de filtrage (films et series). */
 interface TmdbFilterable {
   categoryId: string;
-  isFrench: BoolNum;
   tmdbGenreIds: number[];
-  tmdbYear: number | null;
-  tmdbRating: number | null;
+  yearSort: number;
+  ratingSort: number;
   tmdbState: number;
 }
 
@@ -496,7 +425,6 @@ function isEmptyFilter(f: CatalogFilter): boolean {
     f.minYear === undefined &&
     f.maxYear === undefined &&
     f.minRating === undefined &&
-    f.frenchOnly !== true &&
     f.unclassifiedOnly !== true
   );
 }
@@ -504,12 +432,12 @@ function isEmptyFilter(f: CatalogFilter): boolean {
 function buildPredicate(
   filter: CatalogFilter,
   hidden?: ReadonlySet<string>,
-): (item: TmdbFilterable) => boolean {
+): ((item: TmdbFilterable) => boolean) | null {
+  if (isEmptyFilter(filter) && (hidden === undefined || hidden.size === 0)) return null;
   const genreIds = filter.genreIds ?? [];
   const genreAll = filter.genreMatch === 'all';
   return (item) => {
     if (hidden !== undefined && hidden.has(item.categoryId)) return false;
-    if (filter.frenchOnly === true && item.isFrench !== 1) return false;
     if (filter.unclassifiedOnly === true && item.tmdbState !== 2) return false;
     if (genreIds.length > 0) {
       const ok = genreAll
@@ -517,71 +445,191 @@ function buildPredicate(
         : genreIds.some((g) => item.tmdbGenreIds.includes(g));
       if (!ok) return false;
     }
-    if (filter.minYear !== undefined && (item.tmdbYear === null || item.tmdbYear < filter.minYear)) return false;
-    if (filter.maxYear !== undefined && (item.tmdbYear === null || item.tmdbYear > filter.maxYear)) return false;
-    if (filter.minRating !== undefined && (item.tmdbRating === null || item.tmdbRating < filter.minRating)) return false;
+    if (filter.minYear !== undefined && (item.yearSort === 0 || item.yearSort < filter.minYear)) return false;
+    if (filter.maxYear !== undefined && (item.yearSort === 0 || item.yearSort > filter.maxYear)) return false;
+    if (filter.minRating !== undefined && item.ratingSort < filter.minRating) return false;
     return true;
   };
 }
 
+type RecentField = 'addedAt' | 'lastModifiedAt';
+
+function sortField(sort: FlatSort, recent: RecentField): string {
+  if (sort === 'rating') return 'ratingSort';
+  if (sort === 'year') return 'yearSort';
+  if (sort === 'title') return 'titleKey'; // titre nettoye (+annee), pas le nom brut
+  return recent;
+}
+
 /**
- * Collection triee par index GLOBAL (jamais de tableau en RAM : Dexie parcourt
- * l'index et ne materialise que la page demandee). `rating`/`year` utilisent les
- * index TMDB -> les items non enrichis (cle nulle) en sont naturellement exclus.
+ * Collections d'index (« tiers ») a enchainer pour une vue. Chaque tier est
+ * une PLAGE d'index composee : Dexie parcourt l'index dans l'ordre et ne
+ * materialise que les lignes demandees. 'all' + tri non alphabetique =
+ * un tier par variante dans l'ordre de preference (VF d'abord, etc.).
  */
-function moviesSorted(sort: FlatSort): Collection<Movie, string> {
-  if (sort === 'title') return db.xtream_vod_streams.orderBy('normalizedName');
-  if (sort === 'rating') return db.xtream_vod_streams.orderBy('tmdbRating').reverse();
-  if (sort === 'year') return db.xtream_vod_streams.orderBy('tmdbYear').reverse();
-  return db.xtream_vod_streams.orderBy('addedAt').reverse();
+function tiersFor<T>(
+  table: Table<T, string>,
+  recent: RecentField,
+  lane: LaneFilter,
+  order: readonly MediaVariant[],
+  sort: FlatSort,
+): Collection<T, string>[] {
+  const field = sortField(sort, recent);
+  const reverse = sort !== 'title';
+  const range = (index: string, prefix: unknown[]): Collection<T, string> => {
+    const c = table.where(index).between([...prefix, Dexie.minKey], [...prefix, Dexie.maxKey], true, true);
+    return reverse ? c.reverse() : c;
+  };
+  if (lane === 'all') {
+    if (sort === 'title') return [range('[groupRank+titleKey]', [0])];
+    return order.map((variant) => range(`[groupRank+variant+${field}]`, [0, variant]));
+  }
+  return [range(`[laneRank+lane+${field}]`, [0, lane])];
 }
 
-function seriesSorted(sort: FlatSort): Collection<Series, string> {
-  if (sort === 'title') return db.xtream_series.orderBy('normalizedName');
-  if (sort === 'rating') return db.xtream_series.orderBy('tmdbRating').reverse();
-  if (sort === 'year') return db.xtream_series.orderBy('tmdbYear').reverse();
-  return db.xtream_series.orderBy('lastModifiedAt').reverse();
+/** Page a cheval sur plusieurs tiers (curseur = tier courant + offset dans ce tier). */
+async function pageTiers<T>(
+  tiers: Collection<T, string>[],
+  cursor: PageCursor,
+  limit: number,
+  predicate: ((item: T) => boolean) | null,
+): Promise<CatalogPage<T>> {
+  const items: T[] = [];
+  let tier = cursor.tier;
+  let offset = cursor.offset;
+  while (tier < tiers.length && items.length < limit) {
+    const need = limit - items.length;
+    const base = tiers[tier];
+    if (base === undefined) break;
+    const coll = predicate !== null ? base.filter(predicate) : base;
+    const rows = await coll.offset(offset).limit(need).toArray();
+    items.push(...rows);
+    if (rows.length < need) {
+      tier += 1;
+      offset = 0;
+    } else {
+      offset += rows.length;
+    }
+  }
+  return { items, next: tier < tiers.length ? { tier, offset } : null };
+}
+
+/** Rail borne : N par tier puis fusion par cle de tri decroissante (jamais de scan). */
+async function mergeTiers<T>(
+  tiers: Collection<T, string>[],
+  limit: number,
+  keyOf: (item: T) => number,
+  predicate: ((item: T) => boolean) | null,
+): Promise<T[]> {
+  const lists = await Promise.all(
+    tiers.map((base) => (predicate !== null ? base.filter(predicate) : base).limit(limit).toArray()),
+  );
+  return lists
+    .flat()
+    .sort((a, b) => keyOf(b) - keyOf(a))
+    .slice(0, limit);
 }
 
 /**
- * Page de films sur TOUTE la collection (« data flattening ») : tri par index
- * global + filtres TMDB en `.filter()` + pagination offset/limit. Aucune notion de
- * categorie fournisseur. Memoire bornee (seule la page est materialisee).
+ * Page de films sur TOUTE la collection (« data flattening ») : tiers d'index +
+ * filtres TMDB en `.filter()` + curseur. Une carte par titre. Memoire bornee.
  */
 export function getAllMoviesPage(
-  offset: number,
+  cursor: PageCursor,
   limit: number,
   sort: FlatSort = 'recent',
+  lane: LaneFilter = 'all',
+  order: readonly MediaVariant[] = DEFAULT_VARIANT_ORDER,
   filter: CatalogFilter = {},
   hidden?: ReadonlySet<string>,
-): Promise<Movie[]> {
-  return moviesSorted(sort).filter(buildPredicate(filter, hidden)).offset(offset).limit(limit).toArray();
+): Promise<CatalogPage<Movie>> {
+  return pageTiers(
+    tiersFor(db.xtream_vod_streams, 'addedAt', lane, order, sort),
+    cursor,
+    limit,
+    buildPredicate(filter, hidden),
+  );
 }
 
 /** Page de series sur toute la collection (voir getAllMoviesPage). */
 export function getAllSeriesPage(
-  offset: number,
+  cursor: PageCursor,
   limit: number,
   sort: FlatSort = 'recent',
+  lane: LaneFilter = 'all',
+  order: readonly MediaVariant[] = DEFAULT_VARIANT_ORDER,
   filter: CatalogFilter = {},
   hidden?: ReadonlySet<string>,
-): Promise<Series[]> {
-  return seriesSorted(sort).filter(buildPredicate(filter, hidden)).offset(offset).limit(limit).toArray();
+): Promise<CatalogPage<Series>> {
+  return pageTiers(
+    tiersFor(db.xtream_series, 'lastModifiedAt', lane, order, sort),
+    cursor,
+    limit,
+    buildPredicate(filter, hidden),
+  );
 }
 
 /**
- * Compte les films correspondant au filtre. Sans filtre ni blacklist -> compte
- * d'index (rapide). Avec filtre -> SCAN de table (lit les objets) : a utiliser
- * avec parcimonie (pas a chaque frappe/scroll).
+ * Compte les titres (dedoublonnes) d'une vue. Sans filtre ni blacklist ->
+ * compte d'index (rapide). Avec filtre -> parcours des lignes de la vue : a
+ * utiliser avec parcimonie (pas a chaque frappe/scroll).
  */
-export function countAllMovies(filter: CatalogFilter = {}, hidden?: ReadonlySet<string>): Promise<number> {
-  if (isEmptyFilter(filter) && hidden === undefined) return db.xtream_vod_streams.count();
-  return db.xtream_vod_streams.filter(buildPredicate(filter, hidden)).count();
+export async function countAllMovies(
+  lane: LaneFilter = 'all',
+  filter: CatalogFilter = {},
+  hidden?: ReadonlySet<string>,
+): Promise<number> {
+  const predicate = buildPredicate(filter, hidden);
+  const tiers = tiersFor(db.xtream_vod_streams, 'addedAt', lane, DEFAULT_VARIANT_ORDER, 'title');
+  const counts = await Promise.all(tiers.map((t) => (predicate !== null ? t.filter(predicate) : t).count()));
+  return counts.reduce((a, b) => a + b, 0);
 }
 
-export function countAllSeries(filter: CatalogFilter = {}, hidden?: ReadonlySet<string>): Promise<number> {
-  if (isEmptyFilter(filter) && hidden === undefined) return db.xtream_series.count();
-  return db.xtream_series.filter(buildPredicate(filter, hidden)).count();
+export async function countAllSeries(
+  lane: LaneFilter = 'all',
+  filter: CatalogFilter = {},
+  hidden?: ReadonlySet<string>,
+): Promise<number> {
+  const predicate = buildPredicate(filter, hidden);
+  const tiers = tiersFor(db.xtream_series, 'lastModifiedAt', lane, DEFAULT_VARIANT_ORDER, 'title');
+  const counts = await Promise.all(tiers.map((t) => (predicate !== null ? t.filter(predicate) : t).count()));
+  return counts.reduce((a, b) => a + b, 0);
+}
+
+// --- Rails bornes (accueil, classement) : une carte par titre, jamais de scan --------
+
+/** Films recemment ajoutes, toutes variantes dans l'ordre de preference, fusion par date. */
+export function getRecentMovies(limit: number, order: readonly MediaVariant[] = DEFAULT_VARIANT_ORDER): Promise<Movie[]> {
+  return mergeTiers(tiersFor(db.xtream_vod_streams, 'addedAt', 'all', order, 'recent'), limit, (m) => m.addedAt ?? 0, null);
+}
+
+/** Films les mieux notes (TMDB sinon fournisseur), une carte par titre. */
+export function getTopRatedMovies(limit: number, order: readonly MediaVariant[] = DEFAULT_VARIANT_ORDER): Promise<Movie[]> {
+  return mergeTiers(tiersFor(db.xtream_vod_streams, 'addedAt', 'all', order, 'rating'), limit, (m) => m.ratingSort, null);
+}
+
+/** Films en AUDIO FRANCAIS (VF/MULTI), meilleure version par titre. */
+export function getFrenchMovies(limit: number, sort: 'recent' | 'rating' = 'recent'): Promise<Movie[]> {
+  const [tier] = tiersFor(db.xtream_vod_streams, 'addedAt', 'fr', DEFAULT_VARIANT_ORDER, sort);
+  return tier === undefined ? Promise.resolve([]) : tier.limit(limit).toArray();
+}
+
+export function getRecentSeries(limit: number, order: readonly MediaVariant[] = DEFAULT_VARIANT_ORDER): Promise<Series[]> {
+  return mergeTiers(
+    tiersFor(db.xtream_series, 'lastModifiedAt', 'all', order, 'recent'),
+    limit,
+    (s) => s.lastModifiedAt ?? 0,
+    null,
+  );
+}
+
+export function getTopRatedSeries(limit: number, order: readonly MediaVariant[] = DEFAULT_VARIANT_ORDER): Promise<Series[]> {
+  return mergeTiers(tiersFor(db.xtream_series, 'lastModifiedAt', 'all', order, 'rating'), limit, (s) => s.ratingSort, null);
+}
+
+export function getFrenchSeries(limit: number, sort: 'recent' | 'rating' = 'recent'): Promise<Series[]> {
+  const [tier] = tiersFor(db.xtream_series, 'lastModifiedAt', 'fr', DEFAULT_VARIANT_ORDER, sort);
+  return tier === undefined ? Promise.resolve([]) : tier.limit(limit).toArray();
 }
 
 // --- Recherche (index multiEntry searchTokens, schema v2) ---------------------------
@@ -593,6 +641,10 @@ interface Searchable {
   categoryId: string;
   isFrench: BoolNum;
   searchTokens: string[];
+  /** Films/series : dedoublonnage par titre et priorite de langue. */
+  groupKey?: string;
+  groupRank?: number;
+  variant?: MediaVariant;
 }
 
 /**
@@ -603,6 +655,9 @@ interface Searchable {
  * `hiddenCategoryIds` : categories blacklistees exclues DANS le `.filter()`,
  * donc AVANT `.limit()` — sinon une grosse categorie masquee raflerait les N
  * premiers resultats et ferait disparaitre des correspondances legitimes.
+ *
+ * Films/series : les VERSIONS d'un meme titre sont dedoublonnees (une seule
+ * carte, la version representative puis la variante preferee en tete).
  */
 async function searchIn<T extends Searchable>(
   table: Table<T, string>,
@@ -610,6 +665,7 @@ async function searchIn<T extends Searchable>(
   limit: number,
   hiddenCategoryIds?: ReadonlySet<string>,
   extra?: (item: T) => boolean,
+  order: readonly MediaVariant[] = DEFAULT_VARIANT_ORDER,
 ): Promise<T[]> {
   const tokens = tokenizeQuery(query);
   const primary = tokens.reduce<string | null>(
@@ -630,16 +686,30 @@ async function searchIn<T extends Searchable>(
         rest.every((t) => item.searchTokens.some((tok) => tok.startsWith(t))) &&
         (extra === undefined || extra(item)),
     )
-    .limit(limit)
+    .limit(limit * 3)
     .toArray();
 
   const nq = normalizeText(query);
-  return rows.sort(
+  rows.sort(
     (a, b) =>
       Number(b.normalizedName.startsWith(nq)) - Number(a.normalizedName.startsWith(nq)) ||
+      (a.groupRank ?? 0) - (b.groupRank ?? 0) ||
+      (a.variant !== undefined && b.variant !== undefined ? variantRank(a.variant, order) - variantRank(b.variant, order) : 0) ||
       b.isFrench - a.isFrench ||
       a.name.localeCompare(b.name, 'fr'),
   );
+
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const row of rows) {
+    if (row.groupKey !== undefined) {
+      if (seen.has(row.groupKey)) continue;
+      seen.add(row.groupKey);
+    }
+    out.push(row);
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 export function searchLiveChannels(
@@ -654,43 +724,137 @@ export function searchMovies(
   query: string,
   limit = 60,
   hiddenCategoryIds?: ReadonlySet<string>,
+  order: readonly MediaVariant[] = DEFAULT_VARIANT_ORDER,
 ): Promise<Movie[]> {
-  return searchIn(db.xtream_vod_streams, query, limit, hiddenCategoryIds);
+  return searchIn(db.xtream_vod_streams, query, limit, hiddenCategoryIds, undefined, order);
 }
 
 export function searchSeries(
   query: string,
   limit = 60,
   hiddenCategoryIds?: ReadonlySet<string>,
+  order: readonly MediaVariant[] = DEFAULT_VARIANT_ORDER,
 ): Promise<Series[]> {
-  return searchIn(db.xtream_series, query, limit, hiddenCategoryIds);
+  return searchIn(db.xtream_series, query, limit, hiddenCategoryIds, undefined, order);
+}
+
+function laneAnd<T extends TmdbFilterable & { lane: AudioLane }>(
+  lane: LaneFilter,
+  predicate: ((item: T) => boolean) | null,
+): ((item: T) => boolean) | undefined {
+  if (lane === 'all') return predicate ?? undefined;
+  return (item) => item.lane === lane && (predicate === null || predicate(item));
 }
 
 /**
- * Recherche films CROISEE avec les filtres TMDB (genre/annee/note/FR/orphelins).
- * Le texte passe par l'index searchTokens ; le filtre TMDB s'applique dans le
- * meme `.filter()` (avant `.limit()`). Le tri de pertinence de searchIn prime ;
- * le tri par metadonnee (rating/year) reste l'affaire de getAll*Page (navigation).
+ * Recherche films CROISEE avec la pill de langue et les filtres TMDB. Le texte
+ * passe par l'index searchTokens ; couloir + filtre s'appliquent dans le meme
+ * `.filter()` (avant `.limit()`). Le tri de pertinence de searchIn prime.
  */
 export function searchMoviesFiltered(
   query: string,
+  lane: LaneFilter = 'all',
+  order: readonly MediaVariant[] = DEFAULT_VARIANT_ORDER,
   filter: CatalogFilter = {},
   limit = 60,
   hiddenCategoryIds?: ReadonlySet<string>,
 ): Promise<Movie[]> {
-  return searchIn(db.xtream_vod_streams, query, limit, hiddenCategoryIds, buildPredicate(filter));
+  return searchIn(db.xtream_vod_streams, query, limit, hiddenCategoryIds, laneAnd(lane, buildPredicate(filter)), order);
 }
 
 export function searchSeriesFiltered(
   query: string,
+  lane: LaneFilter = 'all',
+  order: readonly MediaVariant[] = DEFAULT_VARIANT_ORDER,
   filter: CatalogFilter = {},
   limit = 60,
   hiddenCategoryIds?: ReadonlySet<string>,
 ): Promise<Series[]> {
-  return searchIn(db.xtream_series, query, limit, hiddenCategoryIds, buildPredicate(filter));
+  return searchIn(db.xtream_series, query, limit, hiddenCategoryIds, laneAnd(lane, buildPredicate(filter)), order);
 }
 
-// --- Enrichissement TMDB (refonte VOD, etape 1) --------------------------------
+// --- Regroupement des versions (chantier 2) --------------------------------------
+
+/** Projection minimale d'une ligne pour le calcul des rangs (memoire legere). */
+export interface GroupRow {
+  id: string;
+  groupKey: string;
+  variant: MediaVariant;
+  lane: AudioLane;
+  qualityScore: number;
+  container: string | null;
+  groupRank: number;
+  laneRank: number;
+}
+
+export interface RankUpdate {
+  key: string;
+  changes: { groupRank: number; laneRank: number };
+}
+
+function projectMovie(m: Movie): GroupRow {
+  return {
+    id: m.id,
+    groupKey: m.groupKey,
+    variant: m.variant,
+    lane: m.lane,
+    qualityScore: m.qualityScore,
+    container: m.containerExtension,
+    groupRank: m.groupRank,
+    laneRank: m.laneRank,
+  };
+}
+
+function projectSeries(s: Series): GroupRow {
+  return {
+    id: s.id,
+    groupKey: s.groupKey,
+    variant: s.variant,
+    lane: s.lane,
+    qualityScore: s.qualityScore,
+    container: null,
+    groupRank: s.groupRank,
+    laneRank: s.laneRank,
+  };
+}
+
+/** Parcours curseur de TOUS les films, projection minimale (jamais le tableau complet). */
+export async function scanMovieGroupRows(onRow: (row: GroupRow) => void): Promise<void> {
+  await db.xtream_vod_streams.each((m) => onRow(projectMovie(m)));
+}
+
+export async function scanSeriesGroupRows(onRow: (row: GroupRow) => void): Promise<void> {
+  await db.xtream_series.each((s) => onRow(projectSeries(s)));
+}
+
+export async function getMovieGroupRows(groupKey: string): Promise<GroupRow[]> {
+  return (await getMoviesByGroupKey(groupKey)).map(projectMovie);
+}
+
+export async function getSeriesGroupRows(groupKey: string): Promise<GroupRow[]> {
+  return (await getSeriesByGroupKey(groupKey)).map(projectSeries);
+}
+
+const RANK_CHUNK = 1000;
+
+/** Ecriture par lots des rangs (seules les lignes qui changent sont transmises). */
+async function inChunks(updates: readonly RankUpdate[], write: (chunk: RankUpdate[]) => Promise<unknown>): Promise<void> {
+  for (let i = 0; i < updates.length; i += RANK_CHUNK) await write(updates.slice(i, i + RANK_CHUNK));
+}
+
+export function bulkUpdateMovieRanks(updates: readonly RankUpdate[]): Promise<void> {
+  return inChunks(updates, (chunk) =>
+    db.xtream_vod_streams.bulkUpdate(chunk.map((u) => ({ key: u.key, changes: u.changes as UpdateSpec<Movie> }))),
+  );
+}
+
+export function bulkUpdateSeriesRanks(updates: readonly RankUpdate[]): Promise<void> {
+  return inChunks(updates, (chunk) =>
+    db.xtream_series.bulkUpdate(chunk.map((u) => ({ key: u.key, changes: u.changes as UpdateSpec<Series> }))),
+  );
+}
+
+// --- Enrichissement TMDB (refonte VOD, etape 1 ; file priorisee chantier 3) ----
 
 /**
  * Patch ecrit sur une ligne film/serie a l'issue de l'enrichissement TMDB.
@@ -705,14 +869,29 @@ export interface TmdbEnrichPatch {
   tmdbState: TmdbEnrichState;
 }
 
-/** Prochain lot de films en attente d'enrichissement (tmdbState = 0). */
-export function getMoviesNeedingTmdb(limit: number): Promise<Movie[]> {
-  return db.xtream_vod_streams.where('tmdbState').equals(0).limit(limit).toArray();
+/** Cles de groupe avant/apres enrichissement (re-classement incremental). */
+export interface TmdbEnrichOutcome {
+  previousGroupKey: string;
+  groupKey: string;
 }
 
-/** Prochain lot de series en attente d'enrichissement (tmdbState = 0). */
-export function getSeriesNeedingTmdb(limit: number): Promise<Series[]> {
-  return db.xtream_series.where('tmdbState').equals(0).limit(limit).toArray();
+function pendingTiers<T>(table: Table<T, string>, recent: RecentField, order: readonly MediaVariant[]): Collection<T, string>[] {
+  return order.map((variant) =>
+    table
+      .where(`[tmdbState+variant+${recent}]`)
+      .between([0, variant, Dexie.minKey], [0, variant, Dexie.maxKey], true, true)
+      .reverse(),
+  );
+}
+
+/** Prochain lot de films en attente d'enrichissement : variante preferee puis plus recents d'abord. */
+export async function getMoviesNeedingTmdb(limit: number, order: readonly MediaVariant[] = DEFAULT_VARIANT_ORDER): Promise<Movie[]> {
+  return (await pageTiers(pendingTiers(db.xtream_vod_streams, 'addedAt', order), FIRST_PAGE, limit, null)).items;
+}
+
+/** Prochain lot de series en attente d'enrichissement (meme priorite). */
+export async function getSeriesNeedingTmdb(limit: number, order: readonly MediaVariant[] = DEFAULT_VARIANT_ORDER): Promise<Series[]> {
+  return (await pageTiers(pendingTiers(db.xtream_series, 'lastModifiedAt', order), FIRST_PAGE, limit, null)).items;
 }
 
 export function countMoviesNeedingTmdb(): Promise<number> {
@@ -723,12 +902,38 @@ export function countSeriesNeedingTmdb(): Promise<number> {
   return db.xtream_series.where('tmdbState').equals(0).count();
 }
 
-/** Write-back TMDB sur un film (mise a jour indexee, ne touche pas les autres champs). */
-export async function updateMovieTmdb(id: string, patch: TmdbEnrichPatch): Promise<void> {
-  await db.xtream_vod_streams.update(id, patch as UpdateSpec<Movie>);
+/**
+ * Write-back TMDB sur un film : met aussi a jour les champs DERIVES
+ * (`groupKey` par id TMDB, `ratingSort`, `yearSort`). Renvoie les cles de groupe
+ * avant/apres pour le re-classement incremental, null si la ligne a disparu.
+ */
+export async function updateMovieTmdb(id: string, patch: TmdbEnrichPatch): Promise<TmdbEnrichOutcome | null> {
+  const row = await db.xtream_vod_streams.get(id);
+  if (row === undefined) return null;
+  const tmdbId = patch.tmdbId === undefined ? row.tmdbId : patch.tmdbId;
+  const groupKey = tmdbId !== null ? tmdbGroupKey(tmdbId) : row.titleKey;
+  const changes: UpdateSpec<Movie> = {
+    ...patch,
+    groupKey,
+    ratingSort: patch.tmdbRating ?? row.rating ?? 0,
+    yearSort: patch.tmdbYear ?? row.year ?? 0,
+  };
+  await db.xtream_vod_streams.update(id, changes);
+  return { previousGroupKey: row.groupKey, groupKey };
 }
 
-/** Write-back TMDB sur une serie. */
-export async function updateSeriesTmdb(id: string, patch: TmdbEnrichPatch): Promise<void> {
-  await db.xtream_series.update(id, patch as UpdateSpec<Series>);
+/** Write-back TMDB sur une serie (voir updateMovieTmdb). */
+export async function updateSeriesTmdb(id: string, patch: TmdbEnrichPatch): Promise<TmdbEnrichOutcome | null> {
+  const row = await db.xtream_series.get(id);
+  if (row === undefined) return null;
+  const tmdbId = patch.tmdbId === undefined ? row.tmdbId : patch.tmdbId;
+  const groupKey = tmdbId !== null ? tmdbGroupKey(tmdbId) : row.titleKey;
+  const changes: UpdateSpec<Series> = {
+    ...patch,
+    groupKey,
+    ratingSort: patch.tmdbRating ?? row.rating ?? 0,
+    yearSort: patch.tmdbYear ?? row.year ?? 0,
+  };
+  await db.xtream_series.update(id, changes);
+  return { previousGroupKey: row.groupKey, groupKey };
 }

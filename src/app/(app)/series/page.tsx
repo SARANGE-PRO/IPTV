@@ -3,25 +3,33 @@
 import { CatalogHero } from '@/components/media/CatalogHero';
 import { MediaBrowser } from '@/components/shared/MediaBrowser';
 import * as catalogRepository from '@/services/data/catalogService';
-import type { CatalogFilter, FlatSort } from '@/services/data/catalogService';
+import type { CatalogFilter, FlatSort, LaneFilter, PageCursor } from '@/services/data/catalogService';
 import { enrichVisibleSeries } from '@/services/tmdb/tmdbEnrichmentService';
+import type { MediaVariant } from '@/types/mediaLanguage';
 import type { Series } from '@/types/models';
-import { displayYear } from '@/utils/displayTitle';
 import { seriesHref } from '@/utils/appRoutes';
 
 const fetchFlatPage = (
-  offset: number,
+  cursor: PageCursor,
   limit: number,
   sort: FlatSort,
+  lane: LaneFilter,
+  order: readonly MediaVariant[],
   filter: CatalogFilter,
   hidden?: ReadonlySet<string>,
-) => catalogRepository.getAllSeriesPage(offset, limit, sort, filter, hidden);
+) => catalogRepository.getAllSeriesPage(cursor, limit, sort, lane, order, filter, hidden);
 
-const searchFiltered = (query: string, filter: CatalogFilter, limit: number, hidden?: ReadonlySet<string>) =>
-  catalogRepository.searchSeriesFiltered(query, filter, limit, hidden);
+const searchFiltered = (
+  query: string,
+  lane: LaneFilter,
+  order: readonly MediaVariant[],
+  filter: CatalogFilter,
+  limit: number,
+  hidden?: ReadonlySet<string>,
+) => catalogRepository.searchSeriesFiltered(query, lane, order, filter, limit, hidden);
 
-const countItems = (filter: CatalogFilter, hidden?: ReadonlySet<string>) =>
-  catalogRepository.countAllSeries(filter, hidden);
+const countItems = (lane: LaneFilter, filter: CatalogFilter, hidden?: ReadonlySet<string>) =>
+  catalogRepository.countAllSeries(lane, filter, hidden);
 
 const enrichVisible = (items: Series[]) => {
   void enrichVisibleSeries(items);
@@ -29,8 +37,7 @@ const enrichVisible = (items: Series[]) => {
 
 const hrefFor = (s: Series) => seriesHref(s.id);
 const subtitleFor = (s: Series) => {
-  const fallback = s.releaseDate != null ? Number.parseInt(s.releaseDate.slice(0, 4), 10) : null;
-  const year = displayYear(s.name, s.tmdbYear ?? (Number.isFinite(fallback) ? fallback : null));
+  const year = s.tmdbYear ?? s.year;
   return year !== null ? String(year) : null;
 };
 

@@ -3,25 +3,34 @@
 import { CatalogHero } from '@/components/media/CatalogHero';
 import { MediaBrowser } from '@/components/shared/MediaBrowser';
 import * as catalogRepository from '@/services/data/catalogService';
-import type { CatalogFilter, FlatSort } from '@/services/data/catalogService';
+import type { CatalogFilter, FlatSort, LaneFilter, PageCursor } from '@/services/data/catalogService';
 import { enrichVisibleMovies } from '@/services/tmdb/tmdbEnrichmentService';
+import type { MediaVariant } from '@/types/mediaLanguage';
 import type { Movie } from '@/types/models';
 import { displayYear } from '@/utils/displayTitle';
 import { movieHref } from '@/utils/appRoutes';
 
 const fetchFlatPage = (
-  offset: number,
+  cursor: PageCursor,
   limit: number,
   sort: FlatSort,
+  lane: LaneFilter,
+  order: readonly MediaVariant[],
   filter: CatalogFilter,
   hidden?: ReadonlySet<string>,
-) => catalogRepository.getAllMoviesPage(offset, limit, sort, filter, hidden);
+) => catalogRepository.getAllMoviesPage(cursor, limit, sort, lane, order, filter, hidden);
 
-const searchFiltered = (query: string, filter: CatalogFilter, limit: number, hidden?: ReadonlySet<string>) =>
-  catalogRepository.searchMoviesFiltered(query, filter, limit, hidden);
+const searchFiltered = (
+  query: string,
+  lane: LaneFilter,
+  order: readonly MediaVariant[],
+  filter: CatalogFilter,
+  limit: number,
+  hidden?: ReadonlySet<string>,
+) => catalogRepository.searchMoviesFiltered(query, lane, order, filter, limit, hidden);
 
-const countItems = (filter: CatalogFilter, hidden?: ReadonlySet<string>) =>
-  catalogRepository.countAllMovies(filter, hidden);
+const countItems = (lane: LaneFilter, filter: CatalogFilter, hidden?: ReadonlySet<string>) =>
+  catalogRepository.countAllMovies(lane, filter, hidden);
 
 const enrichVisible = (items: Movie[]) => {
   void enrichVisibleMovies(items);

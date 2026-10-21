@@ -5,10 +5,11 @@ import { useEffect, useState } from 'react';
 import { PosterImage } from '@/components/shared/PosterImage';
 import { Button } from '@/components/ui/Button';
 import { IconPlay } from '@/components/ui/icons';
-import { detectFrenchVariant } from '@/services/media/languageDetectionService';
 import { getMovieTop10, getSeriesTop10 } from '@/services/ranking/smartRankingService';
 import type { Section } from '@/types/models';
+import { movieHref, seriesHref } from '@/utils/appRoutes';
 import { displayTitle, displayYear } from '@/utils/displayTitle';
+import { variantBadge } from '@/utils/variantPreference';
 
 /**
  * Hero editorial (facon Netflix) en tete de catalogue : met en avant un contenu
@@ -44,12 +45,12 @@ export function CatalogHero({ section }: { section: Extract<Section, 'vod' | 'se
                 subtitle:
                   [
                     displayYear(m.name, m.year)?.toString() ?? null,
-                    m.rating !== null ? `★ ${m.rating.toFixed(1)}` : null,
+                    m.ratingSort > 0 ? `★ ${m.ratingSort.toFixed(1)}` : null,
                   ]
                     .filter((v): v is string => v !== null)
                     .join(' · ') || null,
                 image: m.posterUrl,
-                tag: detectFrenchVariant(m.name),
+                tag: variantBadge(m.variant, m.variantSource),
               }))
           : (await getSeriesTop10(8))
               .filter((s) => s.backdropUrl !== null || s.posterUrl !== null)
@@ -58,13 +59,13 @@ export function CatalogHero({ section }: { section: Extract<Section, 'vod' | 'se
                 title: displayTitle(s.name),
                 subtitle:
                   [
-                    s.releaseDate?.slice(0, 4) ?? null,
-                    s.rating !== null ? `★ ${s.rating.toFixed(1)}` : null,
+                    s.year !== null ? String(s.year) : null,
+                    s.ratingSort > 0 ? `★ ${s.ratingSort.toFixed(1)}` : null,
                   ]
                     .filter((v): v is string => v !== null)
                     .join(' · ') || null,
                 image: s.backdropUrl ?? s.posterUrl,
-                tag: detectFrenchVariant(s.name),
+                tag: variantBadge(s.variant, s.variantSource),
               }));
       if (active) {
         setItems(heroes.slice(0, 5));
@@ -85,7 +86,8 @@ export function CatalogHero({ section }: { section: Extract<Section, 'vod' | 'se
 
   const item = items[index] ?? null;
   if (item === null) return null;
-  const href = `/${section === 'vod' ? 'movies' : 'series'}/${item.id}`;
+  // Lien RELATIF (?vod= / ?series=) : modal par-dessus la page, export statique OK.
+  const href = section === 'vod' ? movieHref(item.id) : seriesHref(item.id);
 
   return (
     <section className="relative mt-4 h-44 overflow-hidden rounded-2xl bg-ink-800 sm:h-56 md:h-64">

@@ -1,42 +1,50 @@
 import { CACHE_TTL } from '@/config/constants';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
-import type { TmdbEnrichPatch } from '@/db/repositories/catalogRepository';
+import type { TmdbEnrichOutcome, TmdbEnrichPatch } from '@/db/repositories/catalogRepository';
 import * as tmdbRepository from '@/db/repositories/tmdbRepository';
+import { loadPreferredLanguage, rerankGroups } from '@/services/catalog/catalogGroupingService';
+import type { MediaVariant } from '@/types/mediaLanguage';
 import type { Movie, Series, TmdbMetadata } from '@/types/models';
-import { enrichByTmdbId, enrichMovie, enrichSeries, tmdbCacheKey } from './tmdbMatcher';
+import { variantOrder } from '@/utils/variantPreference';
+import { enrichByTmdbId, enrichMovieLite, enrichSeriesLite, tmdbCacheKey } from './tmdbMatcher';
 
 /**
- * MOTEUR d'enrichissement TMDB du catalogue (refonte VOD, etape 1).
+ * MOTEUR d'enrichissement TMDB du catalogue (refonte VOD, etape 1 ; fiabilise
+ * au chantier 3).
  *
  * Deux modes, meme brique unitaire :
  *  - « a la demande » : `enrichVisibleMovies/Series` enrichit ce que la
- *    pagination vient d'afficher (branche a l'UI en etape 2) ;
- *  - « backfill silencieux » : `runCatalogBackfill` traite le reste du catalogue
- *    par lots, en menageant le quota du proxy (60 req/min/IP).
+ *    pagination vient d'afficher ;
+ *  - « backfill silencieux » : `runCatalogBackfill` traite le reste du
+ *    catalogue par lots, lance par catalogStore AU DEMARRAGE et apres sync.
  *
- * Strategie de matching (decision produit) : `tmdbId` fourni par le panel EN
- * PRIORITE ABSOLUE (1 requete, fiable) ; fallback titre nettoye + annee sinon.
- * Un item sans correspondance passe en `tmdbState = 2` (orphelin « Autres »),
- * jamais perdu. Idempotent et REPRENABLE : l'etat vit sur la ligne Dexie, donc
- * un rechargement d'app poursuit la ou on s'etait arrete.
+ * Chantier 3 :
+ *  - FILE PRIORISEE : variante preferee d'abord (VF, puis MULTI…), plus recents
+ *    en tete — le contenu qu'on regarde vraiment est enrichi en premier ;
+ *  - ENRICHISSEMENT ALLEGE : sans id TMDB du panel, UNE requete de recherche
+ *    suffit (genres, annee, note, affiche) ; la fiche detail complete casting
+ *    et duree a l'ouverture (cache `partial`). Avec id du panel : 1 requete
+ *    detail, complete ;
+ *  - RE-CLASSEMENT : une ligne qui recoit son id TMDB rejoint le groupe de ses
+ *    versions soeurs (cle `t:<id>`) -> rangs recalcules pour l'ancien et le
+ *    nouveau groupe, en incremental.
  *
- * Best-effort : ne jette jamais vers l'appelant. En cas d'echec reseau, la ligne
- * reste en `tmdbState = 0` et sera retentee au prochain passage.
+ * Idempotent et REPRENABLE : l'etat vit sur la ligne Dexie. Best-effort : ne
+ * jette jamais vers l'appelant ; en cas d'echec reseau la ligne reste en
+ * `tmdbState = 0` et sera retentee au prochain passage.
  */
 
-// Le DEBIT est desormais garanti par le limiteur de tmdbClient (>= 1,15 s entre
-// appels proxy, ~52 req/min < 60). Ici on ne gere plus le rythme fin : lots de
-// 12, concurrence 4 pour masquer la latence reseau dans le creneau, petite pause
-// entre les tours. Un 429 residuel est deja absorbe (backoff) cote client.
-const BACKFILL_BATCH = 12;
+// Le DEBIT est garanti par le limiteur de tmdbClient (intervalle minimal entre
+// appels proxy, toute concurrence confondue). Ici : lots de 24, concurrence 4
+// pour masquer la latence reseau, courte pause entre les tours.
+const BACKFILL_BATCH = 24;
 const CONCURRENCY = 4;
-const BATCH_PAUSE_MS = 500;
+const BATCH_PAUSE_MS = 250;
 /**
  * Tours consecutifs SANS progression avant d'abandonner. Genereux : une accalmie
  * (429 en backoff, TMDB lent) fait PATIENTER (backoff exponentiel ci-dessous) et
  * REPREND les memes lignes au tour suivant — on n'abandonne un item que si TMDB
- * reste injoignable sur toute la fenetre. Les lignes restent en tmdbState=0 et
- * seront reprises au prochain lancement du backfill.
+ * reste injoignable sur toute la fenetre.
  */
 const MAX_STALL = 6;
 /** Plafond du backoff quand ca stagne (ms). */
@@ -52,6 +60,8 @@ interface ResolveResult {
   meta: TmdbMetadata | null;
   /** false si servi depuis le cache TMDB (aucune requete reseau consommee). */
   fromNetwork: boolean;
+  /** true si `meta` vient de la seule recherche (sans casting/duree). */
+  partial: boolean;
 }
 
 function yearOf(releaseDate: string | null): number | null {
@@ -79,6 +89,7 @@ async function mirrorToDetailCache(
   type: 'movie' | 'tv',
   rawName: string,
   meta: TmdbMetadata | null,
+  partial: boolean,
 ): Promise<void> {
   await tmdbRepository.putTmdbEntry({
     key: tmdbCacheKey(type, rawName),
@@ -86,6 +97,7 @@ async function mirrorToDetailCache(
     status: meta !== null ? 'found' : 'notfound',
     data: meta,
     fetchedAt: Date.now(),
+    partial: meta !== null && partial,
   });
 }
 
@@ -102,70 +114,87 @@ async function resolveMeta(
   const cached = await tmdbRepository.getTmdbEntry(key);
   if (cached !== undefined) {
     const age = Date.now() - cached.fetchedAt;
-    if (cached.status === 'found' && age < CACHE_TTL.tmdb) return { meta: cached.data, fromNetwork: false };
-    if (cached.status === 'notfound' && age < NEGATIVE_RETRY_MS) return { meta: null, fromNetwork: false };
+    if (cached.status === 'found' && age < CACHE_TTL.tmdb) {
+      return { meta: cached.data, fromNetwork: false, partial: cached.partial === true };
+    }
+    if (cached.status === 'notfound' && age < NEGATIVE_RETRY_MS) return { meta: null, fromNetwork: false, partial: false };
   }
-  // 1) tmdbId du panel = priorite absolue (fiable, 1 seule requete).
-  let meta: TmdbMetadata | null = null;
-  if (tmdbId !== null) meta = await enrichByTmdbId(type, tmdbId);
-  // 2) fallback : matching titre propre + annee.
-  if (meta === null) meta = type === 'movie' ? await enrichMovie(name, year) : await enrichSeries(name, year);
-  return { meta, fromNetwork: true };
+  // 1) tmdbId du panel = priorite absolue (fiable, 1 seule requete detail, complete).
+  if (tmdbId !== null) {
+    const meta = await enrichByTmdbId(type, tmdbId);
+    if (meta !== null) return { meta, fromNetwork: true, partial: false };
+  }
+  // 2) fallback ALLEGE : recherche titre propre + annee, sans requete detail.
+  const meta = type === 'movie' ? await enrichMovieLite(name, year) : await enrichSeriesLite(name, year);
+  return { meta, fromNetwork: true, partial: true };
 }
 
-/** Enrichit un film. Renvoie true si l'etat a progresse (0 -> 1|2), false si echec. */
-async function enrichMovieRowInternal(movie: Movie, force = false): Promise<boolean> {
-  if (!force && movie.tmdbState !== 0) return false;
+/** Resultat unitaire : a progresse ? + cles de groupe a re-classer (si changement). */
+interface RowResult {
+  ok: boolean;
+  outcome: TmdbEnrichOutcome | null;
+}
+
+const NO_PROGRESS: RowResult = { ok: false, outcome: null };
+
+/** Enrichit un film. `ok` = l'etat a progresse (0 -> 1|2). */
+async function enrichMovieRowInternal(movie: Movie, force = false): Promise<RowResult> {
+  if (!force && movie.tmdbState !== 0) return NO_PROGRESS;
   const lock = `movie:${movie.id}`;
-  if (inFlight.has(lock)) return false;
+  if (inFlight.has(lock)) return NO_PROGRESS;
   inFlight.add(lock);
   try {
-    const { meta, fromNetwork } = await resolveMeta('movie', movie.tmdbId, movie.name, movie.year);
-    await catalogRepository.updateMovieTmdb(movie.id, toPatch(meta, movie.tmdbId));
-    if (fromNetwork) await mirrorToDetailCache('movie', movie.name, meta);
-    return true;
+    const { meta, fromNetwork, partial } = await resolveMeta('movie', movie.tmdbId, movie.name, movie.year);
+    const outcome = await catalogRepository.updateMovieTmdb(movie.id, toPatch(meta, movie.tmdbId));
+    if (fromNetwork) await mirrorToDetailCache('movie', movie.name, meta, partial);
+    return { ok: true, outcome };
   } catch {
-    return false; // reste en attente (tmdbState = 0), retente plus tard
+    return NO_PROGRESS; // reste en attente (tmdbState = 0), retente plus tard
   } finally {
     inFlight.delete(lock);
   }
 }
 
-/** Enrichit une serie. Renvoie true si l'etat a progresse. */
-async function enrichSeriesRowInternal(series: Series, force = false): Promise<boolean> {
-  if (!force && series.tmdbState !== 0) return false;
+/** Enrichit une serie. */
+async function enrichSeriesRowInternal(series: Series, force = false): Promise<RowResult> {
+  if (!force && series.tmdbState !== 0) return NO_PROGRESS;
   const lock = `series:${series.id}`;
-  if (inFlight.has(lock)) return false;
+  if (inFlight.has(lock)) return NO_PROGRESS;
   inFlight.add(lock);
   try {
-    const { meta, fromNetwork } = await resolveMeta('tv', series.tmdbId, series.name, yearOf(series.releaseDate));
-    await catalogRepository.updateSeriesTmdb(series.id, toPatch(meta, series.tmdbId));
-    if (fromNetwork) await mirrorToDetailCache('tv', series.name, meta);
-    return true;
+    const { meta, fromNetwork, partial } = await resolveMeta('tv', series.tmdbId, series.name, series.year);
+    const outcome = await catalogRepository.updateSeriesTmdb(series.id, toPatch(meta, series.tmdbId));
+    if (fromNetwork) await mirrorToDetailCache('tv', series.name, meta, partial);
+    return { ok: true, outcome };
   } catch {
-    return false;
+    return NO_PROGRESS;
   } finally {
     inFlight.delete(lock);
   }
 }
 
-/** Pool a concurrence bornee. Renvoie le nombre de succes. */
+/** Pool a concurrence bornee. Renvoie le nombre de succes et les cles a re-classer. */
 async function runPool<T>(
   items: T[],
-  worker: (item: T) => Promise<boolean>,
+  worker: (item: T) => Promise<RowResult>,
   signal?: AbortSignal,
-): Promise<number> {
+): Promise<{ ok: number; keys: string[] }> {
   let index = 0;
   let ok = 0;
+  const keys: string[] = [];
   const runners = Array.from({ length: Math.min(CONCURRENCY, items.length) }, async () => {
     while (index < items.length) {
       if (signal?.aborted) return;
       const item = items[index++];
-      if (item !== undefined && (await worker(item))) ok += 1;
+      if (item === undefined) continue;
+      const result = await worker(item);
+      if (result.ok) ok += 1;
+      const o = result.outcome;
+      if (o !== null && o.groupKey !== o.previousGroupKey) keys.push(o.previousGroupKey, o.groupKey);
     }
   });
   await Promise.all(runners);
-  return ok;
+  return { ok, keys };
 }
 
 function sleep(ms: number, signal: AbortSignal): Promise<void> {
@@ -182,18 +211,32 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
-// --- API « a la demande » (branchee a la pagination en etape 2) ----------------
+/** Re-classement incremental best-effort des groupes touches. */
+async function rerank(section: 'vod' | 'series', keys: string[]): Promise<void> {
+  if (keys.length === 0) return;
+  try {
+    await rerankGroups(section, keys);
+  } catch {
+    // Les rangs precedents restent valides ; la prochaine passe complete corrigera.
+  }
+}
+
+// --- API « a la demande » (branchee a la pagination) ---------------------------
 
 /** Enrichit les films d'une page qui ne le sont pas encore (non bloquant). */
 export async function enrichVisibleMovies(movies: Movie[]): Promise<void> {
   const pending = movies.filter((m) => m.tmdbState === 0);
-  if (pending.length > 0) await runPool(pending, (m) => enrichMovieRowInternal(m));
+  if (pending.length === 0) return;
+  const { keys } = await runPool(pending, (m) => enrichMovieRowInternal(m));
+  await rerank('vod', keys);
 }
 
 /** Enrichit les series d'une page qui ne le sont pas encore (non bloquant). */
 export async function enrichVisibleSeries(series: Series[]): Promise<void> {
   const pending = series.filter((s) => s.tmdbState === 0);
-  if (pending.length > 0) await runPool(pending, (s) => enrichSeriesRowInternal(s));
+  if (pending.length === 0) return;
+  const { keys } = await runPool(pending, (s) => enrichSeriesRowInternal(s));
+  await rerank('series', keys);
 }
 
 // --- Backfill silencieux -------------------------------------------------------
@@ -220,9 +263,9 @@ export function stopCatalogBackfill(): void {
 }
 
 /**
- * Traite tout le catalogue en attente (films puis series) par lots, jusqu'a la
- * file vide, l'annulation, ou `MAX_STALL` tours sans progres (TMDB HS). Un seul
- * backfill a la fois. A appeler apres la sync (branchement en etape 2).
+ * Traite tout le catalogue en attente (films puis series) par lots priorises,
+ * jusqu'a la file vide, l'annulation, ou `MAX_STALL` tours sans progres (TMDB
+ * HS). Un seul backfill a la fois.
  */
 export async function runCatalogBackfill(opts?: {
   onProgress?: (progress: BackfillProgress) => void;
@@ -233,19 +276,27 @@ export async function runCatalogBackfill(opts?: {
   const { signal } = controller;
   let processed = 0;
   let stall = 0;
+  let order: readonly MediaVariant[] = variantOrder(await loadPreferredLanguage());
+  let round = 0;
 
   try {
     while (!signal.aborted) {
-      const movies = await catalogRepository.getMoviesNeedingTmdb(BACKFILL_BATCH);
+      // La preference peut changer pendant un long run : relue periodiquement.
+      if (round % 20 === 0) order = variantOrder(await loadPreferredLanguage());
+      round += 1;
+
+      const movies = await catalogRepository.getMoviesNeedingTmdb(BACKFILL_BATCH, order);
       const series =
         movies.length < BACKFILL_BATCH
-          ? await catalogRepository.getSeriesNeedingTmdb(BACKFILL_BATCH - movies.length)
+          ? await catalogRepository.getSeriesNeedingTmdb(BACKFILL_BATCH - movies.length, order)
           : [];
       if (movies.length === 0 && series.length === 0) break; // file vide -> termine
 
-      const ok =
-        (await runPool(movies, (m) => enrichMovieRowInternal(m), signal)) +
-        (await runPool(series, (s) => enrichSeriesRowInternal(s), signal));
+      const m = await runPool(movies, (row) => enrichMovieRowInternal(row), signal);
+      const s = await runPool(series, (row) => enrichSeriesRowInternal(row), signal);
+      await rerank('vod', m.keys);
+      await rerank('series', s.keys);
+      const ok = m.ok + s.ok;
       processed += ok;
 
       if (opts?.onProgress !== undefined) {
@@ -260,8 +311,7 @@ export async function runCatalogBackfill(opts?: {
 
       if (ok === 0) {
         // Aucun item traite ce tour (probable 429 en backoff / TMDB lent) : on
-        // PATIENTE de plus en plus longtemps, sans abandonner les lignes (elles
-        // restent en tmdbState=0 et repassent au tour suivant).
+        // PATIENTE de plus en plus longtemps, sans abandonner les lignes.
         stall += 1;
         if (stall >= MAX_STALL) break;
         await sleep(Math.min(BATCH_PAUSE_MS * 2 ** stall, STALL_BACKOFF_CAP_MS), signal);

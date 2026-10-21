@@ -1,24 +1,23 @@
 import * as catalogRepository from '@/db/repositories/catalogRepository';
-import { detectQuality } from '@/services/live/channelNormalizer';
-import { detectFrenchVariant } from '@/services/media/languageDetectionService';
+import type { MediaVariant, PreferredLanguage } from '@/types/mediaLanguage';
 import type { Movie, Series } from '@/types/models';
-import { displayTitle, displayYear } from '@/utils/displayTitle';
-import { normalizeText } from '@/utils/text';
+import { parseMediaTitle } from '@/utils/mediaTitle';
+import { variantOrder, variantRank } from '@/utils/variantPreference';
+
+export { VARIANT_LABEL } from '@/utils/variantPreference';
 
 /**
- * Regroupement des VARIANTES DE LANGUE d'un meme film/serie.
+ * VERSIONS DE LANGUE d'un meme film/serie (selecteur de la fiche).
  *
- * Constat diagnostic : le provider ne met PAS plusieurs pistes audio dans un
- * fichier — il DUPLIQUE les entrees du catalogue ("Film VF", "Film VOSTFR",
- * "Film MULTI"). Le "choix de piste audio" se joue donc au niveau CATALOGUE :
- * on retrouve les entrees soeurs (meme titre nettoye + meme annee, tag de langue
- * different) et on expose un selecteur qui change le flux lu.
- *
- * Requete CIBLEE a l'ouverture de la fiche (searchMovies/searchSeries) — jamais
- * un balayage massif en memoire (invariant #6).
+ * Le provider ne met PAS plusieurs pistes audio dans un fichier : il DUPLIQUE
+ * les entrees ("Film VF", "Film VOSTFR", "Film MULTI"). Depuis le chantier 2,
+ * les entrees soeurs partagent une `groupKey` persistee (id TMDB sinon
+ * titre+annee) : une requete d'index suffit, plus de recherche approximative.
+ * On expose la meilleure version PAR VARIANTE (MP4 puis qualite), dans l'ordre
+ * de preference de l'utilisateur.
  */
 
-export type VariantTag = 'VF' | 'MULTI' | 'VOSTFR' | 'VO';
+export type VariantTag = MediaVariant;
 
 export interface LanguageVariant {
   id: string;
@@ -29,97 +28,91 @@ export interface LanguageVariant {
   qualityScore: number;
 }
 
-const TAG_ORDER: Record<VariantTag, number> = { VF: 0, MULTI: 1, VOSTFR: 2, VO: 3 };
-export const VARIANT_LABEL: Record<VariantTag, string> = {
-  VF: 'VF',
-  MULTI: 'MULTI',
-  VOSTFR: 'VOSTFR',
-  VO: 'VO',
-};
+const NATIVE_CONTAINERS = new Set(['mp4', 'm4v', 'mov']);
 
-/** Titre de base normalise (sans tags langue/qualite/annee) — cle de regroupement. */
-export function baseTitleKey(name: string): string {
-  return normalizeText(displayTitle(name));
+interface Sibling {
+  id: string;
+  name: string;
+  container: string | null;
+  variant: MediaVariant;
+  qualityScore: number;
+  groupRank: number;
 }
 
-function variantTag(name: string): VariantTag {
-  return detectFrenchVariant(name) ?? 'VO';
-}
-
-/** Choisit la meilleure entree par tag (qualite la plus haute) parmi les soeurs. */
-function clusterVariants(
-  entries: { id: string; name: string; container: string | null }[],
-  baseKey: string,
-  baseYear: number | null,
-): LanguageVariant[] {
-  const byTag = new Map<VariantTag, LanguageVariant>();
-  for (const e of entries) {
-    if (baseTitleKey(e.name) !== baseKey) continue;
-    const year = displayYear(e.name, null);
-    // Meme annee OU annee absente d'un cote : evite de fusionner deux films
-    // homonymes d'annees differentes (remakes).
-    if (baseYear !== null && year !== null && year !== baseYear) continue;
-    const tag = variantTag(e.name);
-    const q = detectQuality(e.name);
-    const existing = byTag.get(tag);
-    if (existing === undefined || q.score > existing.qualityScore) {
-      byTag.set(tag, {
-        id: e.id,
-        name: e.name,
-        containerExtension: e.container,
-        tag,
-        qualityLabel: q.label,
-        qualityScore: q.score,
+/** Meilleure entree par variante parmi les soeurs ; triees selon la preference. */
+function clusterVariants(siblings: Sibling[], order: readonly MediaVariant[]): LanguageVariant[] {
+  const byTag = new Map<MediaVariant, { variant: LanguageVariant; score: number }>();
+  for (const s of siblings) {
+    const native = NATIVE_CONTAINERS.has((s.container ?? '').toLowerCase()) ? 1000 : 0;
+    const score = native + s.qualityScore - s.groupRank * 0.001;
+    const existing = byTag.get(s.variant);
+    if (existing === undefined || score > existing.score) {
+      byTag.set(s.variant, {
+        score,
+        variant: {
+          id: s.id,
+          name: s.name,
+          containerExtension: s.container,
+          tag: s.variant,
+          qualityLabel: parseMediaTitle(s.name).qualityLabel ?? 'Standard',
+          qualityScore: s.qualityScore,
+        },
       });
     }
   }
-  return [...byTag.values()].sort((a, b) => TAG_ORDER[a.tag] - TAG_ORDER[b.tag]);
+  return [...byTag.values()]
+    .map((v) => v.variant)
+    .sort((a, b) => variantRank(a.tag, order) - variantRank(b.tag, order));
 }
 
 /** Variantes de langue d'un film. Renvoie [] si une seule langue (rien a proposer). */
-export async function findMovieVariants(movie: Movie): Promise<LanguageVariant[]> {
-  const baseKey = baseTitleKey(movie.name);
-  if (baseKey.length < 2) return [];
-  const baseYear = displayYear(movie.name, movie.year);
-  const candidates = await catalogRepository.searchMovies(displayTitle(movie.name), 80);
+export async function findMovieVariants(movie: Movie, pref?: PreferredLanguage): Promise<LanguageVariant[]> {
+  const rows = await catalogRepository.getMoviesByGroupKey(movie.groupKey);
   const variants = clusterVariants(
-    candidates.map((c) => ({ id: c.id, name: c.name, container: c.containerExtension })),
-    baseKey,
-    baseYear,
+    rows.map((m) => ({
+      id: m.id,
+      name: m.name,
+      container: m.containerExtension,
+      variant: m.variant,
+      qualityScore: m.qualityScore,
+      groupRank: m.groupRank,
+    })),
+    variantOrder(pref),
   );
   return variants.length >= 2 ? variants : [];
 }
 
 /** Variantes de langue d'une serie (entrees series soeurs). */
-export async function findSeriesVariants(series: Series): Promise<LanguageVariant[]> {
-  const baseKey = baseTitleKey(series.name);
-  if (baseKey.length < 2) return [];
-  const baseYear = displayYear(series.name, null);
-  const candidates = await catalogRepository.searchSeries(displayTitle(series.name), 80);
+export async function findSeriesVariants(series: Series, pref?: PreferredLanguage): Promise<LanguageVariant[]> {
+  const rows = await catalogRepository.getSeriesByGroupKey(series.groupKey);
   const variants = clusterVariants(
-    candidates.map((c) => ({ id: c.id, name: c.name, container: null })),
-    baseKey,
-    baseYear,
+    rows.map((s) => ({
+      id: s.id,
+      name: s.name,
+      container: null,
+      variant: s.variant,
+      qualityScore: s.qualityScore,
+      groupRank: s.groupRank,
+    })),
+    variantOrder(pref),
   );
   return variants.length >= 2 ? variants : [];
 }
 
 /**
- * Tag de langue prefere de l'utilisateur (reglage) traduit en VariantTag.
- * Renvoie la variante correspondante, sinon celle ouverte, sinon la premiere.
+ * Variante a ouvrir selon la preference : la premiere de l'ordre de preference
+ * disponible, sinon celle ouverte, sinon la premiere.
  */
 export function pickPreferredVariant(
   variants: LanguageVariant[],
   openedId: string,
-  preferred: string,
+  preferred: PreferredLanguage,
 ): LanguageVariant | null {
   if (variants.length === 0) return null;
-  const wanted: VariantTag =
-    preferred === 'VF' ? 'VF' : preferred === 'MULTI' ? 'MULTI' : preferred === 'VOSTFR' ? 'VOSTFR' : 'VO';
-  return (
-    variants.find((v) => v.tag === wanted) ??
-    variants.find((v) => v.id === openedId) ??
-    variants[0] ??
-    null
-  );
+  const order = variantOrder(preferred);
+  for (const wanted of order) {
+    const hit = variants.find((v) => v.tag === wanted);
+    if (hit !== undefined) return hit;
+  }
+  return variants.find((v) => v.id === openedId) ?? variants[0] ?? null;
 }

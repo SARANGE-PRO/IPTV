@@ -52,6 +52,7 @@ export function SeriesDetailView({ seriesId, onBack }: { seriesId: string; onBac
   const saveProgress = usePlaybackStore((s) => s.saveProgress);
   const markFinished = usePlaybackStore((s) => s.markFinished);
   const showVlcButton = useUiSettingsStore((s) => s.showVlcButton);
+  const preferredLanguage = useUiSettingsStore((s) => s.preferredLanguage);
   const router = useRouter();
 
   const [series, setSeries] = useState<Series | null | undefined>(undefined);
@@ -80,13 +81,13 @@ export function SeriesDetailView({ seriesId, onBack }: { seriesId: string; onBac
   useEffect(() => {
     if (series === null || series === undefined) return;
     let active = true;
-    void findSeriesVariants(series).then((vs) => {
+    void findSeriesVariants(series, preferredLanguage).then((vs) => {
       if (active) setVariants(vs);
     });
     return () => {
       active = false;
     };
-  }, [series]);
+  }, [series, preferredLanguage]);
 
   // Saisons/episodes charges A LA DEMANDE (cache Dexie + TTL).
   useEffect(() => {
@@ -121,7 +122,7 @@ export function SeriesDetailView({ seriesId, onBack }: { seriesId: string; onBac
   // STABILITE carte<->fiche : affiche + note depuis Xtream (TMDB = enrichissement).
   const posterUrl = series?.posterUrl ?? tmdbPosterUrl;
   const overview = tmdb?.overview ?? series?.plot ?? null;
-  const rating = series?.rating ?? null;
+  const rating = series !== null && series !== undefined && series.ratingSort > 0 ? series.ratingSort : null;
   const genres = tmdb !== null && tmdb.genres.length > 0 ? tmdb.genres.join(' · ') : (series?.genre ?? null);
 
   const episodes = useMemo(

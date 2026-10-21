@@ -7,12 +7,13 @@ import {
   normalizeLiveChannel,
   normalizeMovie,
   normalizeSeries,
+  type CategoryContext,
 } from '@/services/xtream/normalize';
-import { runCatalogBackfill } from '@/services/tmdb/tmdbEnrichmentService';
+import { regroupSection } from '@/services/catalog/catalogGroupingService';
 import { ensureAllGenres } from '@/services/tmdb/tmdbGenreService';
 import * as xtreamApi from '@/services/xtream/xtreamApi';
 import type { Category, Section } from '@/types/models';
-import type { XtreamCredentials } from '@/types/xtream';
+import type { NumLike, XtreamCredentials } from '@/types/xtream';
 
 /**
  * Synchronisation catalogue : fetch metadonnees (via proxy) -> normalisation
@@ -51,25 +52,34 @@ async function storeSection(
   categories: Category[],
   categoryById: Map<string, Category>,
 ): Promise<number> {
-  const isFrenchCat = (id: string): boolean => categoryById.get(id)?.isFrench === 1;
+  // Contexte de categorie (nom + flag FR) : repli de langue des films/series
+  // sans tag dans le titre, theme des chaines Live.
+  const context = (categoryId: NumLike | null | undefined): CategoryContext | undefined => {
+    const cat = categoryById.get(normalizeCategoryId(categoryId));
+    return cat !== undefined ? { isFrench: cat.isFrench === 1, name: cat.name } : undefined;
+  };
 
   if (section === 'live') {
     const raw = await xtreamApi.getLiveStreams(creds);
-    return catalogRepository.replaceLiveCatalog(categories, Array.isArray(raw) ? raw : [], (r) => {
-      const cat = categoryById.get(normalizeCategoryId(r.category_id));
-      return normalizeLiveChannel(r, cat !== undefined ? { isFrench: cat.isFrench === 1, name: cat.name } : undefined);
-    });
+    return catalogRepository.replaceLiveCatalog(categories, Array.isArray(raw) ? raw : [], (r) =>
+      normalizeLiveChannel(r, context(r.category_id)),
+    );
   }
   if (section === 'vod') {
     const raw = await xtreamApi.getVodStreams(creds);
-    return catalogRepository.replaceVodCatalog(categories, Array.isArray(raw) ? raw : [], (r) =>
-      normalizeMovie(r, isFrenchCat(normalizeCategoryId(r.category_id))),
+    const count = await catalogRepository.replaceVodCatalog(categories, Array.isArray(raw) ? raw : [], (r) =>
+      normalizeMovie(r, context(r.category_id)),
     );
+    // Une carte par titre : rangs de version calcules sur la table fraichement ecrite.
+    await regroupSection('vod');
+    return count;
   }
   const raw = await xtreamApi.getSeries(creds);
-  return catalogRepository.replaceSeriesCatalog(categories, Array.isArray(raw) ? raw : [], (r) =>
-    normalizeSeries(r, isFrenchCat(normalizeCategoryId(r.category_id))),
+  const count = await catalogRepository.replaceSeriesCatalog(categories, Array.isArray(raw) ? raw : [], (r) =>
+    normalizeSeries(r, context(r.category_id)),
   );
+  await regroupSection('series');
+  return count;
 }
 
 /** Synchronise une section complete (categories + liste d'items). */
@@ -146,22 +156,11 @@ export async function syncAllSections(
     outcomes.push(outcome);
     opts?.onSectionDone?.(outcome);
   }
-  maybeStartTmdbBackfill(outcomes);
+  // Genres TMDB prechauffes en tache de fond (pills). Le BACKFILL d'enrichissement
+  // est lance par catalogStore (au demarrage ET apres sync, chantier 3), qui en
+  // suit la progression — plus de demarrage « orphelin » ici.
+  if (outcomes.some((o) => (o.section === 'vod' || o.section === 'series') && o.ok && !o.skipped)) {
+    void ensureAllGenres().catch(() => {});
+  }
   return outcomes;
-}
-
-/**
- * Demarre EN TACHE DE FOND (non bloquant) le prechargement des genres TMDB puis
- * le backfill d'enrichissement — uniquement si une section VOD/series vient d'etre
- * resynchronisee (donc des lignes en tmdbState=0 a traiter). Best-effort : n'impacte
- * jamais la sync. Le backfill est single-flight (un seul a la fois), rate-limite
- * (limiteur tmdbClient) et reprenable. Refonte VOD, etape 2.
- */
-function maybeStartTmdbBackfill(outcomes: SectionOutcome[]): void {
-  const vodResynced = outcomes.some(
-    (o) => (o.section === 'vod' || o.section === 'series') && o.ok && !o.skipped,
-  );
-  if (!vodResynced) return;
-  void ensureAllGenres().catch(() => {});
-  void runCatalogBackfill().catch(() => {});
 }

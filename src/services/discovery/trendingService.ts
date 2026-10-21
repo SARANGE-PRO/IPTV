@@ -1,5 +1,6 @@
 import type { TrendingEntry } from '@/types/trending';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
+import { isFrenchWatchable } from '@/types/mediaLanguage';
 import type { Movie, Series } from '@/types/models';
 import { displayYear } from '@/utils/displayTitle';
 import { vodKeysMatch, vodMatchKey } from '@/utils/vodMatchKey';
@@ -37,11 +38,14 @@ function yearClose(a: number | null, b: number | null): boolean {
   return a === null || b === null || Math.abs(a - b) <= 1;
 }
 
-/** Cherche l'entree Xtream VF correspondant a une tendance TMDB. */
+/**
+ * Cherche l'entree Xtream correspondant a une tendance TMDB — regardable en
+ * francais (variante VF/MULTI/VOSTFR persistee, chantier 1). La recherche
+ * renvoie deja une version par titre, la preferee en tete.
+ */
 async function matchOne<T extends Movie | Series>(
   entry: TrendingEntry,
   search: (q: string, limit: number) => Promise<T[]>,
-  vfCats: ReadonlySet<string>,
   yearOfRow: (row: T) => number | null,
   used: Set<string>,
 ): Promise<T | null> {
@@ -50,7 +54,7 @@ async function matchOne<T extends Movie | Series>(
   if (key.length < 3) return null;
   const candidates = await search(entry.title, 30);
   for (const c of candidates) {
-    if (used.has(c.id) || !vfCats.has(c.categoryId)) continue;
+    if (used.has(c.id) || !isFrenchWatchable(c.variant)) continue;
     if (!vodKeysMatch(key, vodMatchKey(c.name))) continue;
     if (!yearClose(entry.year, yearOfRow(c))) continue;
     return c;
@@ -66,18 +70,11 @@ export async function loadTrending(limit = 10): Promise<{ movies: TrendingItem[]
   const { movies, series } = await fetchTrending();
   if (movies.length === 0 && series.length === 0) return { movies: [], series: [] };
 
-  const [vodCats, seriesCats] = await Promise.all([
-    catalogRepository.getFrenchCategories('vod'),
-    catalogRepository.getFrenchCategories('series'),
-  ]);
-  const vodCatIds = new Set(vodCats.map((c) => c.id));
-  const seriesCatIds = new Set(seriesCats.map((c) => c.id));
-
   const usedMovies = new Set<string>();
   const matchedMovies: TrendingItem[] = [];
   for (const entry of movies) {
     if (matchedMovies.length >= limit) break;
-    const hit = await matchOne(entry, catalogRepository.searchMovies, vodCatIds, (m) => displayYear(m.name, m.year), usedMovies);
+    const hit = await matchOne(entry, catalogRepository.searchMovies, (m) => displayYear(m.name, m.year), usedMovies);
     if (hit !== null && entry.posterPath !== null) {
       usedMovies.add(hit.id);
       matchedMovies.push({ xtreamId: hit.id, type: 'vod', title: entry.title, posterPath: entry.posterPath, rating: entry.rating, year: entry.year });
@@ -88,13 +85,7 @@ export async function loadTrending(limit = 10): Promise<{ movies: TrendingItem[]
   const matchedSeries: TrendingItem[] = [];
   for (const entry of series) {
     if (matchedSeries.length >= limit) break;
-    const hit = await matchOne(
-      entry,
-      catalogRepository.searchSeries,
-      seriesCatIds,
-      (s) => displayYear(s.name, s.releaseDate != null ? Number.parseInt(s.releaseDate.slice(0, 4), 10) : null),
-      usedSeries,
-    );
+    const hit = await matchOne(entry, catalogRepository.searchSeries, (s) => s.year, usedSeries);
     if (hit !== null && entry.posterPath !== null) {
       usedSeries.add(hit.id);
       matchedSeries.push({ xtreamId: hit.id, type: 'series', title: entry.title, posterPath: entry.posterPath, rating: entry.rating, year: entry.year });

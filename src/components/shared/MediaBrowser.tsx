@@ -7,25 +7,30 @@ import { HScroll } from '@/components/shared/HScroll';
 import { MediaCard } from '@/components/shared/MediaCard';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
-import type { CatalogFilter, FlatSort } from '@/services/data/catalogService';
+import { FIRST_PAGE } from '@/services/data/catalogService';
+import type { CatalogFilter, CatalogPage, FlatSort, LaneFilter, PageCursor } from '@/services/data/catalogService';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useLoadMore } from '@/hooks/useLoadMore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useFilterStore } from '@/stores/filterStore';
+import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import { useVodFilterStore, type VodSection } from '@/stores/vodFilterStore';
-import type { BoolNum, MediaType } from '@/types/models';
-import { detectFrenchVariant } from '@/services/media/languageDetectionService';
+import type { MediaVariant, VariantSource } from '@/types/mediaLanguage';
+import type { MediaType } from '@/types/models';
 import { displayTitle } from '@/utils/displayTitle';
 import { mediaBadges } from '@/utils/mediaBadges';
 import { formatCount } from '@/utils/format';
+import { variantBadge, variantOrder } from '@/utils/variantPreference';
 
 export interface BrowserItem {
   id: string;
   categoryId: string;
   name: string;
   posterUrl: string | null;
-  isFrench: BoolNum;
-  rating?: number | null;
+  /** Note de tri (TMDB si enrichi, sinon fournisseur, 0 = inconnue). */
+  ratingSort: number;
+  variant: MediaVariant;
+  variantSource: VariantSource;
 }
 
 interface MediaBrowserProps<T extends BrowserItem> {
@@ -34,23 +39,27 @@ interface MediaBrowserProps<T extends BrowserItem> {
   title: string;
   itemNoun: string;
   hrefFor: (item: T) => string;
-  /** Page « a plat » (toute la collection, filtrée par metadonnees TMDB). */
+  /** Page « a plat » : tiers de langue + filtres TMDB, curseur multi-tiers. */
   fetchFlatPage: (
-    offset: number,
+    cursor: PageCursor,
     limit: number,
     sort: FlatSort,
+    lane: LaneFilter,
+    order: readonly MediaVariant[],
     filter: CatalogFilter,
     hidden?: ReadonlySet<string>,
-  ) => Promise<T[]>;
-  /** Recherche texte croisée avec les filtres TMDB. */
+  ) => Promise<CatalogPage<T>>;
+  /** Recherche texte croisee avec la pill de langue et les filtres TMDB. */
   searchFiltered: (
     query: string,
+    lane: LaneFilter,
+    order: readonly MediaVariant[],
     filter: CatalogFilter,
     limit: number,
     hidden?: ReadonlySet<string>,
   ) => Promise<T[]>;
-  /** Compte (index si sans filtre). Appelé uniquement quand aucun filtre n'est actif. */
-  countItems: (filter: CatalogFilter, hidden?: ReadonlySet<string>) => Promise<number>;
+  /** Compte dedoublonne de la vue (index si sans filtre). Appele uniquement sans filtre actif. */
+  countItems: (lane: LaneFilter, filter: CatalogFilter, hidden?: ReadonlySet<string>) => Promise<number>;
   /** Enrichissement TMDB « a la demande » des items affichés (fire-and-forget). */
   enrichVisible?: (items: T[]) => void;
   subtitleFor?: (item: T) => string | null;
@@ -65,6 +74,14 @@ const SORT_OPTIONS: { id: FlatSort; label: string }[] = [
   { id: 'rating', label: 'Mieux notés' },
   { id: 'year', label: 'Année' },
   { id: 'title', label: 'Titre' },
+];
+
+/** Pills de langue : « Tout » = une carte par titre (VF d'abord selon la preference). */
+const LANES: { id: LaneFilter; label: string; hint: string }[] = [
+  { id: 'all', label: 'Tout', hint: 'Une carte par titre, version préférée en tête' },
+  { id: 'fr', label: 'VF', hint: 'Audio français (VF, MULTI)' },
+  { id: 'vost', label: 'VOSTFR', hint: 'Version originale sous-titrée' },
+  { id: 'vo', label: 'VO', hint: 'Version originale' },
 ];
 
 const DECADES: { value: string; label: string; min: number | null; max: number | null }[] = [
@@ -90,10 +107,11 @@ function decadeValue(minYear: number | null, maxYear: number | null): string {
 }
 
 /**
- * Navigateur générique VOD/Séries « a plat » (refonte). Plus de catégories
- * fournisseur : filtres par métadonnées TMDB (genres/année/note), tri global,
- * recherche croisée. La distinction FR/VOSTFR reste visible via le badge de
- * variante sur la carte (detectFrenchVariant).
+ * Navigateur générique VOD/Séries « a plat » (refonte ; chantiers 1-2). Plus de
+ * catégories fournisseur : pill de LANGUE (Tout / VF / VOSTFR / VO), filtres par
+ * métadonnées TMDB (genres/année/note), tri global, recherche croisée. Une carte
+ * par titre : les versions (VF/VOSTFR/4K…) sont regroupées, la version préférée
+ * représente le titre ; la pastille de variante vient de la ligne Dexie.
  */
 export function MediaBrowser<T extends BrowserItem>({
   section,
@@ -110,6 +128,8 @@ export function MediaBrowser<T extends BrowserItem>({
 }: MediaBrowserProps<T>) {
   const catalogSlice = useCatalogStore((s) => s.sections[section]);
   const hiddenSet = useFilterStore((s) => s.hidden[section]);
+  const preferredLanguage = useUiSettingsStore((s) => s.preferredLanguage);
+  const regrouping = useUiSettingsStore((s) => s.regrouping);
 
   const hydrated = useVodFilterStore((s) => s.hydrated);
   const hydrate = useVodFilterStore((s) => s.hydrate);
@@ -117,6 +137,7 @@ export function MediaBrowser<T extends BrowserItem>({
   const filters = useVodFilterStore((s) => s.filters[section]);
   const genres = useVodFilterStore((s) => s.genres[section]);
   const setSort = useVodFilterStore((s) => s.setSort);
+  const setLane = useVodFilterStore((s) => s.setLane);
   const toggleGenre = useVodFilterStore((s) => s.toggleGenre);
   const clearGenres = useVodFilterStore((s) => s.clearGenres);
   const setGenreMatch = useVodFilterStore((s) => s.setGenreMatch);
@@ -131,10 +152,11 @@ export function MediaBrowser<T extends BrowserItem>({
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<T[] | null>(null);
   const [searching, setSearching] = useState(false);
-  const offsetRef = useRef(0);
+  const cursorRef = useRef<PageCursor | null>(FIRST_PAGE);
   const loadingRef = useRef(false);
   const debouncedQuery = useDebounce(query.trim(), 300);
 
+  const order = useMemo(() => variantOrder(preferredLanguage), [preferredLanguage]);
   const active =
     filters.genreIds.length > 0 ||
     filters.minYear !== null ||
@@ -161,42 +183,44 @@ export function MediaBrowser<T extends BrowserItem>({
     void loadGenres(section);
   }, [loadGenres, section]);
 
-  // Première page à chaque changement de tri/filtre.
+  // Première page à chaque changement de tri / pill / filtre / préférence
+  // (et à la fin d'un re-classement des versions : les rangs ont changé).
   useEffect(() => {
+    if (!hydrated || regrouping) return;
     let alive = true;
-    offsetRef.current = 0;
+    cursorRef.current = FIRST_PAGE;
     setItems([]);
     setEndReached(false);
     setLoading(true);
-    void fetchFlatPage(0, PAGE_SIZE, filters.sort, filter, hiddenArg).then((first) => {
+    void fetchFlatPage(FIRST_PAGE, PAGE_SIZE, filters.sort, filters.lane, order, filter, hiddenArg).then((page) => {
       if (!alive) return;
-      setItems(first);
-      offsetRef.current = first.length;
-      setEndReached(first.length < PAGE_SIZE);
+      setItems(page.items);
+      cursorRef.current = page.next;
+      setEndReached(page.next === null);
       setLoading(false);
-      enrichVisible?.(first);
+      enrichVisible?.(page.items);
     });
     return () => {
       alive = false;
     };
-  }, [fetchFlatPage, filters.sort, filter, hiddenArg, enrichVisible]);
+  }, [hydrated, regrouping, fetchFlatPage, filters.sort, filters.lane, order, filter, hiddenArg, enrichVisible]);
 
   // Compte total : seulement sans filtre actif (compte d'index rapide).
   useEffect(() => {
-    if (active || debouncedQuery.length >= 2) {
+    if (!hydrated || regrouping || active || debouncedQuery.length >= 2) {
       setCount(null);
       return;
     }
     let alive = true;
-    void countItems({}, hiddenArg).then((n) => {
+    void countItems(filters.lane, {}, hiddenArg).then((n) => {
       if (alive) setCount(n);
     });
     return () => {
       alive = false;
     };
-  }, [countItems, active, debouncedQuery, hiddenArg]);
+  }, [hydrated, regrouping, countItems, filters.lane, active, debouncedQuery, hiddenArg]);
 
-  // Recherche indexée croisée avec les filtres.
+  // Recherche indexée croisée avec la pill et les filtres.
   useEffect(() => {
     if (debouncedQuery.length < 2) {
       setResults(null);
@@ -205,7 +229,7 @@ export function MediaBrowser<T extends BrowserItem>({
     }
     let alive = true;
     setSearching(true);
-    void searchFiltered(debouncedQuery, filter, SEARCH_LIMIT, hiddenArg).then((r) => {
+    void searchFiltered(debouncedQuery, filters.lane, order, filter, SEARCH_LIMIT, hiddenArg).then((r) => {
       if (!alive) return;
       setResults(r);
       setSearching(false);
@@ -214,19 +238,20 @@ export function MediaBrowser<T extends BrowserItem>({
     return () => {
       alive = false;
     };
-  }, [debouncedQuery, searchFiltered, filter, hiddenArg, enrichVisible]);
+  }, [debouncedQuery, searchFiltered, filters.lane, order, filter, hiddenArg, enrichVisible]);
 
   const loadMore = () => {
-    if (loadingRef.current || endReached || results !== null) return;
+    const cursor = cursorRef.current;
+    if (loadingRef.current || endReached || results !== null || cursor === null) return;
     loadingRef.current = true;
     setLoading(true);
-    void fetchFlatPage(offsetRef.current, PAGE_SIZE, filters.sort, filter, hiddenArg).then((page) => {
-      offsetRef.current += page.length;
-      setItems((prev) => [...prev, ...page]);
-      if (page.length < PAGE_SIZE) setEndReached(true);
+    void fetchFlatPage(cursor, PAGE_SIZE, filters.sort, filters.lane, order, filter, hiddenArg).then((page) => {
+      cursorRef.current = page.next;
+      setItems((prev) => [...prev, ...page.items]);
+      if (page.next === null) setEndReached(true);
       loadingRef.current = false;
       setLoading(false);
-      enrichVisible?.(page);
+      enrichVisible?.(page.items);
     });
   };
 
@@ -238,6 +263,10 @@ export function MediaBrowser<T extends BrowserItem>({
     'h-10 rounded-xl border border-ink-600 bg-ink-800 px-3 text-xs text-fg outline-none';
   const decade = decadeValue(filters.minYear, filters.maxYear);
   const showSecondaryRow = filters.genreIds.length > 1 || active;
+  const pill = (on: boolean): string =>
+    `shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition-colors ${
+      on ? 'bg-accent text-white' : 'bg-ink-800 text-fg-muted hover:text-fg'
+    }`;
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
@@ -301,6 +330,22 @@ export function MediaBrowser<T extends BrowserItem>({
         </div>
       </div>
 
+      {/* Pills de langue (Tout / VF / VOSTFR / VO) */}
+      <div className="mt-3 flex items-center gap-2" role="group" aria-label="Langue">
+        {LANES.map((l) => (
+          <button
+            key={l.id}
+            type="button"
+            title={l.hint}
+            aria-pressed={filters.lane === l.id}
+            onClick={() => setLane(section, l.id)}
+            className={pill(filters.lane === l.id)}
+          >
+            {l.label}
+          </button>
+        ))}
+      </div>
+
       {/* Bascule genres ET/OU + réinitialiser (visibles au besoin) */}
       {showSecondaryRow && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -308,11 +353,7 @@ export function MediaBrowser<T extends BrowserItem>({
             <button
               onClick={() => setGenreMatch(section, filters.genreMatch === 'all' ? 'any' : 'all')}
               aria-pressed={filters.genreMatch === 'all'}
-              className={`shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition-colors ${
-                filters.genreMatch === 'all'
-                  ? 'bg-accent text-white'
-                  : 'bg-ink-800 text-fg-muted hover:text-fg'
-              }`}
+              className={pill(filters.genreMatch === 'all')}
             >
               {filters.genreMatch === 'all' ? 'Tous les genres (ET)' : 'Au moins un genre (OU)'}
             </button>
@@ -331,24 +372,13 @@ export function MediaBrowser<T extends BrowserItem>({
       {/* Pills de genres TMDB */}
       {genres.length > 0 && (
         <HScroll className="mt-3 flex gap-2 pb-1 [scrollbar-width:none]">
-          <button
-            onClick={() => clearGenres(section)}
-            className={`shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition-colors ${
-              filters.genreIds.length === 0 ? 'bg-accent text-white' : 'bg-ink-800 text-fg-muted hover:text-fg'
-            }`}
-          >
+          <button onClick={() => clearGenres(section)} className={pill(filters.genreIds.length === 0)}>
             Tous
           </button>
           {genres.map((g) => {
             const on = filters.genreIds.includes(g.id);
             return (
-              <button
-                key={g.id}
-                onClick={() => toggleGenre(section, g.id)}
-                className={`shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition-colors ${
-                  on ? 'bg-accent text-white' : 'bg-ink-800 text-fg-muted hover:text-fg'
-                }`}
-              >
+              <button key={g.id} onClick={() => toggleGenre(section, g.id)} className={pill(on)}>
                 {g.name}
               </button>
             );
@@ -357,7 +387,9 @@ export function MediaBrowser<T extends BrowserItem>({
       )}
 
       {/* Compteur */}
-      {results !== null ? (
+      {regrouping ? (
+        <p className="mt-3 text-xs text-fg-faint">Réorganisation des versions selon ta langue préférée…</p>
+      ) : results !== null ? (
         <p className="mt-3 text-xs text-fg-faint">
           {results.length >= SEARCH_LIMIT
             ? `${SEARCH_LIMIT}+ résultats — affine ta recherche`
@@ -392,26 +424,26 @@ export function MediaBrowser<T extends BrowserItem>({
                 posterUrl={item.posterUrl}
                 subtitle={subtitleFor?.(item) ?? undefined}
                 quality={mediaBadges(item.name, null).find((b) => b.tone === 'quality')?.label ?? null}
-                rating={item.rating ?? null}
-                tag={detectFrenchVariant(item.name) ?? (item.isFrench === 1 ? 'FR' : null)}
+                rating={item.ratingSort > 0 ? item.ratingSort : null}
+                tag={variantBadge(item.variant, item.variantSource)}
                 favorite={{ type: favoriteType, itemId: item.id }}
               />
             ))}
-            {(loading || searching) &&
+            {(loading || searching || regrouping) &&
               shown.length === 0 &&
               Array.from({ length: 12 }, (_, i) => <Skeleton key={i} className="aspect-[2/3] rounded-xl" />)}
           </div>
 
           {results !== null && results.length === 0 && !searching && (
             <div className="mt-6">
-              <EmptyState title="Aucun résultat" hint="Essaie un autre titre ou ajuste les filtres." />
+              <EmptyState title="Aucun résultat" hint="Essaie un autre titre, une autre langue ou ajuste les filtres." />
             </div>
           )}
-          {results === null && !loading && shown.length === 0 && (
+          {results === null && !loading && !regrouping && shown.length === 0 && (
             <div className="mt-6">
               <EmptyState
-                title={active ? 'Aucun contenu pour ces filtres' : 'Catégorie vide'}
-                hint={active ? 'Élargis ou réinitialise les filtres.' : undefined}
+                title={active || filters.lane !== 'all' ? 'Aucun contenu pour cette sélection' : 'Catalogue vide'}
+                hint={active || filters.lane !== 'all' ? 'Élargis la langue ou réinitialise les filtres.' : undefined}
               />
             </div>
           )}
