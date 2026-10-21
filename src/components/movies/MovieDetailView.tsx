@@ -33,6 +33,7 @@ import { supportsNativeHls } from '@/utils/playerSupport';
 import { usePlaybackPlan } from '@/hooks/usePlaybackPlan';
 import { useTmdbMetadata } from '@/hooks/useTmdbMetadata';
 import { useCollection, useSimilarMovies } from '@/hooks/useTitleExtras';
+import { useMediaSession } from '@/hooks/useMediaSession';
 import { youtubeId } from '@/utils/youtube';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
@@ -148,6 +149,19 @@ export function MovieDetailView({
     movie !== null && movie !== undefined && movie.tmdbGenreIds.length > 0 ? movie.tmdbGenreIds : (tmdb?.genreIds ?? []),
   );
   const collection = useCollection(tmdb?.collection?.id ?? null);
+
+  // Ecran verrouille / Centre de controle (titre, annee, affiche) pendant la lecture.
+  useMediaSession(
+    playing && movie != null
+      ? {
+          title: displayTitle(movie.name),
+          subtitle: [displayYear(movie.name, movie.tmdbYear ?? movie.year)?.toString() ?? null, 'Film']
+            .filter((v): v is string => v !== null)
+            .join(' · '),
+          artwork: movie.posterUrl ?? tmdbPosterUrl,
+        }
+      : null,
+  );
   const rating = movie !== null && movie !== undefined && movie.ratingSort > 0 ? movie.ratingSort : null;
 
   // Entree active = variante de langue selectionnee (a defaut, le film ouvert).

@@ -87,3 +87,27 @@ export async function getGenreName(type: GenreType, id: number): Promise<string 
 export function resetGenreMemo(): void {
   memo.clear();
 }
+
+/** Libelles de repli (TMDB fr-FR) si la table des genres n'est pas encore chargee. */
+export const FALLBACK_GENRE_NAMES: Record<'movie' | 'tv', Record<number, string>> = {
+  movie: {
+    28: 'Action', 12: 'Aventure', 16: 'Animation', 35: 'Comédie', 80: 'Crime', 99: 'Documentaire',
+    18: 'Drame', 10751: 'Familial', 14: 'Fantastique', 27: 'Horreur', 10749: 'Romance',
+    878: 'Science-Fiction', 53: 'Thriller', 10752: 'Guerre', 37: 'Western', 9648: 'Mystère',
+  },
+  tv: {
+    10759: 'Action & Aventure', 16: 'Animation', 35: 'Comédie', 80: 'Crime', 99: 'Documentaire',
+    18: 'Drame', 10751: 'Familial', 10762: 'Kids', 9648: 'Mystère', 10765: 'Science-Fiction & Fantastique',
+  },
+};
+
+/**
+ * Noms de genres TMDB (cache Dexie / proxy) COMPLETES par les libelles de
+ * repli : jamais vide, meme hors ligne ou TMDB non configure.
+ */
+export async function genreNames(type: GenreType): Promise<Map<number, string>> {
+  const loaded = await ensureGenres(type).catch(() => new Map<number, string>());
+  const merged = new Map<number, string>(Object.entries(FALLBACK_GENRE_NAMES[type]).map(([id, name]) => [Number(id), name]));
+  for (const [id, name] of loaded) merged.set(id, name);
+  return merged;
+}

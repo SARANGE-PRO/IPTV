@@ -194,6 +194,35 @@ export function searchTv(query: string, year?: number): Promise<{ results?: Tmdb
   return call<TmdbSearchResponse>({ action: 'search_tv', query, year });
 }
 
+export interface TmdbPersonRaw {
+  id: number;
+  name?: string;
+  profile_path?: string | null;
+  known_for_department?: string;
+  popularity?: number;
+}
+
+export interface TmdbCreditRaw {
+  id: number;
+  media_type?: 'movie' | 'tv';
+  popularity?: number;
+  /** Credits « crew » : realisation… */
+  job?: string;
+}
+
+export interface TmdbPersonCreditsRaw {
+  cast?: TmdbCreditRaw[];
+  crew?: TmdbCreditRaw[];
+}
+
+export function searchPerson(query: string): Promise<{ results?: TmdbPersonRaw[] } | null> {
+  return call<{ results?: TmdbPersonRaw[] }>({ action: 'search_person', query });
+}
+
+export function personCredits(id: number): Promise<TmdbPersonCreditsRaw | null> {
+  return call<TmdbPersonCreditsRaw>({ action: 'person_credits', id });
+}
+
 export function collectionDetail(id: number): Promise<TmdbCollectionRaw | null> {
   return call<TmdbCollectionRaw>({ action: 'collection_detail', id });
 }

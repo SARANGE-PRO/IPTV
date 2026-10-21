@@ -31,6 +31,7 @@ import { supportsNativeHls } from '@/utils/playerSupport';
 import { usePlaybackPlan } from '@/hooks/usePlaybackPlan';
 import { useTmdbMetadata } from '@/hooks/useTmdbMetadata';
 import { useSimilarSeries } from '@/hooks/useTitleExtras';
+import { useMediaSession } from '@/hooks/useMediaSession';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
@@ -180,6 +181,26 @@ export function SeriesDetailView({
   }, [autoPlay, progressLoaded, allEpisodes, episodeId, primary, playEpisode]);
 
   const followingEp = playingEp !== null ? nextEpisode(allEpisodes, playingEp.id) : null;
+  const previousEp = useMemo(() => {
+    if (playingEp === null) return null;
+    const index = allEpisodes.findIndex((e) => e.id === playingEp.id);
+    return index > 0 ? (allEpisodes[index - 1] ?? null) : null;
+  }, [allEpisodes, playingEp]);
+
+  // Ecran verrouille / Centre de controle : episode en cours + suivant/precedent.
+  useMediaSession(
+    playingEp !== null && series != null
+      ? {
+          title: `S${playingEp.seasonNumber} E${playingEp.episodeNumber} · ${playingEp.title}`,
+          subtitle: displayTitle(series.name),
+          artwork: playingEp.imageUrl ?? series.posterUrl,
+        }
+      : null,
+    {
+      onNext: followingEp !== null ? () => playEpisode(followingEp, 0) : null,
+      onPrevious: previousEp !== null ? () => playEpisode(previousEp, 0) : null,
+    },
+  );
 
   const handleEnded = (ep: Episode) => {
     void markFinished('episode', ep.id);

@@ -5,7 +5,7 @@ import * as tmdbRepository from '@/db/repositories/tmdbRepository';
 import type { TrendingItem } from '@/services/discovery/trendingService';
 import { loadSimilarMovies, loadSimilarSeries } from '@/services/media/similarTitlesService';
 import { getMovieTop10, getSeriesTop10 } from '@/services/ranking/smartRankingService';
-import { ensureGenres } from '@/services/tmdb/tmdbGenreService';
+import { ensureGenres, genreNames } from '@/services/tmdb/tmdbGenreService';
 import { tmdbBackdrop } from '@/services/tmdb/tmdbImage';
 import { tmdbCacheKey } from '@/services/tmdb/tmdbMatcher';
 import type { MediaVariant, VariantSource } from '@/types/mediaLanguage';
@@ -65,18 +65,6 @@ export interface GenreRail<T> {
 const DEFAULT_MOVIE_GENRES = [28, 35, 878, 53, 27, 16, 10751, 80];
 const DEFAULT_TV_GENRES = [80, 35, 10765, 18, 10759, 9648];
 
-/** Libelles de repli (TMDB fr-FR) si la table des genres n'est pas encore chargee. */
-const FALLBACK_GENRE_NAMES: Record<'movie' | 'tv', Record<number, string>> = {
-  movie: {
-    28: 'Action', 12: 'Aventure', 16: 'Animation', 35: 'Comédie', 80: 'Crime', 99: 'Documentaire',
-    18: 'Drame', 10751: 'Familial', 14: 'Fantastique', 27: 'Horreur', 10749: 'Romance',
-    878: 'Science-Fiction', 53: 'Thriller', 10752: 'Guerre', 37: 'Western', 9648: 'Mystère',
-  },
-  tv: {
-    10759: 'Action & Aventure', 16: 'Animation', 35: 'Comédie', 80: 'Crime', 99: 'Documentaire',
-    18: 'Drame', 10751: 'Familial', 10762: 'Kids', 9648: 'Mystère', 10765: 'Science-Fiction & Fantastique',
-  },
-};
 
 /** Genres les plus regardes recemment (signal perso), du plus au moins frequent. */
 async function personalGenres(section: VodSection): Promise<number[]> {
@@ -122,9 +110,8 @@ export async function loadGenreRails(
   count: number,
 ): Promise<GenreRail<Movie>[] | GenreRail<Series>[]> {
   const kind = section === 'vod' ? 'movie' : 'tv';
-  const [loaded, personal] = await Promise.all([ensureGenres(kind).catch(() => new Map<number, string>()), personalGenres(section)]);
-  const fallback = FALLBACK_GENRE_NAMES[kind];
-  const nameOf = (g: number): string | undefined => loaded.get(g) ?? fallback[g];
+  const [names, personal] = await Promise.all([genreNames(kind), personalGenres(section)]);
+  const nameOf = (g: number): string | undefined => names.get(g);
   const defaults = section === 'vod' ? DEFAULT_MOVIE_GENRES : DEFAULT_TV_GENRES;
   const candidates = [...new Set([...personal.slice(0, 2), ...defaults])].filter((g) => nameOf(g) !== undefined);
   const isVisible = visible(hidden);

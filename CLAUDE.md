@@ -75,5 +75,7 @@ Chantier « niveau Netflix » (oct. 2026) : P1 ✅ fondation langue · P2 ✅ d�
 versions · P3 ✅ enrichissement TMDB fiable · P4 ✅ accueil (`services/home/*`,
 `useHomeFeed`, lecture directe `?play=1&ep=`) · P5 ✅ fiches/séries (épisode
 suivant auto, épisodes riches, vu/non vu, bande-annonce, saga, similaires) ·
-P6 lecteur · P7 recherche · P8 catch-up (optionnel). Schéma Dexie v10 = purge
+P6 ✅ lecteur NATIF conservé + Media Session (écran verrouillé, épisode suivant) —
+jamais d'overlay maison · P7 ✅ recherche (titres, genres, acteurs TMDB, récentes)
+· P8 abandonné. Schéma Dexie v10 = purge
 films/séries + resync.

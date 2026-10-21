@@ -26,9 +26,13 @@ type Action =
   | 'tv_detail'
   | 'genre_movie_list'
   | 'genre_tv_list'
-  | 'collection_detail';
+  | 'collection_detail'
+  | 'search_person'
+  | 'person_credits';
 const ALLOWED_ACTIONS = new Set<Action>([
   'collection_detail',
+  'search_person',
+  'person_credits',
   'search_movie',
   'search_tv',
   'movie_detail',
@@ -50,6 +54,10 @@ function parse(value: unknown): TmdbProxyRequest | null {
   if (typeof v.action !== 'string' || !ALLOWED_ACTIONS.has(v.action as Action)) return null;
   const action = v.action as Action;
 
+  if (action === 'search_person') {
+    if (typeof v.query !== 'string' || v.query.trim() === '') return null;
+    return { action, query: v.query.trim().slice(0, 100) };
+  }
   if (action === 'search_movie' || action === 'search_tv') {
     if (typeof v.query !== 'string' || v.query.trim() === '') return null;
     const year = typeof v.year === 'number' && Number.isFinite(v.year) ? v.year : undefined;
@@ -79,6 +87,10 @@ function endpointPath(req: TmdbProxyRequest): string {
       return `${TMDB_BASE}/genre/tv/list`;
     case 'collection_detail':
       return `${TMDB_BASE}/collection/${req.id}`;
+    case 'search_person':
+      return `${TMDB_BASE}/search/person`;
+    case 'person_credits':
+      return `${TMDB_BASE}/person/${req.id}/combined_credits`;
   }
 }
 
@@ -92,6 +104,9 @@ function buildUrl(req: TmdbProxyRequest): string {
     if (req.year !== undefined) {
       url.searchParams.set(req.action === 'search_movie' ? 'year' : 'first_air_date_year', String(req.year));
     }
+  } else if (req.action === 'search_person') {
+    url.searchParams.set('query', req.query ?? '');
+    url.searchParams.set('include_adult', 'false');
   } else if (req.action === 'movie_detail' || req.action === 'tv_detail') {
     // videos : bande-annonce (FR d'abord, sinon EN) — metadonnees uniquement.
     url.searchParams.set('append_to_response', 'credits,videos');

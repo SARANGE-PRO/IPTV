@@ -206,6 +206,20 @@ export function getMoviesByGroupKey(groupKey: string): Promise<Movie[]> {
   return db.xtream_vod_streams.where('groupKey').equals(groupKey).toArray();
 }
 
+/**
+ * Version REPRESENTATIVE (groupRank 0) des films de plusieurs groupes — p. ex.
+ * filmographie d'un acteur (cles `t:<tmdbId>`). Requete d'index `anyOf`, bornee.
+ */
+export function getMoviesByGroupKeys(groupKeys: readonly string[], limit: number): Promise<Movie[]> {
+  if (groupKeys.length === 0) return Promise.resolve([]);
+  return db.xtream_vod_streams
+    .where('groupKey')
+    .anyOf([...groupKeys])
+    .filter((m) => m.groupRank === 0)
+    .limit(limit)
+    .toArray();
+}
+
 // --- Series -------------------------------------------------------------------------
 
 export function replaceSeries(series: Series[]): Promise<void> {
@@ -232,6 +246,16 @@ export async function getSeriesByIds(ids: string[]): Promise<Series[]> {
 
 export function getSeriesByGroupKey(groupKey: string): Promise<Series[]> {
   return db.xtream_series.where('groupKey').equals(groupKey).toArray();
+}
+
+export function getSeriesByGroupKeys(groupKeys: readonly string[], limit: number): Promise<Series[]> {
+  if (groupKeys.length === 0) return Promise.resolve([]);
+  return db.xtream_series
+    .where('groupKey')
+    .anyOf([...groupKeys])
+    .filter((s) => s.groupRank === 0)
+    .limit(limit)
+    .toArray();
 }
 
 export async function putSeriesDetails(details: SeriesDetails): Promise<void> {
