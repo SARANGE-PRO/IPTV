@@ -1,0 +1,232 @@
+/*
+ * Intro ZiBTV — voir ZibIntro.tsx / zibIntroBoot.ts.
+ *
+ * Regles qui garantissent un rendu identique partout :
+ *  1. Seules `transform` et `opacity` sont animees (compositeur GPU) : aucune
+ *     animation de clip-path / filter / fill, qui tournent sur le thread
+ *     principal (Safari) et saccadent pendant l'hydratation.
+ *  2. Revelation "volet" = fenetre `overflow:hidden` qui glisse + contenu qui
+ *     glisse en sens inverse avec la MEME courbe : le contenu reste immobile,
+ *     seule la fenetre avance. Rendu exact de l'ancien clip-path: inset().
+ *  3. Aucun filter / mix-blend-mode sur du SVG (support inegal selon moteurs) :
+ *     halo = degrade radial statique dont seule l'opacite varie.
+ *  4. Tailles en multiples de 10px : les volets (10 % / 30 % / 60 %) tombent
+ *     sur des pixels entiers -> aucun flou de sous-pixel.
+ *  5. Masque par defaut (attribut `hidden` + display:none) : sans JS ou si le
+ *     CSS manque, rien ne bloque l'app.
+ */
+
+.zib-intro {
+  display: none;
+}
+
+html[data-zib-intro='play'] .zib-intro {
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  /* Hauteur FIGEE des la 1re frame : le viewport iOS se recale apres le
+     lancement (PWA et barre Safari). lvh = pleine hauteur, jamais de bande. */
+  height: 100vh;
+  height: 100lvh;
+  z-index: 2147483000;
+  overflow: hidden;
+  background: #08080a;
+  /* Bloque gestes et selection pendant l'intro (pas de rubber-band iOS, pas de
+     loupe/menu contextuel sur appui long, pas de scroll de la page dessous). */
+  touch-action: none;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  contain: strict;
+  animation: zibIntroOut 600ms ease-in-out 2900ms both;
+}
+
+/* Centre sur la PETITE hauteur (svh) : centre visuel reel au lancement, barre
+   Safari affichee ou non, et ne bouge pas quand elle se replie. */
+.zib-intro__stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100vh;
+  height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.zib-intro__logo {
+  position: relative;
+  flex: none;
+  width: 160px;
+  height: 160px;
+  transform-origin: 50% 50%;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  /* Courbe appliquee a chaque segment (0-15 %, 15-100 %), comme l'original. */
+  animation: zibIntroZoom 1200ms cubic-bezier(0.65, 0, 0.15, 1) 1700ms both;
+}
+
+@media (min-width: 768px) and (min-height: 600px) {
+  .zib-intro__logo {
+    width: 200px;
+    height: 200px;
+  }
+}
+
+/* Halo rouge derriere le Z : allume par l'eclat, emporte par le zoom. */
+.zib-intro__bloom {
+  position: absolute;
+  top: -40%;
+  left: -40%;
+  width: 180%;
+  height: 180%;
+  background: radial-gradient(
+    closest-side,
+    rgba(229, 9, 20, 0.42),
+    rgba(229, 9, 20, 0.14) 55%,
+    rgba(229, 9, 20, 0) 100%
+  );
+  opacity: 0;
+  will-change: opacity;
+  animation: zibIntroBloom 1700ms linear 1000ms forwards;
+}
+
+/* Fenetre du volet. Masquee (opacity 0) tant que son animation n'a pas
+   demarre : fill-mode `forwards` seulement, pour qu'aucun liseré
+   d'anticrenelage ne depasse pendant le delai. */
+.zib-intro__piece {
+  position: absolute;
+  overflow: hidden;
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.zib-intro__inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  will-change: transform;
+}
+
+.zib-intro__inner > svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Boites englobantes exactes de chaque polygone (viewBox 0..100). */
+.zib-intro__piece--top {
+  top: 10%;
+  left: 10%;
+  width: 80%;
+  height: 30%;
+}
+.zib-intro__piece--bottom {
+  top: 60%;
+  left: 10%;
+  width: 80%;
+  height: 30%;
+}
+.zib-intro__piece--diag,
+.zib-intro__piece--glow {
+  top: 10%;
+  left: 10%;
+  width: 80%;
+  height: 80%;
+}
+
+/* Barre haute : gauche -> droite. */
+.zib-intro__piece--top {
+  animation: zibIntroWinFromLeft 450ms cubic-bezier(0.2, 0.8, 0.2, 1) 300ms forwards;
+}
+.zib-intro__piece--top > .zib-intro__inner {
+  animation: zibIntroContentFromLeft 450ms cubic-bezier(0.2, 0.8, 0.2, 1) 300ms forwards;
+}
+
+/* Barre basse : droite -> gauche. */
+.zib-intro__piece--bottom {
+  animation: zibIntroWinFromRight 450ms cubic-bezier(0.2, 0.8, 0.2, 1) 600ms forwards;
+}
+.zib-intro__piece--bottom > .zib-intro__inner {
+  animation: zibIntroContentFromRight 450ms cubic-bezier(0.2, 0.8, 0.2, 1) 600ms forwards;
+}
+
+/* Diagonale : haut -> bas. */
+.zib-intro__piece--diag {
+  animation: zibIntroWinFromTop 550ms cubic-bezier(0.1, 0.9, 0.2, 1) 1000ms forwards;
+}
+.zib-intro__piece--diag > .zib-intro__inner {
+  animation: zibIntroContentFromTop 550ms cubic-bezier(0.1, 0.9, 0.2, 1) 1000ms forwards;
+}
+
+/* Eclat : diagonale blanche qui suit le trace puis refroidit vers le rouge. */
+.zib-intro__piece--glow {
+  animation: zibIntroFlare 700ms cubic-bezier(0.1, 0.9, 0.2, 1) 1000ms forwards;
+}
+.zib-intro__piece--glow > .zib-intro__inner {
+  animation: zibIntroContentFromTop 700ms cubic-bezier(0.1, 0.9, 0.2, 1) 1000ms forwards;
+}
+
+@keyframes zibIntroWinFromLeft {
+  from { transform: translate3d(-100%, 0, 0); opacity: 1; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+@keyframes zibIntroContentFromLeft {
+  from { transform: translate3d(100%, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+@keyframes zibIntroWinFromRight {
+  from { transform: translate3d(100%, 0, 0); opacity: 1; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+@keyframes zibIntroContentFromRight {
+  from { transform: translate3d(-100%, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+@keyframes zibIntroWinFromTop {
+  from { transform: translate3d(0, -100%, 0); opacity: 1; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+@keyframes zibIntroContentFromTop {
+  from { transform: translate3d(0, 100%, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+@keyframes zibIntroFlare {
+  from { transform: translate3d(0, -100%, 0); opacity: 0.9; }
+  to { transform: translate3d(0, 0, 0); opacity: 0; }
+}
+@keyframes zibIntroBloom {
+  0% { opacity: 0; }
+  25% { opacity: 1; }
+  100% { opacity: 0.75; }
+}
+@keyframes zibIntroZoom {
+  0% { transform: scale3d(1, 1, 1); opacity: 1; }
+  15% { transform: scale3d(0.9, 0.9, 1); opacity: 1; }
+  100% { transform: scale3d(46, 46, 1); opacity: 0; }
+}
+@keyframes zibIntroOut {
+  from { opacity: 1; visibility: visible; }
+  to { opacity: 0; visibility: hidden; }
+}
+
+/* Filets de securite : preference changee en cours de route, impression. */
+@media (prefers-reduced-motion: reduce) {
+  html[data-zib-intro='play'] .zib-intro {
+    display: none;
+  }
+}
+@media print {
+  html[data-zib-intro='play'] .zib-intro {
+    display: none;
+  }
+}

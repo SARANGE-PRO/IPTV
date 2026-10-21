@@ -2,7 +2,8 @@ import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
 import type { ReactNode } from 'react';
 import { ServiceWorkerRegister } from '@/components/layout/ServiceWorkerRegister';
-import { SplashIntro } from '@/components/layout/SplashIntro';
+import { ZibIntro } from '@/components/layout/intro/ZibIntro';
+import { ZIB_INTRO_BOOT_SCRIPT } from '@/components/layout/intro/zibIntroBoot';
 import './globals.css';
 
 /** Coquille HTTP pure : si la page est ouverte en https://, on repasse en http://
@@ -41,9 +42,13 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="fr" suppressHydrationWarning>
+      <head>
+        {/* Doit s'executer avant la 1re peinture : decide si l'intro joue. */}
+        <script dangerouslySetInnerHTML={{ __html: ZIB_INTRO_BOOT_SCRIPT }} />
+      </head>
       {PLAIN_HTTP_SHELL && <Script src="/plain-http.js" strategy="beforeInteractive" />}
       <body>
-        <SplashIntro />
+        <ZibIntro />
         {children}
         <ServiceWorkerRegister />
       </body>

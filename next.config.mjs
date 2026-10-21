@@ -65,8 +65,9 @@ async function headers() {
     // `upgrade-insecure-requests` (mixed-content), SAUF en coquille HTTP pure ou
     // il casserait la lecture directe. On n'ajoute PAS de `script-src`/
     // `connect-src`/`media-src` restrictif : mal calibre il casserait hls.js et la
-    // passerelle media, pour un gain XSS faible (React echappe, aucun
-    // dangerouslySetInnerHTML/eval dans le code).
+    // passerelle media, pour un gain XSS faible (React echappe, aucun eval ; le
+    // seul dangerouslySetInnerHTML est le script d'intro, chaine statique —
+    // voir components/layout/intro/zibIntroBoot.ts).
     const csp = PLAIN_HTTP_SHELL
       ? "frame-ancestors 'none'"
       : "frame-ancestors 'none'; upgrade-insecure-requests";
