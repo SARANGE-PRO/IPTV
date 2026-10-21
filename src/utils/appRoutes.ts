@@ -14,10 +14,23 @@ export function liveHref(streamId: string): string {
   return `/live/watch?id=${encodeURIComponent(streamId)}`;
 }
 
-export function movieHref(vodId: string, base = ''): string {
-  return `${base}?vod=${encodeURIComponent(vodId)}`;
+export interface PlayOptions {
+  /** Ouvre la fiche ET lance la lecture (reprise si progression). */
+  play?: boolean;
+  /** Series : episode precis a lancer (sinon reprise / 1er episode). */
+  episodeId?: string;
 }
 
-export function seriesHref(seriesId: string, base = ''): string {
-  return `${base}?series=${encodeURIComponent(seriesId)}`;
+function playSuffix(opts: PlayOptions | undefined): string {
+  if (opts?.play !== true) return '';
+  const ep = opts.episodeId !== undefined ? `&ep=${encodeURIComponent(opts.episodeId)}` : '';
+  return `&play=1${ep}`;
+}
+
+export function movieHref(vodId: string, base = '', opts?: PlayOptions): string {
+  return `${base}?vod=${encodeURIComponent(vodId)}${playSuffix(opts)}`;
+}
+
+export function seriesHref(seriesId: string, base = '', opts?: PlayOptions): string {
+  return `${base}?series=${encodeURIComponent(seriesId)}${playSuffix(opts)}`;
 }

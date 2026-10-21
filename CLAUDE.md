@@ -72,6 +72,7 @@ npm run typecheck  # tsc --noEmit
 6 Player · 7 VOD · 8 Séries · 9 TMDB · 10 Accueil · 11 Favoris/Recherche/Réglages
 · 12 PWA · 13 Durcissement.
 Chantier « niveau Netflix » (oct. 2026) : P1 ✅ fondation langue · P2 ✅ dédup
-versions · P3 ✅ enrichissement TMDB fiable · P4 accueil · P5 fiches/séries ·
+versions · P3 ✅ enrichissement TMDB fiable · P4 ✅ accueil (`services/home/*`,
+`useHomeFeed`, lecture directe `?play=1&ep=`) · P5 fiches/séries ·
 P6 lecteur · P7 recherche · P8 catch-up (optionnel). Schéma Dexie v10 = purge
 films/séries + resync.

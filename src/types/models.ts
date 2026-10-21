@@ -220,6 +220,12 @@ export interface PlaybackEntry {
   /** Denormalises pour afficher "Continuer a regarder" sans jointure. */
   label: string | null;
   posterUrl: string | null;
+  /**
+   * Retire de « Continuer a regarder » a cette date (non indexe, aucune
+   * migration). La progression est CONSERVEE ; une nouvelle lecture
+   * (updatedAt plus recent) fait reapparaitre l'entree.
+   */
+  dismissedAt?: number | null;
 }
 
 export type SessionStatus = 'valid' | 'invalid' | 'unknown';

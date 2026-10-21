@@ -1,231 +1,131 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
-import { ZibLogo } from '@/components/shared/ZibLogo';
-import { ChannelLogo } from '@/components/shared/ChannelLogo';
+import { Billboard } from '@/components/home/Billboard';
+import { ContinueCard } from '@/components/home/ContinueCard';
+import { Top10Card } from '@/components/home/Top10Card';
 import { FootballHeader } from '@/components/football/FootballHeader';
+import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { MediaCard } from '@/components/shared/MediaCard';
 import { PosterImage } from '@/components/shared/PosterImage';
 import { Rail } from '@/components/shared/Rail';
+import { ZibLogo } from '@/components/shared/ZibLogo';
 import { Button } from '@/components/ui/Button';
-import { IconFilm, IconHeart, IconRefresh, IconSearch, IconSeries, IconTv } from '@/components/ui/icons';
+import { IconRefresh, IconSearch } from '@/components/ui/icons';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { useHomeFeed } from '@/hooks/useHomeFeed';
+import { tmdbPoster } from '@/services/tmdb/tmdbImage';
+import type { TrendingItem } from '@/services/discovery/trendingService';
 import { useAuthStore } from '@/stores/authStore';
 import { useCatalogStore } from '@/stores/catalogStore';
-import { useFavoritesStore } from '@/stores/favoritesStore';
-import { useFilterStore } from '@/stores/filterStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
-import { useUiSettingsStore } from '@/stores/uiSettingsStore';
-import * as catalogRepository from '@/services/data/catalogService';
-import * as playbackRepository from '@/services/data/playbackDataService';
-import { getMovieTop10, getSeriesTop10 } from '@/services/ranking/smartRankingService';
-import { loadTrending, type TrendingItem } from '@/services/discovery/trendingService';
-import { tmdbPoster } from '@/services/tmdb/tmdbImage';
-import type { LiveChannel, Movie, PlaybackEntry, Series } from '@/types/models';
-import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
-import { formatCount } from '@/utils/format';
+import type { Movie, Series } from '@/types/models';
 import { liveHref, movieHref, seriesHref } from '@/utils/appRoutes';
-import { variantBadge, variantOrder } from '@/utils/variantPreference';
+import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
+import { variantBadge } from '@/utils/variantPreference';
 
-function hrefForEntry(entry: PlaybackEntry): string {
-  if (entry.type === 'episode') return seriesHref(entry.seriesId ?? '');
-  if (entry.type === 'vod') return movieHref(entry.itemId);
-  return liveHref(entry.itemId);
+/**
+ * ACCUEIL facon Netflix (chantier P4) : billboard, Continuer a regarder (une
+ * carte par serie, lecture directe), Ma liste, Top 10, tendances, nouveautes
+ * en VF, « Parce que tu as regarde », rangees par genre, Live. Toutes les
+ * donnees viennent de useHomeFeed (services/home/*) — aucune logique ici.
+ */
+
+const CARD = 'w-28 shrink-0 sm:w-32';
+
+function MovieCard({ movie }: { movie: Movie }) {
+  const year = displayYear(movie.name, movie.tmdbYear ?? movie.year);
+  return (
+    <MediaCard
+      className={CARD}
+      href={movieHref(movie.id)}
+      title={displayTitle(movie.name)}
+      posterUrl={movie.posterUrl}
+      rating={movie.ratingSort > 0 ? movie.ratingSort : null}
+      tag={variantBadge(movie.variant, movie.variantSource)}
+      subtitle={year !== null ? String(year) : null}
+    />
+  );
 }
 
-const SECTION_CARDS = [
-  { href: '/live', label: 'Live TV', icon: IconTv, key: 'live' as const, noun: 'chaînes' },
-  { href: '/movies', label: 'Films', icon: IconFilm, key: 'vod' as const, noun: 'films' },
-  { href: '/series', label: 'Séries', icon: IconSeries, key: 'series' as const, noun: 'séries' },
-];
-
-interface DiscoveryRails {
-  topMovies: Movie[];
-  frenchMovies: Movie[];
-  popularMovies: Movie[];
-  recentMovies: Movie[];
-  resumeSeries: Series[];
-  frenchSeries: Series[];
-  topSeries: Series[];
-  recentSeries: Series[];
-  liveSports: LiveChannel[];
+function SeriesCard({ series }: { series: Series }) {
+  const year = series.tmdbYear ?? series.year;
+  return (
+    <MediaCard
+      className={CARD}
+      href={seriesHref(series.id)}
+      title={displayTitle(series.name)}
+      posterUrl={series.posterUrl}
+      rating={series.ratingSort > 0 ? series.ratingSort : null}
+      tag={variantBadge(series.variant, series.variantSource)}
+      subtitle={year !== null ? String(year) : null}
+    />
+  );
 }
 
-const EMPTY_RAILS: DiscoveryRails = {
-  topMovies: [],
-  frenchMovies: [],
-  popularMovies: [],
-  recentMovies: [],
-  resumeSeries: [],
-  frenchSeries: [],
-  topSeries: [],
-  recentSeries: [],
-  liveSports: [],
-};
+function TrendingCard({ item }: { item: TrendingItem }) {
+  return (
+    <MediaCard
+      className={CARD}
+      href={item.type === 'vod' ? movieHref(item.xtreamId) : seriesHref(item.xtreamId)}
+      title={item.title}
+      posterUrl={tmdbPoster(item.posterPath)}
+      rating={item.rating}
+      tag={variantBadge(item.variant, item.variantSource)}
+      subtitle={item.year?.toString() ?? null}
+    />
+  );
+}
 
-/** Seuil de credibilite : sous ce nombre d'entrees, le Top 10 recommande est masque. */
-const TOP10_MIN = 5;
+function SeeAll({ href, label }: { href: string; label: string }) {
+  return (
+    <Link href={href} className="text-xs text-fg-faint hover:text-fg">
+      {label}
+    </Link>
+  );
+}
+
+function RailSkeleton() {
+  return (
+    <section className="mt-8">
+      <Skeleton className="mb-3 h-4 w-40 rounded" />
+      <div className="flex gap-3 overflow-hidden">
+        {Array.from({ length: 7 }, (_, i) => (
+          <Skeleton key={i} className="aspect-[2/3] w-28 shrink-0 rounded-xl sm:w-32" />
+        ))}
+      </div>
+    </section>
+  );
+}
 
 export default function HomePage() {
   const credentials = useAuthStore((s) => s.credentials);
-  const sections = useCatalogStore((s) => s.sections);
   const syncing = useCatalogStore((s) => s.syncing);
   const sync = useCatalogStore((s) => s.sync);
-  const continueWatching = usePlaybackStore((s) => s.continueWatching);
   const recentChannels = usePlaybackStore((s) => s.recentChannels);
-  const hydrateRails = usePlaybackStore((s) => s.hydrateRails);
-  const liveFavs = useFavoritesStore((s) => s.ids.live.size);
-  const vodFavs = useFavoritesStore((s) => s.ids.vod.size);
-  const seriesFavs = useFavoritesStore((s) => s.ids.series.size);
-  const hiddenLive = useFilterStore((s) => s.hidden.live);
-  const hiddenVod = useFilterStore((s) => s.hidden.vod);
-  const hiddenSeries = useFilterStore((s) => s.hidden.series);
-  const preferredLanguage = useUiSettingsStore((s) => s.preferredLanguage);
-  const [discovery, setDiscovery] = useState<DiscoveryRails>(EMPTY_RAILS);
-  const [trending, setTrending] = useState<{ movies: TrendingItem[]; series: TrendingItem[] }>({
-    movies: [],
-    series: [],
-  });
+  const dismissContinue = usePlaybackStore((s) => s.dismissContinue);
+  const { hasCatalog, billboard, continueItems, myList, trending, discovery, discoveryLoading } = useHomeFeed();
 
-  useEffect(() => {
-    void hydrateRails();
-  }, [hydrateRails]);
-
-  const hasCatalog =
-    sections.live.itemCount + sections.vod.itemCount + sections.series.itemCount > 0;
-  const totalFavs = liveFavs + vodFavs + seriesFavs;
-
-  // Tendances TMDB de la semaine mappees sur le catalogue VF (affiches HD TMDB).
-  useEffect(() => {
-    if (!hasCatalog) {
-      setTrending({ movies: [], series: [] });
-      return;
-    }
-    let active = true;
-    void loadTrending(10)
-      .then((t) => {
-        if (active) setTrending(t);
-      })
-      .catch(() => {
-        // TMDB indispo / non configure : pas de rail tendances, jamais bloquant.
-      });
-    return () => {
-      active = false;
-    };
-  }, [hasCatalog, sections.vod.itemCount, sections.series.itemCount]);
-
-  useEffect(() => {
-    if (!hasCatalog) {
-      setDiscovery(EMPTY_RAILS);
-      return;
-    }
-    let active = true;
-    const order = variantOrder(preferredLanguage);
-    const loadResumeSeries = async (): Promise<Series[]> => {
-      const ids = await playbackRepository.getInProgressSeriesIds(12);
-      if (ids.length === 0) return [];
-      const byId = new Map((await catalogRepository.getSeriesByIds(ids)).map((series) => [series.id, series]));
-      return ids.map((id) => byId.get(id)).filter((series): series is Series => series !== undefined);
-    };
-    void Promise.all([
-      getMovieTop10(10),
-      catalogRepository.getFrenchMovies(18),
-      catalogRepository.getRecentMovies(18, order),
-      catalogRepository.getTopRatedMovies(18, order),
-      loadResumeSeries(),
-      catalogRepository.getFrenchSeries(18),
-      catalogRepository.getRecentSeries(18, order),
-      getSeriesTop10(12),
-      catalogRepository.getLiveChannelsPage({ kind: 'frenchTheme', theme: 'sport' }, 0, 12),
-    ]).then(
-      ([
-        topMovies,
-        frenchMovies,
-        recentMovies,
-        popularMovies,
-        resumeSeries,
-        frenchSeries,
-        recentSeries,
-        topSeries,
-        liveSports,
-      ]) => {
-        if (!active) return;
-        const topIds = new Set(topMovies.map((movie) => movie.id));
-        const recentIds = new Set(recentMovies.map((movie) => movie.id));
-        const frenchMovieIds = new Set(frenchMovies.map((movie) => movie.id));
-        const frenchSeriesIds = new Set(frenchSeries.map((series) => series.id));
-        const recentSeriesIds = new Set(recentSeries.map((series) => series.id));
-        // Garde-affiche : une carte sans affiche casse le rendu « premium » d'un rail.
-        setDiscovery({
-          topMovies: topMovies.filter((movie) => !hiddenVod.has(movie.categoryId)),
-          frenchMovies: frenchMovies
-            .filter(
-              (movie) =>
-                movie.posterUrl !== null &&
-                !hiddenVod.has(movie.categoryId) &&
-                !topIds.has(movie.id) &&
-                !recentIds.has(movie.id),
-            )
-            .slice(0, 12),
-          popularMovies: popularMovies
-            .filter(
-              (movie) =>
-                movie.posterUrl !== null &&
-                !hiddenVod.has(movie.categoryId) &&
-                !topIds.has(movie.id) &&
-                !recentIds.has(movie.id) &&
-                !frenchMovieIds.has(movie.id),
-            )
-            .slice(0, 12),
-          recentMovies: recentMovies.filter((movie) => movie.posterUrl !== null && !hiddenVod.has(movie.categoryId)),
-          resumeSeries: resumeSeries.filter((series) => !hiddenSeries.has(series.categoryId)),
-          frenchSeries: frenchSeries.filter(
-            (series) => series.posterUrl !== null && !hiddenSeries.has(series.categoryId),
-          ),
-          recentSeries: recentSeries.filter(
-            (series) => series.posterUrl !== null && !hiddenSeries.has(series.categoryId),
-          ),
-          topSeries: topSeries
-            .filter(
-              (series) =>
-                !hiddenSeries.has(series.categoryId) &&
-                !frenchSeriesIds.has(series.id) &&
-                !recentSeriesIds.has(series.id),
-            )
-            .slice(0, 12),
-          liveSports: liveSports.filter((channel) => !hiddenLive.has(channel.categoryId)),
-        });
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [
-    hasCatalog,
-    hiddenLive,
-    hiddenVod,
-    hiddenSeries,
-    preferredLanguage,
-    sections.live.itemCount,
-    sections.vod.itemCount,
-    sections.series.itemCount,
-  ]);
+  const movieBecause = discovery.because.find((b) => b.type === 'vod');
+  const seriesBecause = discovery.because.find((b) => b.type === 'series');
+  const [firstGenres, moreGenres] = [discovery.movieGenres.slice(0, 2), discovery.movieGenres.slice(2)];
+  const nothingYet =
+    discoveryLoading && discovery.topMovies.length === 0 && discovery.newFrMovies.length === 0;
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
-      <ZibLogo className="mb-6 h-11 w-auto md:hidden" />
+    <main className="mx-auto w-full max-w-6xl px-4 pb-6 pt-3 md:px-8 md:pt-6">
       <h1 className="sr-only">Accueil</h1>
-
-      <Link
-        href="/search"
-        className="mt-4 flex items-center gap-2.5 rounded-xl border border-ink-600 bg-ink-800 px-4 py-2.5 text-sm text-fg-faint transition-colors hover:border-ink-500 hover:text-fg-muted"
-      >
-        <IconSearch className="h-5 w-5" />
-        Rechercher une chaîne, un film, une série…
-      </Link>
-
-      <FootballHeader />
+      <div className="mb-3 flex items-center justify-between md:hidden">
+        <ZibLogo className="h-9 w-auto" />
+        <Link
+          href="/search"
+          aria-label="Rechercher"
+          className="rounded-full p-2 text-fg-muted transition-colors hover:bg-ink-800 hover:text-fg"
+        >
+          <IconSearch className="h-6 w-6" />
+        </Link>
+      </div>
 
       {!hasCatalog && (
         <div className="mt-8">
@@ -248,21 +148,166 @@ export default function HomePage() {
         </div>
       )}
 
-      {continueWatching.length > 0 && (
+      {billboard.length > 0 && <Billboard items={billboard} />}
+
+      <FootballHeader />
+
+      {continueItems.length > 0 && (
         <Rail title="Continuer à regarder">
-          {continueWatching.map((entry) => (
-            <MediaCard
-              key={`${entry.type}:${entry.itemId}`}
-              className="w-32 shrink-0"
-              href={hrefForEntry(entry)}
-              title={entry.label ?? 'Sans titre'}
-              posterUrl={entry.posterUrl}
-              progress={
-                entry.durationSec !== null && entry.durationSec > 0
-                  ? entry.positionSec / entry.durationSec
-                  : null
-              }
+          {continueItems.map((item) => (
+            <ContinueCard key={item.key} item={item} onDismiss={() => void dismissContinue(item.dismiss)} />
+          ))}
+        </Rail>
+      )}
+
+      {myList.length > 0 && (
+        <Rail title="Ma liste" action={<SeeAll href="/favorites" label="Tout voir" />}>
+          {myList.map((entry) =>
+            entry.type === 'vod' ? (
+              <MediaCard
+                key={`vod:${entry.item.id}`}
+                className={CARD}
+                href={movieHref(entry.item.id)}
+                title={displayTitle(entry.item.name)}
+                posterUrl={entry.item.posterUrl}
+                tag={variantBadge(entry.item.variant, entry.item.variantSource)}
+                favorite={{ type: 'vod', itemId: entry.item.id }}
+              />
+            ) : (
+              <MediaCard
+                key={`series:${entry.item.id}`}
+                className={CARD}
+                href={seriesHref(entry.item.id)}
+                title={displayTitle(entry.item.name)}
+                posterUrl={entry.item.posterUrl}
+                tag={variantBadge(entry.item.variant, entry.item.variantSource)}
+                favorite={{ type: 'series', itemId: entry.item.id }}
+              />
+            ),
+          )}
+        </Rail>
+      )}
+
+      {nothingYet && hasCatalog && (
+        <>
+          <RailSkeleton />
+          <RailSkeleton />
+        </>
+      )}
+
+      {discovery.topMovies.length >= 5 && (
+        <Rail title="Top 10 des films" action={<SeeAll href="/movies" label="Voir les films" />}>
+          {discovery.topMovies.map((movie, i) => (
+            <Top10Card
+              key={movie.id}
+              rank={i + 1}
+              href={movieHref(movie.id)}
+              title={displayTitle(movie.name)}
+              posterUrl={movie.posterUrl}
+              badge={variantBadge(movie.variant, movie.variantSource)}
             />
+          ))}
+        </Rail>
+      )}
+
+      {trending.movies.length > 0 && (
+        <Rail title="Tendances de la semaine">
+          {trending.movies.map((t) => (
+            <TrendingCard key={t.xtreamId} item={t} />
+          ))}
+        </Rail>
+      )}
+
+      {discovery.newFrMovies.length > 0 && (
+        <Rail title="Nouveautés en VF" action={<SeeAll href="/movies" label="Voir les films" />}>
+          {discovery.newFrMovies.map((movie) => (
+            <MovieCard key={movie.id} movie={movie} />
+          ))}
+        </Rail>
+      )}
+
+      {movieBecause !== undefined && movieBecause.type === 'vod' && (
+        <Rail title={`Parce que tu as regardé ${movieBecause.sourceTitle}`}>
+          {movieBecause.items.map((movie) => (
+            <MovieCard key={movie.id} movie={movie} />
+          ))}
+        </Rail>
+      )}
+
+      {firstGenres.map((rail) => (
+        <Rail key={`g:vod:${rail.genreId}`} title={`Films · ${rail.title}`}>
+          {rail.items.map((movie) => (
+            <MovieCard key={movie.id} movie={movie} />
+          ))}
+        </Rail>
+      ))}
+
+      {discovery.topSeries.length >= 5 && (
+        <Rail title="Top 10 des séries" action={<SeeAll href="/series" label="Voir les séries" />}>
+          {discovery.topSeries.map((series, i) => (
+            <Top10Card
+              key={series.id}
+              rank={i + 1}
+              href={seriesHref(series.id)}
+              title={displayTitle(series.name)}
+              posterUrl={series.posterUrl}
+              badge={variantBadge(series.variant, series.variantSource)}
+            />
+          ))}
+        </Rail>
+      )}
+
+      {trending.series.length > 0 && (
+        <Rail title="Séries tendance">
+          {trending.series.map((t) => (
+            <TrendingCard key={t.xtreamId} item={t} />
+          ))}
+        </Rail>
+      )}
+
+      {seriesBecause !== undefined && seriesBecause.type === 'series' && (
+        <Rail title={`Parce que tu as regardé ${seriesBecause.sourceTitle}`}>
+          {seriesBecause.items.map((series) => (
+            <SeriesCard key={series.id} series={series} />
+          ))}
+        </Rail>
+      )}
+
+      {discovery.newFrSeries.length > 0 && (
+        <Rail title="Séries en VF récemment mises à jour" action={<SeeAll href="/series" label="Voir les séries" />}>
+          {discovery.newFrSeries.map((series) => (
+            <SeriesCard key={series.id} series={series} />
+          ))}
+        </Rail>
+      )}
+
+      {discovery.seriesGenres.map((rail) => (
+        <Rail key={`g:series:${rail.genreId}`} title={`Séries · ${rail.title}`}>
+          {rail.items.map((series) => (
+            <SeriesCard key={series.id} series={series} />
+          ))}
+        </Rail>
+      ))}
+
+      {moreGenres.map((rail) => (
+        <Rail key={`g:vod:${rail.genreId}`} title={`Films · ${rail.title}`}>
+          {rail.items.map((movie) => (
+            <MovieCard key={movie.id} movie={movie} />
+          ))}
+        </Rail>
+      ))}
+
+      {discovery.liveSports.length > 0 && (
+        <Rail title="Sport en direct" action={<SeeAll href="/live" label="Tout le Live" />}>
+          {discovery.liveSports.map((channel) => (
+            <Link
+              key={channel.id}
+              href={liveHref(channel.id)}
+              className="w-36 shrink-0 rounded-xl bg-ink-800 p-3 transition-colors hover:bg-ink-700"
+            >
+              <ChannelLogo channel={channel} className="mx-auto h-16 w-16" />
+              <span className="mt-2 block truncate text-center text-xs text-fg">{displayChannelName(channel.name)}</span>
+            </Link>
           ))}
         </Rail>
       )}
@@ -275,178 +320,11 @@ export default function HomePage() {
               href={liveHref(entry.itemId)}
               className="flex w-44 shrink-0 items-center gap-2.5 rounded-xl bg-ink-800 p-3 transition-colors hover:bg-ink-700"
             >
-              <PosterImage
-                src={entry.posterUrl}
-                alt={entry.label ?? 'Chaîne'}
-                className="h-9 w-9 shrink-0 rounded-lg"
-              />
+              <PosterImage src={entry.posterUrl} alt={entry.label ?? 'Chaîne'} className="h-9 w-9 shrink-0 rounded-lg" />
               <span className="min-w-0 truncate text-xs text-fg">{displayChannelName(entry.label ?? 'Chaîne')}</span>
             </Link>
           ))}
         </Rail>
-      )}
-
-      {trending.movies.length > 0 && (
-        <Rail title="Tendances de la semaine" action={<Link href="/movies" className="text-xs text-fg-faint hover:text-fg">Voir les films</Link>}>
-          {trending.movies.map((t) => (
-            <MediaCard
-              key={t.xtreamId}
-              className="w-32 shrink-0"
-              href={movieHref(t.xtreamId)}
-              title={t.title}
-              posterUrl={tmdbPoster(t.posterPath)}
-              rating={t.rating}
-              subtitle={t.year?.toString() ?? null}
-            />
-          ))}
-        </Rail>
-      )}
-
-      {trending.series.length > 0 && (
-        <Rail title="Séries tendance" action={<Link href="/series" className="text-xs text-fg-faint hover:text-fg">Voir les séries</Link>}>
-          {trending.series.map((t) => (
-            <MediaCard
-              key={t.xtreamId}
-              className="w-32 shrink-0"
-              href={seriesHref(t.xtreamId)}
-              title={t.title}
-              posterUrl={tmdbPoster(t.posterPath)}
-              rating={t.rating}
-              subtitle={t.year?.toString() ?? null}
-            />
-          ))}
-        </Rail>
-      )}
-
-      {discovery.topMovies.length >= TOP10_MIN && (
-        <Rail title="Top 10 recommandé" action={<Link href="/movies" className="text-xs text-fg-faint hover:text-fg">Voir les films</Link>}>
-          {discovery.topMovies.map((movie, index) => (
-            <MediaCard
-              key={movie.id}
-              className="w-32 shrink-0"
-              href={movieHref(movie.id)}
-              title={displayTitle(movie.name)}
-              posterUrl={movie.posterUrl}
-              rating={movie.ratingSort > 0 ? movie.ratingSort : null} tag={variantBadge(movie.variant, movie.variantSource)}
-              subtitle={displayYear(movie.name, movie.year)?.toString()}
-              badge={`#${index + 1}`}
-            />
-          ))}
-        </Rail>
-      )}
-
-      {discovery.frenchMovies.length > 0 && (
-        <Rail title="Films FR à découvrir">
-          {discovery.frenchMovies.map((movie) => (
-            <MediaCard key={movie.id} className="w-32 shrink-0" href={movieHref(movie.id)} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} rating={movie.ratingSort > 0 ? movie.ratingSort : null} tag={variantBadge(movie.variant, movie.variantSource)} subtitle={displayYear(movie.name, movie.year)?.toString()} />
-          ))}
-        </Rail>
-      )}
-
-      {discovery.recentMovies.length > 0 && (
-        <Rail title="Films récemment ajoutés">
-          {discovery.recentMovies.map((movie) => (
-            <MediaCard key={movie.id} className="w-32 shrink-0" href={movieHref(movie.id)} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} rating={movie.ratingSort > 0 ? movie.ratingSort : null} tag={variantBadge(movie.variant, movie.variantSource)} subtitle={displayYear(movie.name, movie.year)?.toString()} />
-          ))}
-        </Rail>
-      )}
-
-      {discovery.popularMovies.length > 0 && (
-        <Rail title="Films populaires" action={<Link href="/movies" className="text-xs text-fg-faint hover:text-fg">Voir les films</Link>}>
-          {discovery.popularMovies.map((movie) => (
-            <MediaCard key={movie.id} className="w-32 shrink-0" href={movieHref(movie.id)} title={displayTitle(movie.name)} posterUrl={movie.posterUrl} rating={movie.ratingSort > 0 ? movie.ratingSort : null} tag={variantBadge(movie.variant, movie.variantSource)} subtitle={displayYear(movie.name, movie.year)?.toString()} />
-          ))}
-        </Rail>
-      )}
-
-      {discovery.resumeSeries.length > 0 && (
-        <Rail title="Séries à reprendre" action={<Link href="/series" className="text-xs text-fg-faint hover:text-fg">Voir les séries</Link>}>
-          {discovery.resumeSeries.map((series) => (
-            <MediaCard key={series.id} className="w-32 shrink-0" href={seriesHref(series.id)} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.ratingSort > 0 ? series.ratingSort : null} tag={variantBadge(series.variant, series.variantSource)} subtitle={series.year !== null ? String(series.year) : undefined} />
-          ))}
-        </Rail>
-      )}
-
-      {discovery.frenchSeries.length > 0 && (
-        <Rail title="Séries FR">
-          {discovery.frenchSeries.map((series) => (
-            <MediaCard key={series.id} className="w-32 shrink-0" href={seriesHref(series.id)} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.ratingSort > 0 ? series.ratingSort : null} tag={variantBadge(series.variant, series.variantSource)} subtitle={series.year !== null ? String(series.year) : undefined} />
-          ))}
-        </Rail>
-      )}
-
-      {discovery.recentSeries.length > 0 && (
-        <Rail title="Séries récemment ajoutées">
-          {discovery.recentSeries.map((series) => (
-            <MediaCard key={series.id} className="w-32 shrink-0" href={seriesHref(series.id)} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.ratingSort > 0 ? series.ratingSort : null} tag={variantBadge(series.variant, series.variantSource)} subtitle={series.year !== null ? String(series.year) : undefined} />
-          ))}
-        </Rail>
-      )}
-
-      {discovery.topSeries.length > 0 && (
-        <Rail title="Séries mieux notées" action={<Link href="/series" className="text-xs text-fg-faint hover:text-fg">Voir les séries</Link>}>
-          {discovery.topSeries.map((series) => (
-            <MediaCard key={series.id} className="w-32 shrink-0" href={seriesHref(series.id)} title={displayTitle(series.name)} posterUrl={series.posterUrl} rating={series.ratingSort > 0 ? series.ratingSort : null} tag={variantBadge(series.variant, series.variantSource)} subtitle={series.year !== null ? String(series.year) : undefined} />
-          ))}
-        </Rail>
-      )}
-
-      {discovery.liveSports.length > 0 && (
-        <Rail title="Sport en direct" action={<Link href="/live" className="text-xs text-fg-faint hover:text-fg">Tout le Live</Link>}>
-          {discovery.liveSports.map((channel) => (
-            <Link key={channel.id} href={liveHref(channel.id)} className="w-36 shrink-0 rounded-xl bg-ink-800 p-3 transition-colors hover:bg-ink-700">
-              <ChannelLogo channel={channel} className="mx-auto h-16 w-16" />
-              <span className="mt-2 block truncate text-center text-xs text-fg">{displayChannelName(channel.name)}</span>
-            </Link>
-          ))}
-        </Rail>
-      )}
-
-      {hasCatalog && (
-        <section className="mt-8 grid gap-3 sm:grid-cols-3">
-          {SECTION_CARDS.map(({ href, label, icon: Icon, key, noun }) => (
-            <Link
-              key={href}
-              href={href}
-              className="group rounded-2xl bg-ink-800 p-5 transition-colors hover:bg-ink-700"
-            >
-              <Icon className="h-6 w-6 text-accent" />
-              <p className="mt-3 text-sm font-semibold text-fg">{label}</p>
-              <p className="mt-1 text-xs text-fg-muted">
-                {formatCount(sections[key].itemCount)} {noun} · {sections[key].categories.length}{' '}
-                catégories
-              </p>
-            </Link>
-          ))}
-        </section>
-      )}
-
-      {totalFavs > 0 && (
-        <Link
-          href="/favorites"
-          className="mt-4 flex items-center gap-3 rounded-2xl bg-ink-800 p-4 transition-colors hover:bg-ink-700"
-        >
-          <IconHeart className="h-5 w-5 text-accent" filled />
-          <span className="text-sm text-fg">
-            {totalFavs} favori{totalFavs > 1 ? 's' : ''}
-          </span>
-        </Link>
-      )}
-
-      {hasCatalog && (
-        <div className="mt-8">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              if (credentials !== null) void sync(credentials, { force: true });
-            }}
-            disabled={syncing || credentials === null}
-          >
-            <IconRefresh className="mr-2 h-4 w-4" />
-            {syncing ? 'Synchronisation…' : 'Resynchroniser'}
-          </Button>
-        </div>
       )}
     </main>
   );

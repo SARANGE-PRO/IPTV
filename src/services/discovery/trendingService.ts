@@ -1,6 +1,6 @@
 import type { TrendingEntry } from '@/types/trending';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
-import { isFrenchWatchable } from '@/types/mediaLanguage';
+import { isFrenchWatchable, type MediaVariant, type VariantSource } from '@/types/mediaLanguage';
 import type { Movie, Series } from '@/types/models';
 import { displayYear } from '@/utils/displayTitle';
 import { vodKeysMatch, vodMatchKey } from '@/utils/vodMatchKey';
@@ -19,8 +19,20 @@ export interface TrendingItem {
   type: 'vod' | 'series';
   title: string; // titre TMDB (FR propre)
   posterPath: string; // fragment d'affiche TMDB (HD)
+  /** Fragment d'image de fond TMDB (billboard), null si absent. */
+  backdropPath: string | null;
+  overview: string | null;
+  genreIds: number[];
   rating: number | null;
   year: number | null;
+  /** Variante de la version Xtream retenue (pastille). */
+  variant: MediaVariant;
+  variantSource: VariantSource;
+}
+
+export interface TrendingResult {
+  movies: TrendingItem[];
+  series: TrendingItem[];
 }
 
 async function fetchTrending(): Promise<{ movies: TrendingEntry[]; series: TrendingEntry[] }> {
@@ -62,11 +74,35 @@ async function matchOne<T extends Movie | Series>(
   return null;
 }
 
+function toItem(entry: TrendingEntry, hit: Movie | Series, type: 'vod' | 'series', posterPath: string): TrendingItem {
+  return {
+    xtreamId: hit.id,
+    type,
+    title: entry.title,
+    posterPath,
+    backdropPath: entry.backdropPath ?? null,
+    overview: entry.overview,
+    genreIds: entry.genreIds ?? [],
+    rating: entry.rating,
+    year: entry.year,
+    variant: hit.variant,
+    variantSource: hit.variantSource,
+  };
+}
+
+/** Memo de session : le matching (~60 recherches Dexie) ne se refait pas a chaque retour sur l'accueil. */
+const MEMO_TTL_MS = 15 * 60 * 1000;
+let memo: { at: number; key: string; limit: number; result: TrendingResult } | null = null;
+
 /**
  * Charge les tendances mappees sur le catalogue VF. `limit` = nombre a AFFICHER
- * par type (on scanne plus large pour l'atteindre).
+ * par type (on scanne plus large pour l'atteindre). `memoKey` : change quand le
+ * catalogue ou la preference de langue change (invalide le memo).
  */
-export async function loadTrending(limit = 10): Promise<{ movies: TrendingItem[]; series: TrendingItem[] }> {
+export async function loadTrending(limit = 10, memoKey = ''): Promise<TrendingResult> {
+  if (memo !== null && memo.key === memoKey && memo.limit >= limit && Date.now() - memo.at < MEMO_TTL_MS) {
+    return { movies: memo.result.movies.slice(0, limit), series: memo.result.series.slice(0, limit) };
+  }
   const { movies, series } = await fetchTrending();
   if (movies.length === 0 && series.length === 0) return { movies: [], series: [] };
 
@@ -77,7 +113,7 @@ export async function loadTrending(limit = 10): Promise<{ movies: TrendingItem[]
     const hit = await matchOne(entry, catalogRepository.searchMovies, (m) => displayYear(m.name, m.year), usedMovies);
     if (hit !== null && entry.posterPath !== null) {
       usedMovies.add(hit.id);
-      matchedMovies.push({ xtreamId: hit.id, type: 'vod', title: entry.title, posterPath: entry.posterPath, rating: entry.rating, year: entry.year });
+      matchedMovies.push(toItem(entry, hit, 'vod', entry.posterPath));
     }
   }
 
@@ -88,9 +124,11 @@ export async function loadTrending(limit = 10): Promise<{ movies: TrendingItem[]
     const hit = await matchOne(entry, catalogRepository.searchSeries, (s) => s.year, usedSeries);
     if (hit !== null && entry.posterPath !== null) {
       usedSeries.add(hit.id);
-      matchedSeries.push({ xtreamId: hit.id, type: 'series', title: entry.title, posterPath: entry.posterPath, rating: entry.rating, year: entry.year });
+      matchedSeries.push(toItem(entry, hit, 'series', entry.posterPath));
     }
   }
 
-  return { movies: matchedMovies, series: matchedSeries };
+  const result = { movies: matchedMovies, series: matchedSeries };
+  memo = { at: Date.now(), key: memoKey, limit, result };
+  return result;
 }

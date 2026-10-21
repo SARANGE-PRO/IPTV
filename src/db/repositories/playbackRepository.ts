@@ -19,7 +19,7 @@ export function getContinueWatching(limit: number): Promise<PlaybackEntry[]> {
   return db.playback_history
     .orderBy('updatedAt')
     .reverse()
-    .filter((e) => e.finished === 0 && (e.type === 'vod' || e.type === 'episode'))
+    .filter((e) => e.finished === 0 && (e.type === 'vod' || e.type === 'episode') && !isDismissed(e))
     .limit(limit)
     .toArray();
 }
@@ -70,6 +70,26 @@ export async function getSeriesEpisodeProgress(
   const map = new Map<string, PlaybackEntry>();
   for (const row of rows) map.set(row.itemId, row);
   return map;
+}
+
+/** Masque une entree de « Continuer a regarder » (progression conservee). */
+export async function dismissEntry(type: MediaType, itemId: string): Promise<void> {
+  await db.playback_history.update([type, itemId], { dismissedAt: Date.now() });
+}
+
+/** Masque tous les episodes d'une serie de « Continuer a regarder ». */
+export async function dismissSeries(seriesId: string): Promise<void> {
+  const now = Date.now();
+  await db.playback_history
+    .where('type')
+    .equals('episode')
+    .filter((e) => e.seriesId === seriesId)
+    .modify({ dismissedAt: now });
+}
+
+/** Vrai si l'entree a ete retiree de « Continuer » APRES sa derniere lecture. */
+export function isDismissed(entry: PlaybackEntry): boolean {
+  return entry.dismissedAt != null && entry.dismissedAt >= entry.updatedAt;
 }
 
 export async function markFinished(type: MediaType, itemId: string): Promise<void> {

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import * as playbackRepository from '@/db/repositories/playbackRepository';
+import { dismissContinue, type DismissTarget } from '@/services/home/continueWatchingService';
 import { FINISHED_RATIO } from '@/services/player/resumePlaybackService';
 import type { MediaType, PlaybackEntry } from '@/types/models';
 
@@ -31,6 +32,8 @@ interface PlaybackState {
   recordLiveWatch: (channelId: string, name: string, logoUrl: string | null) => void;
   markFinished: (type: MediaType, itemId: string) => Promise<void>;
   removeEntry: (type: MediaType, itemId: string) => Promise<void>;
+  /** Retire une carte de « Continuer a regarder » (progression conservee). */
+  dismissContinue: (target: DismissTarget) => Promise<void>;
   clearHistory: () => Promise<void>;
 }
 
@@ -91,6 +94,11 @@ export const usePlaybackStore = create<PlaybackState>()((set, get) => ({
 
   removeEntry: async (type, itemId) => {
     await playbackRepository.removeProgress(type, itemId);
+    await get().hydrateRails();
+  },
+
+  dismissContinue: async (target) => {
+    await dismissContinue(target);
     await get().hydrateRails();
   },
 

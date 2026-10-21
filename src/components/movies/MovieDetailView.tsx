@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { LanguageVariantSwitcher } from '@/components/media/LanguageVariantSwitcher';
@@ -42,7 +42,16 @@ import { formatClock } from '@/utils/format';
  * voir utils/appRoutes). `onBack` : fermeture fournie par l'hote (depile
  * l'historique, ou retire le parametre en acces direct).
  */
-export function MovieDetailView({ vodId, onBack }: { vodId: string; onBack?: () => void }) {
+export function MovieDetailView({
+  vodId,
+  onBack,
+  autoPlay = false,
+}: {
+  vodId: string;
+  onBack?: () => void;
+  /** Lance la lecture des que la fiche est prete (reprise si progression). */
+  autoPlay?: boolean;
+}) {
   const credentials = useAuthStore((s) => s.credentials);
   const saveProgress = usePlaybackStore((s) => s.saveProgress);
   const markFinished = usePlaybackStore((s) => s.markFinished);
@@ -54,6 +63,7 @@ export function MovieDetailView({ vodId, onBack }: { vodId: string; onBack?: () 
   const [variants, setVariants] = useState<LanguageVariant[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [progress, setProgress] = useState<PlaybackEntry | null>(null);
+  const [progressLoaded, setProgressLoaded] = useState(false);
   const [plot, setPlot] = useState<string | null>(null);
   const [xtreamPoster, setXtreamPoster] = useState<string | null>(null);
   const [xtreamBackdrop, setXtreamBackdrop] = useState<string | null>(null);
@@ -70,7 +80,9 @@ export function MovieDetailView({ vodId, onBack }: { vodId: string; onBack?: () 
       if (active) setMovie(m ?? null);
     });
     void playbackRepository.getProgress('vod', vodId).then((p) => {
-      if (active) setProgress(p ?? null);
+      if (!active) return;
+      setProgress(p ?? null);
+      setProgressLoaded(true);
     });
     return () => {
       active = false;
@@ -173,6 +185,16 @@ export function MovieDetailView({ vodId, onBack }: { vodId: string; onBack?: () 
     setFailed(false);
     setPlaying(true);
   };
+
+  // Lecture directe (« Lecture » du billboard, « Continuer a regarder ») : une
+  // seule fois, quand film + version de langue + progression sont connus.
+  const autoPlayedRef = useRef(false);
+  useEffect(() => {
+    if (!autoPlay || autoPlayedRef.current || movie === null || movie === undefined) return;
+    if (activeId === null || !progressLoaded) return;
+    autoPlayedRef.current = true;
+    play(canResume && progress !== null ? progress.positionSec : 0);
+  }, [autoPlay, movie, activeId, progressLoaded, canResume, progress]);
 
   if (movie === null) {
     return (

@@ -25,6 +25,8 @@ interface TmdbTrendingRow {
   release_date?: string;
   first_air_date?: string;
   poster_path?: string | null;
+  backdrop_path?: string | null;
+  genre_ids?: number[];
   overview?: string;
   vote_average?: number;
 }
@@ -61,6 +63,8 @@ async function fetchTrendingPage(type: 'movie' | 'tv', page: number): Promise<Tr
         title: (type === 'movie' ? r.title : r.name) ?? '',
         year: yearOf(type === 'movie' ? r.release_date : r.first_air_date),
         posterPath: r.poster_path ?? null,
+        backdropPath: r.backdrop_path ?? null,
+        genreIds: Array.isArray(r.genre_ids) ? r.genre_ids.filter((g): g is number => typeof g === 'number') : [],
         overview: r.overview !== undefined && r.overview !== '' ? r.overview : null,
         rating: typeof r.vote_average === 'number' ? r.vote_average : null,
       }))

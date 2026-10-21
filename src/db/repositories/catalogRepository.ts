@@ -632,6 +632,58 @@ export function getFrenchSeries(limit: number, sort: 'recent' | 'rating' = 'rece
   return tier === undefined ? Promise.resolve([]) : tier.limit(limit).toArray();
 }
 
+/**
+ * Recherche BORNEE pour les rails d'accueil (genre, « parce que tu as regarde »,
+ * favoris...) : parcourt les tiers d'index (une version par titre, variante
+ * preferee d'abord, tri note ou date) en appliquant `predicate`, et s'arrete a
+ * `limit` resultats OU apres `scanCap` lignes lues. Jamais de scan complet,
+ * meme pour un genre rare.
+ */
+async function findInTiers<T>(
+  tiers: Collection<T, string>[],
+  limit: number,
+  predicate: (item: T) => boolean,
+  scanCap: number,
+): Promise<T[]> {
+  const out: T[] = [];
+  let scanned = 0;
+  for (const tier of tiers) {
+    if (out.length >= limit || scanned >= scanCap) break;
+    const rows = await tier
+      .until(() => scanned >= scanCap)
+      .filter((item) => {
+        scanned += 1;
+        return predicate(item);
+      })
+      .limit(limit - out.length)
+      .toArray();
+    out.push(...rows);
+  }
+  return out;
+}
+
+const RAIL_SCAN_CAP = 4000;
+
+export function findMovies(
+  predicate: (m: Movie) => boolean,
+  limit: number,
+  order: readonly MediaVariant[] = DEFAULT_VARIANT_ORDER,
+  sort: 'rating' | 'recent' = 'rating',
+  scanCap = RAIL_SCAN_CAP,
+): Promise<Movie[]> {
+  return findInTiers(tiersFor(db.xtream_vod_streams, 'addedAt', 'all', order, sort), limit, predicate, scanCap);
+}
+
+export function findSeries(
+  predicate: (s: Series) => boolean,
+  limit: number,
+  order: readonly MediaVariant[] = DEFAULT_VARIANT_ORDER,
+  sort: 'rating' | 'recent' = 'rating',
+  scanCap = RAIL_SCAN_CAP,
+): Promise<Series[]> {
+  return findInTiers(tiersFor(db.xtream_series, 'lastModifiedAt', 'all', order, sort), limit, predicate, scanCap);
+}
+
 // --- Recherche (index multiEntry searchTokens, schema v2) ---------------------------
 
 interface Searchable {

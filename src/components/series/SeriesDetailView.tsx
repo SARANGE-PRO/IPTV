@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { HScroll } from '@/components/shared/HScroll';
@@ -47,7 +47,19 @@ function episodeStatus(prog: PlaybackEntry | undefined): { label: string; classN
  * Contenu detail d'une serie — rendu en MODAL par DetailModalHost
  * (`?series=<id>`, voir utils/appRoutes). `onBack` : fermeture fournie par l'hote.
  */
-export function SeriesDetailView({ seriesId, onBack }: { seriesId: string; onBack?: () => void }) {
+export function SeriesDetailView({
+  seriesId,
+  onBack,
+  autoPlay = false,
+  episodeId = null,
+}: {
+  seriesId: string;
+  onBack?: () => void;
+  /** Lance un episode des que la fiche est prete. */
+  autoPlay?: boolean;
+  /** Episode a lancer ; sinon reprise en cours, sinon 1er episode. */
+  episodeId?: string | null;
+}) {
   const credentials = useAuthStore((s) => s.credentials);
   const saveProgress = usePlaybackStore((s) => s.saveProgress);
   const markFinished = usePlaybackStore((s) => s.markFinished);
@@ -65,6 +77,7 @@ export function SeriesDetailView({ seriesId, onBack }: { seriesId: string; onBac
   // Incremente -> re-sonde la passerelle (echec de lecture ou reveil du PC).
   const [planRetry, setPlanRetry] = useState(0);
   const [epProgress, setEpProgress] = useState<Map<string, PlaybackEntry>>(new Map());
+  const [progressLoaded, setProgressLoaded] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -110,6 +123,7 @@ export function SeriesDetailView({ seriesId, onBack }: { seriesId: string; onBac
 
   const refreshProgress = useCallback(async () => {
     setEpProgress(await playbackRepository.getSeriesEpisodeProgress(seriesId));
+    setProgressLoaded(true);
   }, [seriesId]);
 
   useEffect(() => {
@@ -152,6 +166,23 @@ export function SeriesDetailView({ seriesId, onBack }: { seriesId: string; onBac
     setFailed(false);
     setPlayingEp(ep);
   };
+
+  // Lecture directe (accueil) : episode demande, sinon reprise, sinon le 1er.
+  const autoPlayedRef = useRef(false);
+  useEffect(() => {
+    if (!autoPlay || autoPlayedRef.current || !progressLoaded) return;
+    if (details === null || details === undefined || details.episodes.length === 0) return;
+    autoPlayedRef.current = true;
+    const target =
+      (episodeId !== null ? details.episodes.find((e) => e.id === episodeId) : undefined) ??
+      resumeEpisode ??
+      details.episodes[0];
+    if (target === undefined) return;
+    setSeason(target.seasonNumber);
+    playEpisode(target);
+    // playEpisode lit epProgress (deja charge) : dependance volontairement omise.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPlay, progressLoaded, details, episodeId, resumeEpisode]);
 
   const src =
     playingEp !== null && credentials !== null
