@@ -26,13 +26,18 @@ html[data-zib-intro='play'] .zib-intro {
   top: 0;
   left: 0;
   right: 0;
-  /* Hauteur FIGEE des la 1re frame : le viewport iOS se recale apres le
-     lancement (PWA et barre Safari). lvh = pleine hauteur, jamais de bande. */
-  height: 100vh;
-  height: 100lvh;
+  /* Ancre par les 4 bords, JAMAIS par vh/lvh/svh : au lancement d'une PWA iOS
+     (barre de statut black-translucent), ces unites valent l'ecran MOINS la
+     barre de statut puis se recalent -> la barre d'onglets (bottom:0) depassait
+     en bas pendant l'intro. Les bords du viewport, eux, sont justes des la 1re
+     frame (c'est la reference de la barre d'onglets). */
+  bottom: 0;
   z-index: 2147483000;
   overflow: hidden;
   background: #08080a;
+  /* Debord plein du meme noir tout autour (une ombre n'est pas rognee par
+     overflow:hidden) : aucun ecart possible pendant un recalage du viewport. */
+  box-shadow: 0 0 0 100vmax #08080a;
   /* Bloque gestes et selection pendant l'intro (pas de rubber-band iOS, pas de
      loupe/menu contextuel sur appui long, pas de scroll de la page dessous). */
   touch-action: none;
@@ -41,19 +46,18 @@ html[data-zib-intro='play'] .zib-intro {
   user-select: none;
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
-  contain: strict;
   animation: zibIntroOut 600ms ease-in-out 2900ms both;
 }
 
-/* Centre sur la PETITE hauteur (svh) : centre visuel reel au lancement, barre
-   Safari affichee ou non, et ne bouge pas quand elle se replie. */
+/* Centre sur la boite de l'overlay (= ecran reel), pas sur svh : meme bug
+   iOS, le logo apparaissait decale vers le haut de la moitie de la barre de
+   statut. */
 .zib-intro__stage {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 100vh;
-  height: 100svh;
+  bottom: 0;
   display: flex;
   align-items: center;
   justify-content: center;
