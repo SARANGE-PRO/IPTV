@@ -319,6 +319,7 @@ export function SeriesDetailView({
                 )}
                 <div className="relative">
                   <PlayerSlot
+                    onMinimize={() => (onBack !== undefined ? onBack() : router.back())}
                     media={{
                       kind: 'episode',
                       ownerId: seriesId,

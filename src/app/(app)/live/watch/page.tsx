@@ -7,7 +7,6 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { NowPlaying } from '@/components/live/NowPlaying';
 import { ExternalPlayer } from '@/components/player/ExternalPlayer';
-import { PipButton } from '@/components/player/PipButton';
 import { PlayerSlot } from '@/components/player/host/PlayerSlot';
 import { IconArrowLeft } from '@/components/ui/icons';
 import { useLandscapeFullscreen } from '@/hooks/useLandscapeFullscreen';
@@ -49,7 +48,7 @@ function LiveWatch() {
   const [versions, setVersions] = useState<ChannelVersion[]>([]);
   const [failed, setFailed] = useState(false);
   // <video> du lecteur unique, SEULEMENT si c'est cette chaine qui joue
-  // (sinon le bouton PiP piloterait un film en mini-lecteur).
+  // (sinon le plein ecran paysage piloterait un film en mini-lecteur).
   const video = usePlayerStore((s) =>
     s.session?.media.kind === 'live' && s.session.media.ownerId === streamId ? s.video : null,
   );
@@ -146,12 +145,7 @@ function LiveWatch() {
         <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg">
           {channel != null ? displayChannelName(channel.name) : 'Chaîne'}
         </h1>
-        {streamId !== '' && (
-          <div className="flex items-center gap-2">
-            <PipButton video={video} />
-            <FavoriteButton type="live" itemId={streamId} />
-          </div>
-        )}
+        {streamId !== '' && <FavoriteButton type="live" itemId={streamId} />}
       </div>
 
       {channel === null ? (
@@ -167,7 +161,7 @@ function LiveWatch() {
                 donc la lecture continue sans coupure en tournant l'appareil. */}
             <div
               className={cn(
-                'relative overflow-hidden rounded-2xl',
+                'relative',
                 'phone-land:fixed phone-land:inset-0 phone-land:z-[60] phone-land:rounded-none phone-land:bg-black',
                 'phone-land:pb-[env(safe-area-inset-bottom)] phone-land:pl-[env(safe-area-inset-left)] phone-land:pr-[env(safe-area-inset-right)]',
               )}
@@ -189,31 +183,33 @@ function LiveWatch() {
                   subtitle: 'En direct',
                   artwork: channel?.logoUrl ?? null,
                 }}
-              />
-              {/* Titre en surimpression (verre depoli) — s'estompe apres 4 s pour
-                  liberer le bouton plein ecran natif. pointer-events-none : les
-                  taps atteignent toujours les controles du lecteur. */}
-              <div
-                className={cn(
-                  'pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/60 to-transparent p-3 transition-opacity duration-700',
-                  'phone-land:pl-[calc(env(safe-area-inset-left)+0.75rem)]',
-                  showTitleOverlay ? 'opacity-100' : 'opacity-0',
-                )}
+                onMinimize={() => router.back()}
               >
-                <span className="glass inline-block max-w-[70%] truncate rounded-lg px-2.5 py-1 text-xs font-medium text-fg">
-                  {channel != null ? displayChannelName(channel.name) : 'Chaîne'}
-                </span>
-              </div>
-              <div
-                className={cn(
-                  'pointer-events-none absolute inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] z-10 hidden justify-center transition-opacity duration-500 phone-land:flex',
-                  showFullscreenHint ? 'opacity-100' : 'opacity-0',
-                )}
-              >
-                <span className="glass rounded-full px-3 py-1.5 text-xs font-medium text-fg">
-                  Touchez l&apos;écran pour le plein écran
-                </span>
-              </div>
+                {/* Titre en surimpression (verre depoli) — s'estompe apres 4 s pour
+                    liberer le bouton plein ecran natif. pointer-events-none : les
+                    taps atteignent toujours les controles du lecteur. */}
+                <div
+                  className={cn(
+                    'pointer-events-none absolute inset-x-0 top-0 z-10 rounded-t-2xl bg-gradient-to-b from-black/60 to-transparent p-3 transition-opacity duration-700 phone-land:rounded-none',
+                    'phone-land:pl-[calc(env(safe-area-inset-left)+0.75rem)]',
+                    showTitleOverlay ? 'opacity-100' : 'opacity-0',
+                  )}
+                >
+                  <span className="glass inline-block max-w-[70%] truncate rounded-lg px-2.5 py-1 text-xs font-medium text-fg">
+                    {channel != null ? displayChannelName(channel.name) : 'Chaîne'}
+                  </span>
+                </div>
+                <div
+                  className={cn(
+                    'pointer-events-none absolute inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] z-10 hidden justify-center transition-opacity duration-500 phone-land:flex',
+                    showFullscreenHint ? 'opacity-100' : 'opacity-0',
+                  )}
+                >
+                  <span className="glass rounded-full px-3 py-1.5 text-xs font-medium text-fg">
+                    Touchez l&apos;écran pour le plein écran
+                  </span>
+                </div>
+              </PlayerSlot>
               {/* NB : les fleches de zapping en overlay (top-1/2 sur les bords)
                   ont ete retirees — elles captaient le tap "reveler les controles"
                   du lecteur natif (zapping involontaire). Le zapping reste dispo

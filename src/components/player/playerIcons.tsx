@@ -23,13 +23,6 @@ function Svg({ children, className }: { children: ReactNode; className?: string 
   );
 }
 
-export const IconPip = ({ className }: IconProps) => (
-  <Svg className={className}>
-    <rect x="2.5" y="4.5" width="19" height="15" rx="2" />
-    <rect x="12" y="11.5" width="7" height="5.5" rx="1" fill="currentColor" stroke="none" />
-  </Svg>
-);
-
 export const IconPlayFilled = ({ className }: IconProps) => (
   <Svg className={className}>
     <path d="M7 4.5v15l12.5-7.5z" fill="currentColor" />

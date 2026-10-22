@@ -294,6 +294,7 @@ export function MovieDetailView({
           ) : (
             <>
               <PlayerSlot
+                onMinimize={() => (onBack !== undefined ? onBack() : router.back())}
                 media={{
                   kind: 'vod',
                   ownerId: vodId,

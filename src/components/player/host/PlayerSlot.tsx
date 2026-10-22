@@ -1,8 +1,9 @@
 'use client';
 
-import { useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { IconPlayFilled } from '@/components/player/playerIcons';
 import { registerSlot, type SlotHandle, type SlotLayout } from '@/components/player/host/playerSurface';
+import { useSwipeToMinimize } from '@/hooks/useSwipeToMinimize';
 import { cn } from '@/lib/cn';
 import { playerSessionKey, usePlayerStore } from '@/stores/playerStore';
 import type { NowPlayingMedia, PlayerHandlers, PlayerSource } from '@/types/nowPlaying';
@@ -13,6 +14,11 @@ interface PlayerSlotProps extends PlayerSource, PlayerHandlers {
   /** 'live' : plein ecran automatique telephone a l'horizontale. */
   layout?: SlotLayout;
   className?: string;
+  /** Glisser la video vers le bas (mobile) : meme action que le bouton retour
+   *  de la page -> la lecture continue en mini-lecteur. */
+  onMinimize?: () => void;
+  /** Surimpressions qui suivent la video (titre de chaine…). */
+  children?: ReactNode;
 }
 
 /**
@@ -28,12 +34,15 @@ export function PlayerSlot({
   media,
   layout = 'default',
   className,
+  onMinimize,
+  children,
   onProgress,
   onEnded,
   onError,
   onDirectMkvFailed,
   ...source
 }: PlayerSlotProps) {
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
   const targetRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<SlotHandle | null>(null);
   const key = playerSessionKey(media, source);
@@ -74,11 +83,14 @@ export function PlayerSlot({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
+  useSwipeToMinimize(wrapperRef, active && onMinimize !== undefined ? onMinimize : null);
+
   const poster = secureImageSrc(source.poster ?? media.artwork);
 
   return (
-    <div className={cn('relative', className)}>
+    <div ref={wrapperRef} className={cn('relative', className)}>
       <div ref={targetRef} className={cn('h-full', !active && 'hidden')} />
+      {active && children}
       {!active && (
         <button
           type="button"
