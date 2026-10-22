@@ -11,7 +11,7 @@ import { TrailerButton } from '@/components/media/TrailerButton';
 import { PosterImage } from '@/components/shared/PosterImage';
 import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { DirectMkvProbe } from '@/components/player/DirectMkvProbe';
-import { VideoPlayer } from '@/components/player/VideoPlayer';
+import { PlayerSlot } from '@/components/player/host/PlayerSlot';
 import { EpisodeRow } from '@/components/series/EpisodeRow';
 import { UpNextOverlay } from '@/components/series/UpNextOverlay';
 import { Button } from '@/components/ui/Button';
@@ -318,7 +318,15 @@ export function SeriesDetailView({
                   />
                 )}
                 <div className="relative">
-                  <VideoPlayer
+                  <PlayerSlot
+                    media={{
+                      kind: 'episode',
+                      ownerId: seriesId,
+                      itemId: playingEp.id,
+                      title: `S${playingEp.seasonNumber} E${playingEp.episodeNumber} · ${playingEp.title}`,
+                      subtitle: series != null ? displayTitle(series.name) : null,
+                      artwork: playingEp.imageUrl ?? posterUrl,
+                    }}
                     src={src}
                     transcode={plan === 'gateway'}
                     directMkv={plan === 'direct-mkv'}

@@ -10,7 +10,7 @@ import { TrailerButton } from '@/components/media/TrailerButton';
 import { PosterImage } from '@/components/shared/PosterImage';
 import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { DirectMkvProbe } from '@/components/player/DirectMkvProbe';
-import { VideoPlayer } from '@/components/player/VideoPlayer';
+import { PlayerSlot } from '@/components/player/host/PlayerSlot';
 import { Button } from '@/components/ui/Button';
 import { IconArrowLeft, IconPlay } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
@@ -293,7 +293,17 @@ export function MovieDetailView({
             </div>
           ) : (
             <>
-              <VideoPlayer
+              <PlayerSlot
+                media={{
+                  kind: 'vod',
+                  ownerId: vodId,
+                  itemId: activeMovieId ?? vodId,
+                  title: displayTitle(movie.name),
+                  subtitle: [displayYear(movie.name, movie.tmdbYear ?? movie.year)?.toString() ?? null, 'Film']
+                    .filter((v): v is string => v !== null)
+                    .join(' · '),
+                  artwork: posterUrl,
+                }}
                 src={src}
                 transcode={plan === 'gateway'}
                 directMkv={plan === 'direct-mkv'}

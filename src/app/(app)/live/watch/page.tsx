@@ -7,14 +7,17 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { NowPlaying } from '@/components/live/NowPlaying';
 import { ExternalPlayer } from '@/components/player/ExternalPlayer';
-import { VideoPlayer } from '@/components/player/VideoPlayer';
+import { PipButton } from '@/components/player/PipButton';
+import { PlayerSlot } from '@/components/player/host/PlayerSlot';
 import { IconArrowLeft } from '@/components/ui/icons';
+import { useLandscapeFullscreen } from '@/hooks/useLandscapeFullscreen';
 import { cn } from '@/lib/cn';
 import * as catalogRepository from '@/services/data/catalogService';
 import { findChannelVersions } from '@/services/live/channelGroupingService';
 import { buildLiveStreamUrl } from '@/services/xtream/xtreamUrls';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
+import { usePlayerStore } from '@/stores/playerStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { ChannelVersion } from '@/types/liveGrouping';
 import type { LiveChannel } from '@/types/models';
@@ -45,6 +48,14 @@ function LiveWatch() {
   });
   const [versions, setVersions] = useState<ChannelVersion[]>([]);
   const [failed, setFailed] = useState(false);
+  // <video> du lecteur unique, SEULEMENT si c'est cette chaine qui joue
+  // (sinon le bouton PiP piloterait un film en mini-lecteur).
+  const video = usePlayerStore((s) =>
+    s.session?.media.kind === 'live' && s.session.media.ownerId === streamId ? s.video : null,
+  );
+  // Telephone a l'horizontale : 1er tap = lecteur plein ecran natif.
+  const { landscape, fullscreen } = useLandscapeFullscreen(video);
+  const [showFullscreenHint, setShowFullscreenHint] = useState(false);
   // Le titre en surimpression s'efface apres quelques secondes pour ne pas
   // recouvrir le bouton plein ecran natif (le nom reste dans l'en-tete au-dessus).
   const [showTitleOverlay, setShowTitleOverlay] = useState(true);
@@ -73,6 +84,17 @@ function LiveWatch() {
     const timer = setTimeout(() => setShowTitleOverlay(false), 4000);
     return () => clearTimeout(timer);
   }, [streamId]);
+
+  // Indication « touchez pour le plein ecran » a chaque passage en paysage.
+  useEffect(() => {
+    if (!landscape || fullscreen) {
+      setShowFullscreenHint(false);
+      return;
+    }
+    setShowFullscreenHint(true);
+    const timer = setTimeout(() => setShowFullscreenHint(false), 3000);
+    return () => clearTimeout(timer);
+  }, [landscape, fullscreen]);
 
   useEffect(() => {
     if (channel === null || channel === undefined) return;
@@ -113,7 +135,7 @@ function LiveWatch() {
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8">
-      <div className="mb-4 flex items-center gap-3">
+      <div className="mb-4 flex items-center gap-3 phone-land:hidden">
         <button
           onClick={() => router.back()}
           aria-label="Retour"
@@ -124,7 +146,12 @@ function LiveWatch() {
         <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg">
           {channel != null ? displayChannelName(channel.name) : 'Chaîne'}
         </h1>
-        {streamId !== '' && <FavoriteButton type="live" itemId={streamId} />}
+        {streamId !== '' && (
+          <div className="flex items-center gap-2">
+            <PipButton video={video} />
+            <FavoriteButton type="live" itemId={streamId} />
+          </div>
+        )}
       </div>
 
       {channel === null ? (
@@ -135,14 +162,33 @@ function LiveWatch() {
       ) : (
         src !== null && (
           <div className="space-y-4">
-            <div className="relative overflow-hidden rounded-2xl">
-              <VideoPlayer
+            {/* Telephone a l'horizontale : le lecteur couvre tout l'ecran (CSS
+                seul — iOS refuse le plein ecran natif sans tap). Meme <video>,
+                donc la lecture continue sans coupure en tournant l'appareil. */}
+            <div
+              className={cn(
+                'relative overflow-hidden rounded-2xl',
+                'phone-land:fixed phone-land:inset-0 phone-land:z-[60] phone-land:rounded-none phone-land:bg-black',
+                'phone-land:pb-[env(safe-area-inset-bottom)] phone-land:pl-[env(safe-area-inset-left)] phone-land:pr-[env(safe-area-inset-right)]',
+              )}
+            >
+              <PlayerSlot
                 src={src}
                 live
                 transcode={liveExt === 'ts'}
                 contentType="live"
                 container={liveExt}
                 onError={() => setFailed(true)}
+                layout="live"
+                className="phone-land:h-full"
+                media={{
+                  kind: 'live',
+                  ownerId: streamId,
+                  itemId: streamId,
+                  title: channel != null ? displayChannelName(channel.name) : 'Chaîne',
+                  subtitle: 'En direct',
+                  artwork: channel?.logoUrl ?? null,
+                }}
               />
               {/* Titre en surimpression (verre depoli) — s'estompe apres 4 s pour
                   liberer le bouton plein ecran natif. pointer-events-none : les
@@ -150,6 +196,7 @@ function LiveWatch() {
               <div
                 className={cn(
                   'pointer-events-none absolute inset-x-0 top-0 z-10 bg-gradient-to-b from-black/60 to-transparent p-3 transition-opacity duration-700',
+                  'phone-land:pl-[calc(env(safe-area-inset-left)+0.75rem)]',
                   showTitleOverlay ? 'opacity-100' : 'opacity-0',
                 )}
               >
@@ -157,67 +204,80 @@ function LiveWatch() {
                   {channel != null ? displayChannelName(channel.name) : 'Chaîne'}
                 </span>
               </div>
+              <div
+                className={cn(
+                  'pointer-events-none absolute inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.5rem)] z-10 hidden justify-center transition-opacity duration-500 phone-land:flex',
+                  showFullscreenHint ? 'opacity-100' : 'opacity-0',
+                )}
+              >
+                <span className="glass rounded-full px-3 py-1.5 text-xs font-medium text-fg">
+                  Touchez l&apos;écran pour le plein écran
+                </span>
+              </div>
               {/* NB : les fleches de zapping en overlay (top-1/2 sur les bords)
                   ont ete retirees — elles captaient le tap "reveler les controles"
                   du lecteur natif (zapping involontaire). Le zapping reste dispo
                   via les boutons labellises Precedente/Suivante sous le lecteur. */}
             </div>
-            <NowPlaying credentials={credentials} streamId={streamId} />
-            {versions.length > 1 && (
-              <div>
-                <p className="mb-2 text-xs font-medium text-fg-muted">Autres versions</p>
-                <div className="flex flex-wrap gap-2">
-                  {versions.map((version) => (
-                    <Link
-                      key={version.channel.id}
-                      href={liveHref(version.channel.id)}
-                      className={cn(
-                        'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
-                        version.channel.id === streamId
-                          ? 'bg-accent text-white'
-                          : 'bg-ink-800 text-fg-muted hover:text-fg',
-                      )}
-                    >
-                      {version.label}
-                    </Link>
-                  ))}
+            {/* Masque en paysage : rien a faire defiler sous le plein ecran. */}
+            <div className="space-y-4 phone-land:hidden">
+              <NowPlaying credentials={credentials} streamId={streamId} />
+              {versions.length > 1 && (
+                <div>
+                  <p className="mb-2 text-xs font-medium text-fg-muted">Autres versions</p>
+                  <div className="flex flex-wrap gap-2">
+                    {versions.map((version) => (
+                      <Link
+                        key={version.channel.id}
+                        href={liveHref(version.channel.id)}
+                        className={cn(
+                          'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                          version.channel.id === streamId
+                            ? 'bg-accent text-white'
+                            : 'bg-ink-800 text-fg-muted hover:text-fg',
+                        )}
+                      >
+                        {version.label}
+                      </Link>
+                    ))}
+                  </div>
                 </div>
+              )}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  disabled={neighbors.previous === null}
+                  onClick={() => {
+                    if (neighbors.previous !== null) router.push(liveHref(neighbors.previous.id));
+                  }}
+                  className="min-w-0 rounded-xl bg-ink-800 px-4 py-3 text-left text-xs text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg disabled:opacity-35"
+                >
+                  <span className="block text-[10px] uppercase tracking-wider text-fg-faint">Precedente</span>
+                  <span className="mt-1 block truncate">
+                    {neighbors.previous != null ? displayChannelName(neighbors.previous.name) : 'Indisponible'}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={neighbors.next === null}
+                  onClick={() => {
+                    if (neighbors.next !== null) router.push(liveHref(neighbors.next.id));
+                  }}
+                  className="min-w-0 rounded-xl bg-ink-800 px-4 py-3 text-right text-xs text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg disabled:opacity-35"
+                >
+                  <span className="block text-[10px] uppercase tracking-wider text-fg-faint">Suivante</span>
+                  <span className="mt-1 block truncate">
+                    {neighbors.next != null ? displayChannelName(neighbors.next.name) : 'Indisponible'}
+                  </span>
+                </button>
               </div>
-            )}
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                disabled={neighbors.previous === null}
-                onClick={() => {
-                  if (neighbors.previous !== null) router.push(liveHref(neighbors.previous.id));
-                }}
-                className="min-w-0 rounded-xl bg-ink-800 px-4 py-3 text-left text-xs text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg disabled:opacity-35"
-              >
-                <span className="block text-[10px] uppercase tracking-wider text-fg-faint">Precedente</span>
-                <span className="mt-1 block truncate">
-                  {neighbors.previous != null ? displayChannelName(neighbors.previous.name) : 'Indisponible'}
-                </span>
-              </button>
-              <button
-                type="button"
-                disabled={neighbors.next === null}
-                onClick={() => {
-                  if (neighbors.next !== null) router.push(liveHref(neighbors.next.id));
-                }}
-                className="min-w-0 rounded-xl bg-ink-800 px-4 py-3 text-right text-xs text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg disabled:opacity-35"
-              >
-                <span className="block text-[10px] uppercase tracking-wider text-fg-faint">Suivante</span>
-                <span className="mt-1 block truncate">
-                  {neighbors.next != null ? displayChannelName(neighbors.next.name) : 'Indisponible'}
-                </span>
-              </button>
+              {(showVlcButton || failed) && vlcSrc !== null && (
+                <ExternalPlayer
+                  streamUrl={vlcSrc}
+                  label={failed ? 'Ça ne marche pas ici ? Ouvrir dans VLC' : 'Regarder dans VLC'}
+                />
+              )}
             </div>
-            {(showVlcButton || failed) && vlcSrc !== null && (
-              <ExternalPlayer
-                streamUrl={vlcSrc}
-                label={failed ? 'Ça ne marche pas ici ? Ouvrir dans VLC' : 'Regarder dans VLC'}
-              />
-            )}
           </div>
         )
       )}

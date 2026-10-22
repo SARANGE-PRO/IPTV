@@ -8,6 +8,12 @@ const config: Config = {
   content: ['./src/**/*.{ts,tsx}'],
   theme: {
     extend: {
+      screens: {
+        // Telephone tenu a l'horizontale (iPhone/Android, pas iPad ni fenetre
+        // d'ordinateur) : le lecteur Live passe en plein ecran. DOIT rester
+        // identique a PHONE_LANDSCAPE_QUERY (src/utils/videoFullscreen.ts).
+        'phone-land': { raw: '(orientation: landscape) and (max-height: 500px) and (pointer: coarse)' },
+      },
       colors: {
         ink: {
           950: '#08080A',

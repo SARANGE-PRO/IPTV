@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, type ReactNode } from 'react';
+import { coverPlayerSlots } from '@/components/player/host/playerSurface';
 
 /**
  * Conteneur MODAL des detail film/serie (ouverts par `?vod=` / `?series=`, voir
@@ -12,6 +13,10 @@ import { useEffect, type ReactNode } from 'react';
  * direct). Verrou de scroll de l'arriere-plan.
  */
 export function DetailModal({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+  // La page dessous est masquee : une lecture qui s'y deroulait passe en
+  // mini-lecteur (et y revient a la fermeture de la fiche).
+  useLayoutEffect(() => coverPlayerSlots(), []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -34,7 +39,7 @@ export function DetailModal({ children, onClose }: { children: ReactNode; onClos
     >
       {/* pt-safe : sur iPhone en PWA, sans marge le contenu (retour/favori) passe
           sous l'encoche. Desktop : py-8 centre le modal. */}
-      <div className="flex min-h-full items-start justify-center pt-safe sm:py-8">
+      <div className="flex min-h-full items-start justify-center pb-[var(--zib-mini-modal-offset,0px)] pt-safe sm:py-8">
         <div
           onClick={(e) => e.stopPropagation()}
           className="relative w-full max-w-4xl animate-modal-rise overflow-hidden bg-ink-950 shadow-2xl shadow-black/60 sm:rounded-3xl sm:border sm:border-ink-700/60"

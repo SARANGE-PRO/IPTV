@@ -1,11 +1,12 @@
 'use client';
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { DetailModal } from '@/components/shared/DetailModal';
 import { MovieDetailView } from '@/components/movies/MovieDetailView';
 import { SeriesDetailView } from '@/components/series/SeriesDetailView';
 import { usePlaybackStore } from '@/stores/playbackStore';
+import { usePlayerStore } from '@/stores/playerStore';
 
 /**
  * Ouvre le detail film/serie en MODAL des que l'URL porte `?vod=<id>` ou
@@ -30,6 +31,17 @@ export function DetailModalHost() {
   const episodeId = searchParams.get('ep');
   const open = vodId !== null || seriesId !== null;
 
+  // Fiche du titre qui joue deja (mini-lecteur) : elle s'ouvre directement sur
+  // le lecteur, sans recharger le flux. Lu UNE fois a l'ouverture.
+  const resume = useMemo(() => {
+    const media = usePlayerStore.getState().session?.media;
+    if (media === undefined) return { vod: false, episodeId: null as string | null };
+    return {
+      vod: vodId !== null && media.kind === 'vod' && media.ownerId === vodId,
+      episodeId: seriesId !== null && media.kind === 'episode' && media.ownerId === seriesId ? media.itemId : null,
+    };
+  }, [vodId, seriesId]);
+
   // Vrai tant que le modal courant est celui present au montage (acces direct).
   const directAccessRef = useRef(open);
   useEffect(() => {
@@ -52,7 +64,7 @@ export function DetailModalHost() {
   if (vodId !== null) {
     return (
       <DetailModal onClose={close}>
-        <MovieDetailView key={vodId} vodId={vodId} onBack={close} autoPlay={autoPlay} />
+        <MovieDetailView key={vodId} vodId={vodId} onBack={close} autoPlay={autoPlay || resume.vod} />
       </DetailModal>
     );
   }
@@ -63,8 +75,8 @@ export function DetailModalHost() {
           key={seriesId}
           seriesId={seriesId}
           onBack={close}
-          autoPlay={autoPlay}
-          episodeId={episodeId}
+          autoPlay={autoPlay || resume.episodeId !== null}
+          episodeId={episodeId ?? resume.episodeId}
         />
       </DetailModal>
     );

@@ -46,7 +46,7 @@ export function SyncProgress() {
   const settled = ORDER.filter((s) => progress[s] !== 'pending' && progress[s] !== 'loading').length;
 
   return (
-    <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-50 px-4 md:bottom-4 md:pl-60">
+    <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom)+var(--zib-mini-offset,0px))] z-50 px-4 md:bottom-[calc(1rem+var(--zib-mini-offset,0px))] md:pl-60">
       <div className="mx-auto max-w-md rounded-2xl border border-ink-700 bg-ink-900/95 p-4 shadow-xl backdrop-blur">
         <div className="flex items-center gap-2.5">
           <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-ink-500 border-t-accent" />

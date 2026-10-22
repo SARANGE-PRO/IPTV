@@ -62,7 +62,17 @@ export interface VideoPlayerProps {
   /** Contexte pour le diagnostic d'erreur (bouton "i"). */
   contentType?: 'live' | 'vod' | 'episode';
   container?: string | null;
+  /** Classes du cadre (fond noir arrondi qui contient la video). */
   className?: string;
+  /** Classes du conteneur racine (cadre + mentions sous le lecteur). */
+  rootClassName?: string;
+  /** Classes ajoutees a la <video> (ex. remplir l'ecran en paysage). */
+  videoClassName?: string;
+  /** Recoit l'element <video> au montage (null au demontage) : commandes
+   *  externes comme le bouton PiP. */
+  onVideoElement?: (video: HTMLVideoElement | null) => void;
+  /** Vignette (mini-lecteur) : ni commandes natives, ni panneau d'erreur. */
+  compact?: boolean;
 }
 
 type PlayerStatus = 'loading' | 'ready' | 'error';
@@ -125,6 +135,10 @@ export function VideoPlayer({
   contentType,
   container = null,
   className,
+  rootClassName,
+  videoClassName,
+  onVideoElement,
+  compact = false,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -458,6 +472,13 @@ export function VideoPlayer({
     };
   }, [streamUrl, attempt, directMkv, preferredLanguage]);
 
+  // Expose la <video> (stable sur toute la vie du composant, zapping compris).
+  useEffect(() => {
+    if (onVideoElement === undefined) return;
+    onVideoElement(videoRef.current);
+    return () => onVideoElement(null);
+  }, [onVideoElement]);
+
   // Incrustation AUTO (PiP) quand la PWA passe en arriere-plan pendant la lecture
   // — comme YouTube. Declaratif (autoPictureInPicture) quand supporte + tentative
   // programmatique en secours (silencieuse si un geste est requis par le nav).
@@ -491,22 +512,34 @@ export function VideoPlayer({
   }, [autoPip]);
 
   return (
-    <div>
+    <div className={rootClassName}>
       <div className={cn('relative overflow-hidden rounded-2xl bg-black', className)}>
         <video
           ref={videoRef}
-          controls
+          controls={!compact}
           playsInline
           autoPlay
           poster={posterUrl ?? undefined}
-          className="aspect-video w-full bg-black"
+          className={cn('aspect-video w-full bg-black', videoClassName)}
         />
         {status === 'loading' && (
           <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/40">
-            <span className="h-8 w-8 animate-spin rounded-full border-2 border-ink-500 border-t-accent" />
+            <span
+              className={cn(
+                'animate-spin rounded-full border-2 border-ink-500 border-t-accent',
+                compact ? 'h-4 w-4' : 'h-8 w-8',
+              )}
+            />
           </div>
         )}
-        {status === 'error' && (
+        {status === 'error' && compact && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/80">
+            <span className="text-base font-semibold text-accent" aria-hidden>
+              !
+            </span>
+          </div>
+        )}
+        {status === 'error' && !compact && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-y-auto bg-black/85 px-6 py-6 text-center">
             <p className="text-sm leading-relaxed text-fg">{message}</p>
             <Button size="sm" variant="secondary" onClick={() => setAttempt((a) => a + 1)}>
@@ -525,7 +558,7 @@ export function VideoPlayer({
           </div>
         )}
       </div>
-      {limitedSeek && !live && status !== 'error' && (
+      {limitedSeek && !live && !compact && status !== 'error' && (
         <p className="mt-2 text-[11px] text-fg-faint">
           Ce flux ne permet pas toujours une reprise précise (lecture progressive).
         </p>

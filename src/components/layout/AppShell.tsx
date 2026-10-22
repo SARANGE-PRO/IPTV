@@ -97,7 +97,11 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
       </aside>
 
-      <div className="pb-24 pt-safe md:pb-8">{children}</div>
+      {/* --zib-mini-offset : place reservee sous le contenu quand le
+          mini-lecteur est visible (voir player/host/miniPlayer.css). */}
+      <div className="pb-[calc(6rem+var(--zib-mini-offset,0px))] pt-safe md:pb-[calc(2rem+var(--zib-mini-offset,0px))]">
+        {children}
+      </div>
 
       <SyncProgress />
       <CommandPalette />

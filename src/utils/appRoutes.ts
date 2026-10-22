@@ -34,3 +34,26 @@ export function movieHref(vodId: string, base = '', opts?: PlayOptions): string 
 export function seriesHref(seriesId: string, base = '', opts?: PlayOptions): string {
   return `${base}?series=${encodeURIComponent(seriesId)}${playSuffix(opts)}`;
 }
+
+/**
+ * Revenir en grand sur ce qui joue dans le mini-lecteur, depuis la page
+ * COURANTE (`pathname` + `search`) : Live -> page de la chaine ; film/serie ->
+ * la fiche s'ouvre en modal par-dessus la page actuelle, en lecture.
+ */
+export function nowPlayingHref(
+  media: { kind: 'live' | 'vod' | 'episode'; ownerId: string; itemId: string },
+  pathname: string,
+  search: string,
+): string {
+  if (media.kind === 'live') return liveHref(media.ownerId);
+  const params = new URLSearchParams(search);
+  for (const name of ['vod', 'series', 'play', 'ep']) params.delete(name);
+  if (media.kind === 'vod') {
+    params.set('vod', media.ownerId);
+  } else {
+    params.set('series', media.ownerId);
+    params.set('ep', media.itemId);
+  }
+  params.set('play', '1');
+  return `${pathname}?${params.toString()}`;
+}

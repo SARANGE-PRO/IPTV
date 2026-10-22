@@ -51,7 +51,11 @@ Gestionnaire de paquets : **npm**.
    remux navigateur (`utils/matroska.ts`, `utils/fmp4.ts`, `utils/mkvRemuxer.ts`
    = briques PURES, imports relatifs, testables en Node avec ffmpeg ;
    `services/player/mkvDirectEngine.ts` = liaison MediaSource). Jamais de
-   décodage en JS.
+   décodage en JS. **Lecteur unique** : une seule `<video>` pour toute l'app
+   (`components/player/host/PlayerHost`, monté dans le layout (app)). Les pages
+   n'utilisent JAMAIS `VideoPlayer` directement mais `PlayerSlot` (mêmes props
+   + `media`) : quitter la page laisse la lecture continuer en mini-lecteur.
+   État dans `stores/playerStore`.
 
 ## Méthode de travail
 - Avancer **module par module**, jamais tout d'un coup. Indiquer les fichiers
