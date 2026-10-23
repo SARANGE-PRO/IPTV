@@ -40,6 +40,14 @@ export interface PlayerErrorAction {
   onSelect: () => void;
 }
 
+/** Lecture suivante autonome (episode suivant) : marche page fermee. */
+export interface PlayerContinuation {
+  /** « S2E5 » (affichage). */
+  label: string;
+  /** Lance la suite ; false si impossible (seul VLC saurait la lire). */
+  start: () => Promise<boolean>;
+}
+
 /** Rappels de la page qui a lance la lecture. Survivent a sa fermeture (la
  *  progression continue d'etre enregistree en mini-lecteur). */
 export interface PlayerHandlers {
@@ -50,6 +58,8 @@ export interface PlayerHandlers {
   onDirectMkvFailed?: () => void;
   /** Alternatives affichees sous le message d'echec definitif. */
   errorActions?: PlayerErrorAction[];
+  /** Episode suivant : enchaine en mini-lecteur et ⏭ de l'ecran verrouille. */
+  next?: PlayerContinuation | null;
 }
 
 export interface PlayerSession {

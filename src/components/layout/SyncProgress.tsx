@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/cn';
 import { useCatalogStore, type SyncSectionState } from '@/stores/catalogStore';
 import type { Section } from '@/types/models';
@@ -43,8 +43,13 @@ export function SyncProgress() {
   const progress = useCatalogStore((s) => s.syncProgress);
   const counts = useCatalogStore((s) => s.syncCounts);
 
+  const quiet = useCatalogStore((s) => s.syncQuiet);
   // Repliable : la 1re synchro est longue, le panneau ne doit pas masquer l'app.
+  // Synchro automatique de fond : reduite d'emblee.
   const [collapsed, setCollapsed] = useState(false);
+  useEffect(() => {
+    if (syncing) setCollapsed(quiet);
+  }, [syncing, quiet]);
 
   if (!syncing) return null;
   const settled = ORDER.filter((s) => progress[s] !== 'pending' && progress[s] !== 'loading').length;

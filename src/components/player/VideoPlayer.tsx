@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/cn';
 import { nativeDurationSeconds } from '@/services/player/mediaDurationService';
 import { bufferedAhead, isSeekable } from '@/services/player/playbackCapabilityService';
+import { noteStarvation } from '@/services/player/networkQualityService';
 import { wasPausedByUser } from '@/services/player/playbackIntent';
 import {
   AUTO_RESUME_POKE_MS,
@@ -669,6 +670,7 @@ export function VideoPlayer({
         !wasPausedByUser(video) &&
         isStarvedPause({ bufferAhead: bufferedAhead(video), readyState: video.readyState, starving });
       if (starved) {
+        noteStarvation();
         autoPaused = true;
         if (autoPausedAt === null) autoPausedAt = Date.now();
         lastPokeAt = Date.now();
@@ -772,6 +774,7 @@ export function VideoPlayer({
         retries = 0;
       }
       if (now - lastProgressAt >= stallTimeout(kind, video.seeking)) {
+        noteStarvation();
         recover('stall', { code: 'stream_stalled', message: MESSAGES.stalled[kind] });
       }
     }, WATCHDOG_INTERVAL_MS);
@@ -864,6 +867,8 @@ export function VideoPlayer({
       stopHlsSession();
       detachSource();
     };
+    // src / preferHls / transcode sont deja dans streamUrl (URL calculee).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamUrl, attempt, directMkv, preferredLanguage]);
 
   // Expose la <video> (stable sur toute la vie du composant, zapping compris).

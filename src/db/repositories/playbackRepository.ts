@@ -58,6 +58,23 @@ export async function getInProgressSeriesIds(limit: number): Promise<string[]> {
   return ids;
 }
 
+/** Series dont au moins un episode a ete regarde (commence OU fini), plus recentes d'abord. */
+export async function getWatchedSeriesIds(limit: number): Promise<string[]> {
+  const rows = await db.playback_history
+    .orderBy('updatedAt')
+    .reverse()
+    .filter((entry) => entry.type === 'episode' && entry.seriesId !== null)
+    .limit(limit * 6)
+    .toArray();
+  const ids: string[] = [];
+  for (const row of rows) {
+    if (row.seriesId === null || ids.includes(row.seriesId)) continue;
+    ids.push(row.seriesId);
+    if (ids.length >= limit) break;
+  }
+  return ids;
+}
+
 /** Progression des episodes d'une serie, indexee par id d'episode. */
 export async function getSeriesEpisodeProgress(
   seriesId: string,

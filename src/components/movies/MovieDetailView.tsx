@@ -253,6 +253,7 @@ export function MovieDetailView({
       {!playing && (
         <div className="relative h-48 w-full overflow-hidden sm:h-72 sm:rounded-t-3xl">
           {heroBackdrop !== null ? (
+            // eslint-disable-next-line @next/next/no-img-element -- image TMDB distante, export statique (pas d'optimiseur)
             <img
               src={heroBackdrop}
               alt=""

@@ -17,6 +17,8 @@ import {
 } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 import { HOME_HREF, LIVE_HREF, SEARCH_HREF, SETTINGS_HREF } from '@/utils/appRoutes';
+import { useAutoSync } from '@/hooks/useAutoSync';
+import { usePreconnectMedia } from '@/hooks/usePreconnectMedia';
 import { useReminderScheduler } from '@/hooks/useReminderScheduler';
 import { requestPersistentStorage } from '@/lib/persistStorage';
 import { useCatalogStore } from '@/stores/catalogStore';
@@ -49,6 +51,10 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   // Planifie les rappels d'evenements (notif premier plan + rattrapage).
   useReminderScheduler();
+  // Connexion au serveur de flux preparee avant le premier tap.
+  usePreconnectMedia();
+  // Catalogue de plus de 7 jours : resynchro de fond.
+  useAutoSync();
 
   useEffect(() => {
     // Enrichissement TMDB : reprend la ou il s'etait arrete, a CHAQUE lancement

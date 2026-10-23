@@ -55,13 +55,15 @@ const idleBackfill = (): BackfillState => ({ running: false, moviesLeft: null, s
 interface CatalogState {
   sections: Record<Section, CatalogSectionState>;
   syncing: boolean;
+  /** Synchro automatique de fond : la banniere demarre reduite. */
+  syncQuiet: boolean;
   syncProgress: Record<Section, SyncSectionState>;
   syncCounts: Record<Section, number>;
   backfill: BackfillState;
   hydrated: boolean;
   hydrateSection: (section: Section) => Promise<void>;
   hydrate: () => Promise<void>;
-  sync: (creds: XtreamCredentials, opts?: { force?: boolean }) => Promise<boolean>;
+  sync: (creds: XtreamCredentials, opts?: { force?: boolean; quiet?: boolean }) => Promise<boolean>;
   /** Compte les lignes en attente d'enrichissement (affichage reglages). */
   refreshBackfillCounts: () => Promise<void>;
   /** Lance (ou laisse tourner) le backfill TMDB en tache de fond. Idempotent. */
@@ -72,6 +74,7 @@ interface CatalogState {
 export const useCatalogStore = create<CatalogState>()((set, get) => ({
   sections: { live: emptySection(), vod: emptySection(), series: emptySection() },
   syncing: false,
+  syncQuiet: false,
   syncProgress: idleProgress(),
   syncCounts: { live: 0, vod: 0, series: 0 },
   backfill: idleBackfill(),
@@ -117,6 +120,7 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
     if (get().syncing) return false;
     set((state) => ({
       syncing: true,
+      syncQuiet: opts?.quiet ?? false,
       syncProgress: idleProgress(),
       syncCounts: { live: 0, vod: 0, series: 0 },
       sections: {

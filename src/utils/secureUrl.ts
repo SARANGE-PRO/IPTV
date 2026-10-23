@@ -77,6 +77,21 @@ export function secureMediaUrl(
 }
 
 /**
+ * Origine (schema + hote) a laquelle le lecteur se connectera pour les flux du
+ * serveur : la passerelle si elle sert d'intermediaire, sinon le serveur
+ * (eventuellement passe en HTTPS). Sert a preparer la connexion (preconnect).
+ */
+export function mediaOrigin(serverUrl: string | null | undefined): string | null {
+  const probe = secureMediaUrl(serverUrl != null ? `${serverUrl.replace(/\/+$/, '')}/live` : null);
+  if (probe === null) return null;
+  try {
+    return new URL(probe).origin;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * URL d'ARRET d'une session HLS VOD sur la passerelle (a appeler en
  * `navigator.sendBeacon` a la fermeture du lecteur) : tue ffmpeg tout de suite
  * et libere la connexion Xtream (compte a connexion unique -> anti-ban). `value`

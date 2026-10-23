@@ -149,7 +149,8 @@ export const useFavoritesStore = create<FavoritesState>()((set, get) => {
 
     deleteTab: async (tabId) => {
       await favoriteTabsService.deleteTab(tabId);
-      const { [tabId]: _removed, ...rest } = get().tabItems;
+      const rest = { ...get().tabItems };
+      delete rest[tabId];
       set((state) => ({ tabs: state.tabs.filter((t) => t.id !== tabId) }));
       setTabItems(rest);
     },

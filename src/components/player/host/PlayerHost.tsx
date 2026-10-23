@@ -15,6 +15,7 @@ import {
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { useMiniPlayerMediaSession } from '@/hooks/useMiniPlayerMediaSession';
 import { bindPlayPause } from '@/services/player/mediaSessionService';
+import { recordStreamFailure, recordStreamSuccess } from '@/services/live/streamReliabilityService';
 import { getPlayerHandlers, usePlayerStore } from '@/stores/playerStore';
 import type { PlaybackFailure } from '@/types/playbackDiagnostics';
 import { nowPlayingHref } from '@/utils/appRoutes';
@@ -73,28 +74,50 @@ export function PlayerHost() {
 
   const mode = session === null ? 'none' : surfaceState.mode;
   const mini = mode === 'mini';
-  useMiniPlayerMediaSession(session?.media ?? null, mini);
+  // Episode suivant confie par la fiche serie (marche fiche fermee).
+  const next = session !== null ? (getPlayerHandlers(session.key)?.next ?? null) : null;
+  useMiniPlayerMediaSession(session?.media ?? null, mini, next);
 
   // Rappels LIES a la session : le lecteur qui se demonte (changement de flux)
   // enregistre sa derniere position pour SON titre, jamais pour le suivant.
   const callbacks = useMemo(() => {
     if (sessionKey === null) return null;
     const key = sessionKey;
+    // Fiabilite apprise (Live) : un succes par session, l'echec definitif.
+    let recorded = false;
+    const liveItem = () => {
+      const s = usePlayerStore.getState().session;
+      return s?.key === key && s.media.kind === 'live' ? s.media.itemId : null;
+    };
     return {
       onProgress: (pos: number, dur: number | null, force: boolean) =>
         getPlayerHandlers(key)?.onProgress?.(pos, dur, force),
       onEnded: () => {
         getPlayerHandlers(key)?.onEnded?.();
-        // Film/episode termine en mini-lecteur : rien a regarder, on le ferme.
+        // Termine en mini-lecteur : episode suivant s'il y en a un, sinon on ferme.
         if (getSurfaceSnapshot().mode === 'mini' && usePlayerStore.getState().session?.key === key) {
-          usePlayerStore.getState().stop();
+          const following = getPlayerHandlers(key)?.next ?? null;
+          if (following === null) {
+            usePlayerStore.getState().stop();
+            return;
+          }
+          void following.start().then((started) => {
+            if (!started && usePlayerStore.getState().session?.key === key) usePlayerStore.getState().stop();
+          });
         }
       },
       onError: (failure: PlaybackFailure) => {
+        const item = liveItem();
+        if (item !== null) recordStreamFailure(item);
         if (usePlayerStore.getState().session?.key === key) usePlayerStore.getState().markFailed();
         getPlayerHandlers(key)?.onError?.(failure);
       },
       onPlaying: () => {
+        const item = liveItem();
+        if (item !== null && !recorded) {
+          recorded = true;
+          recordStreamSuccess(item);
+        }
         if (usePlayerStore.getState().session?.key === key) usePlayerStore.getState().clearFailed();
       },
       onDirectMkvFailed: () => getPlayerHandlers(key)?.onDirectMkvFailed?.(),

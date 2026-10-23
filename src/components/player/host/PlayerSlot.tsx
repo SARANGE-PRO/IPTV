@@ -52,6 +52,7 @@ export function PlayerSlot({
   onError,
   onDirectMkvFailed,
   errorActions,
+  next,
   ...source
 }: PlayerSlotProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -73,7 +74,7 @@ export function PlayerSlot({
   const sessionKey = adoptKey !== null && key === mountKey ? adoptKey : key;
   const active = usePlayerStore((s) => s.session?.key === sessionKey);
 
-  const handlers: PlayerHandlers = { onProgress, onEnded, onError, onDirectMkvFailed, errorActions };
+  const handlers: PlayerHandlers = { onProgress, onEnded, onError, onDirectMkvFailed, errorActions, next };
   const latest = useRef({ media, source, handlers });
   latest.current = { media, source, handlers };
 

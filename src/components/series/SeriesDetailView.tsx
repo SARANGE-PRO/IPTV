@@ -15,6 +15,7 @@ import { DirectMkvProbe } from '@/components/player/DirectMkvProbe';
 import { PlayerSlot } from '@/components/player/host/PlayerSlot';
 import { ClampedText } from '@/components/shared/ClampedText';
 import { LandscapeStage } from '@/components/player/LandscapeStage';
+import { nextEpisodeContinuation } from '@/services/player/seriesAutoplayService';
 import { EpisodeRow } from '@/components/series/EpisodeRow';
 import { UpNextOverlay } from '@/components/series/UpNextOverlay';
 import { Button } from '@/components/ui/Button';
@@ -37,7 +38,7 @@ import { useSimilarSeries } from '@/hooks/useTitleExtras';
 import { useMediaSession } from '@/hooks/useMediaSession';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
-import { usePlayerStore } from '@/stores/playerStore';
+import { playerSessionKey, usePlayerStore } from '@/stores/playerStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { Episode, PlaybackEntry, Series, SeriesDetails } from '@/types/models';
 import { displayTitle } from '@/utils/displayTitle';
@@ -210,6 +211,29 @@ export function SeriesDetailView({
     },
   );
 
+  // Episode suivant AUTONOME, confie au lecteur unique : il enchaine meme
+  // fiche fermee (mini-lecteur) et sert le ⏭ de l'ecran verrouille.
+  const continuation = useMemo(() => {
+    if (playingEp === null || credentials === null || series == null) return null;
+    return nextEpisodeContinuation(
+      {
+        credentials,
+        seriesId,
+        seriesName: series.name,
+        seriesTitle: displayTitle(series.name),
+        posterUrl,
+        episodes: allEpisodes,
+      },
+      {
+        saveProgress: (input, opts) => usePlaybackStore.getState().saveProgress(input, opts),
+        markFinished: (episodeId) => void usePlaybackStore.getState().markFinished('episode', episodeId),
+        play: (session, handlers) => usePlayerStore.getState().play(session, handlers),
+        sessionKey: playerSessionKey,
+      },
+      playingEp,
+    );
+  }, [playingEp, credentials, series, seriesId, posterUrl, allEpisodes]);
+
   const handleEnded = (ep: Episode) => {
     void markFinished('episode', ep.id);
     const next = nextEpisode(allEpisodes, ep.id);
@@ -340,6 +364,7 @@ export function SeriesDetailView({
                   <PlayerSlot
                     layout="live"
                     className="phone-land:h-full"
+                    next={continuation}
                     errorActions={[
                       ...(followingEp !== null
                         ? [{ label: 'Épisode suivant', onSelect: () => playEpisode(followingEp, 0) }]

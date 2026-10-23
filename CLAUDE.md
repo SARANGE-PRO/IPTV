@@ -79,6 +79,9 @@ Gestionnaire de paquets : **npm**.
   affichée sans le guide (ou l'EPG Xtream, confirmé côté client).
 - Guide → bouquet : `services/football/tvChannels.ts` (`tvChannelKey`) +
   `channelIndex.ts`. Liste blanche de chaînes nationales (pas de régionales).
+- La MÊME analyse du guide produit le programme 24 h des chaînes du
+  référentiel FR (`parseGuide` → `/api/tvguide`, clé = nom du référentiel =
+  `LineupGroup.name`) : « en cours » sous chaque chaîne Live (`useTvNow`).
 
 ## Méthode de travail
 - Avancer **module par module**, jamais tout d'un coup. Indiquer les fichiers
@@ -97,6 +100,8 @@ Gestionnaire de paquets : **npm**.
 npm run dev        # dev
 npm run build      # build prod (type-check TS inclus)
 npm run typecheck  # tsc --noEmit
+npm run lint       # eslint . (flat config, `next lint` deprecie)
+npm test           # vitest : briques PURES (tests/*.test.ts)
 ```
 
 ## Plan (état)
@@ -112,6 +117,11 @@ jamais d'overlay maison · P7 ✅ recherche (titres, genres, acteurs TMDB, réce
 · P8 abandonné. Schéma Dexie v10 = purge
 films/séries + resync. v11 = tables additives (grille Live FR, onglets de
 favoris), sans resync. Live : grille FR + onglets de favoris + 10 récents ✅.
+Live intelligent (oct. 2026) ✅ : versions apprises (`streamReliabilityService`
++ `utils/versionRanking`, local), réseau faible → HD (`networkQualityService`),
+épisode suivant hors fiche (`seriesAutoplayService`, `PlayerHandlers.next`),
+« Nouveaux épisodes » (`newEpisodesService`), liste latérale iPad, synchro
+auto > 7 j (`useAutoSync`), preconnect flux (`mediaOrigin`).
 Ergonomie (oct. 2026) ✅ : barre du bas avec Recherche (Réglages = engrenage de
 l'accueil), lecteur (paysage plein écran partout, actions sur l'écran d'échec,
 mini-lecteur annulable), Live (swipe, chaîne précédente, état conservé),

@@ -16,6 +16,8 @@ import { useFavoriteItems } from '@/hooks/useFavoriteItems';
 import { useLiveCatalogPage } from '@/hooks/useLiveCatalogPage';
 import { useLiveLineup } from '@/hooks/useLiveLineup';
 import { LIVE_SEARCH_LIMIT, useLiveSearch } from '@/hooks/useLiveSearch';
+import { useTvNow } from '@/hooks/useTvNow';
+import { useVersionRanking } from '@/hooks/useVersionRanking';
 import { useLoadMore } from '@/hooks/useLoadMore';
 import type { LiveFilter } from '@/services/data/catalogService';
 import * as settingsRepository from '@/services/data/settingsDataService';
@@ -39,6 +41,7 @@ import { useLiveUiStore } from '@/stores/liveUiStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import type { LineupGroup } from '@/types/liveLineup';
 import type { LiveChannel } from '@/types/models';
+import type { TvNow } from '@/types/tvGuide';
 import { rankVersionLogos } from '@/utils/channelLogos';
 import { displayChannelName } from '@/utils/displayTitle';
 import { formatCount } from '@/utils/format';
@@ -54,8 +57,17 @@ const STEP = 80;
 const LIVE_ONLY = ['live'] as const;
 const SETTING_KEY = 'lastLiveFilter';
 
-function groupRow(group: LineupGroup, categoryName: Map<string, string>): LiveRowData {
-  const best = group.versions[0]!;
+/** Programme en cours d'une chaine de la grille (chaines FR, nom du referentiel). */
+type NowFor = (name: string) => TvNow | null;
+/** Ordre des versions (fiabilite apprise + reseau), voir useVersionRanking. */
+type Rank = (versions: readonly LineupGroup['versions'][number][]) => LineupGroup['versions'];
+const nowOf = (group: LineupGroup | undefined, nowFor: NowFor): TvNow | null =>
+  group !== undefined && group.country === null ? nowFor(group.name) : null;
+
+function groupRow(group: LineupGroup, categoryName: Map<string, string>, nowFor: NowFor, rank: Rank): LiveRowData {
+  // Tap = version qui a marche la derniere fois (sinon la meilleure qualite).
+  const ordered = rank(group.versions);
+  const best = ordered[0]!;
   const [logoUrl = null, ...logoAlternates] = rankVersionLogos(group.versions);
   const badges: string[] = [];
   if (best.quality !== 'STANDARD') badges.push(best.qualityLabel);
@@ -66,9 +78,10 @@ function groupRow(group: LineupGroup, categoryName: Map<string, string>): LiveRo
     logoUrl,
     logoAlternates,
     isFrench: group.country === null,
+    now: nowOf(group, nowFor),
     lcn: group.lcn,
     badges,
-    versions: group.versions.map((v) => ({ id: v.id, label: v.qualityLabel })),
+    versions: ordered.map((v) => ({ id: v.id, label: v.qualityLabel })),
     categoryId: best.categoryId,
     categoryName: categoryName.get(best.categoryId),
   };
@@ -78,12 +91,15 @@ function favoriteRow(
   channel: FavoriteChannel,
   categoryName: Map<string, string>,
   group: LineupGroup | undefined,
+  nowFor: NowFor,
+  rank: Rank,
 ): LiveRowData {
   return {
+    now: nowOf(group, nowFor),
     // Versions de la chaine (si elle est dans la grille FR), comme dans la grille.
     versions:
       group !== undefined && group.versions.length > 1
-        ? group.versions.map((v) => ({ id: v.id, label: v.qualityLabel }))
+        ? rank(group.versions).map((v) => ({ id: v.id, label: v.qualityLabel }))
         : undefined,
     id: channel.id,
     name: channel.name,
@@ -192,6 +208,9 @@ export default function LivePage() {
 
   // --- Sources ------------------------------------------------------------------
   const lineup = useLiveLineup();
+  // Guide TV : « 20:45 · Le film du soir » sous chaque chaine FR.
+  const { nowFor } = useTvNow();
+  const { rank } = useVersionRanking();
   const lineupView = !search.active && isLineupView(view);
   const visibleGroups = useMemo(
     () => (lineup.groups !== null ? withoutHidden(lineup.groups, hidden) : null),
@@ -231,13 +250,13 @@ export default function LivePage() {
         if (group === undefined) return [{ kind: 'row', row: channelRow(c, categoryName) }];
         if (seen.has(group.key)) return [];
         seen.add(group.key);
-        return [{ kind: 'row', row: groupRow(group, categoryName) }];
+        return [{ kind: 'row', row: groupRow(group, categoryName, nowFor, rank) }];
       });
     }
     if (favoritesView) {
       return favorites.channels.map((c) => ({
         kind: 'row',
-        row: favoriteRow(c, categoryName, c.groupKey !== null ? groupByKey.get(c.groupKey) : undefined),
+        row: favoriteRow(c, categoryName, c.groupKey !== null ? groupByKey.get(c.groupKey) : undefined, nowFor, rank),
       }));
     }
     if (catalogFilter !== null) return catalog.channels.map((c) => ({ kind: 'row', row: channelRow(c, categoryName) }));
@@ -245,10 +264,10 @@ export default function LivePage() {
       return buildOverview(viewGroups).map((item) =>
         item.kind === 'header'
           ? { kind: 'header', header: item }
-          : { kind: 'row', row: groupRow(item.group, categoryName) },
+          : { kind: 'row', row: groupRow(item.group, categoryName, nowFor, rank) },
       );
     }
-    return viewGroups.map((g) => ({ kind: 'row', row: groupRow(g, categoryName) }));
+    return viewGroups.map((g) => ({ kind: 'row', row: groupRow(g, categoryName, nowFor, rank) }));
     // catalogFilter : derive de view/search (deja en deps).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -262,14 +281,16 @@ export default function LivePage() {
     view,
     viewGroups,
     categoryName,
+    nowFor,
+    rank,
   ]);
 
   // Contexte de zapping (⏮ ⏭ du lecteur) = la vue d'ou la chaine est lancee.
   const zapEntries = useMemo(() => {
     if (favoritesView) return favorites.channels.map((c) => ({ id: c.id, groupKey: c.groupKey }));
-    if (lineupView) return viewGroups.map((g) => ({ id: g.versions[0]!.id, groupKey: g.key }));
+    if (lineupView) return viewGroups.map((g) => ({ id: rank(g.versions)[0]!.id, groupKey: g.key }));
     return items.flatMap((i) => (i.kind === 'row' ? [{ id: i.row.id, groupKey: null }] : []));
-  }, [favoritesView, favorites.channels, lineupView, viewGroups, items]);
+  }, [favoritesView, favorites.channels, lineupView, viewGroups, items, rank]);
   const tabName = tabs.find((t) => t.id === currentTabId)?.name;
   const onPlay = useCallback(() => {
     setZapContext({ label: search.active ? 'Résultats de recherche' : viewLabel(view, tabName), entries: zapEntries });

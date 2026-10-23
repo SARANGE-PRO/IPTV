@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/Button';
 import { IconRefresh, IconSettings } from '@/components/ui/icons';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useHomeFeed } from '@/hooks/useHomeFeed';
+import { useNewEpisodes } from '@/hooks/useNewEpisodes';
 import { setZapContext } from '@/services/live/liveZappingService';
 import { tmdbPoster } from '@/services/tmdb/tmdbImage';
 import type { TrendingItem } from '@/services/discovery/trendingService';
@@ -108,6 +109,8 @@ export default function HomePage() {
   const recentChannels = usePlaybackStore((s) => s.recentChannels);
   const dismissContinue = usePlaybackStore((s) => s.dismissContinue);
   const { hasCatalog, billboard, continueItems, myList, trending, discovery, discoveryLoading } = useHomeFeed();
+  // Series suivies (commencees / favorites) avec des episodes apparus depuis.
+  const newEpisodes = useNewEpisodes();
 
   const movieBecause = discovery.because.find((b) => b.type === 'vod');
   const seriesBecause = discovery.because.find((b) => b.type === 'series');
@@ -174,6 +177,27 @@ export default function HomePage() {
           {continueItems.map((item) => (
             <ContinueCard key={item.key} item={item} onDismiss={() => void dismissContinue(item.dismiss)} />
           ))}
+        </Rail>
+      )}
+
+      {newEpisodes.length > 0 && (
+        <Rail title="Nouveaux épisodes">
+          {newEpisodes.map(({ series, episodes }) => {
+            const first = episodes[0]!;
+            return (
+              <MediaCard
+                key={`new:${series.id}`}
+                className={CARD}
+                // Tap = lecture directe du premier nouvel episode.
+                href={seriesHref(series.id, '', { play: true, episodeId: first.id })}
+                title={displayTitle(series.name)}
+                posterUrl={series.posterUrl}
+                badge={episodes.length > 1 ? `+${episodes.length} épisodes` : 'Nouveau'}
+                subtitle={`S${first.seasonNumber} E${first.episodeNumber}`}
+                tag={variantBadge(series.variant, series.variantSource)}
+              />
+            );
+          })}
         </Rail>
       )}
 

@@ -12,6 +12,8 @@ import { MediaCard } from '@/components/shared/MediaCard';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useFavoriteItems } from '@/hooks/useFavoriteItems';
 import { useLiveLineup } from '@/hooks/useLiveLineup';
+import { useTvNow } from '@/hooks/useTvNow';
+import { useVersionRanking } from '@/hooks/useVersionRanking';
 import { cn } from '@/lib/cn';
 import * as settingsRepository from '@/services/data/settingsDataService';
 import { itemKey, parseItemKey } from '@/services/favorites/favoriteTabsService';
@@ -90,6 +92,8 @@ export default function FavoritesPage() {
   const data = useFavoriteItems(selected);
   // Versions (HD/FHD…) et categorie des chaines, comme dans la page Live.
   const lineup = useLiveLineup();
+  const { nowFor } = useTvNow();
+  const { rank } = useVersionRanking();
   const liveCategories = useCatalogStore((s) => s.sections.live.categories);
   const categoryName = useMemo(() => new Map(liveCategories.map((c) => [c.id, c.name] as const)), [liveCategories]);
   const groupByKey = useMemo(() => new Map((lineup.groups ?? []).map((g) => [g.key, g] as const)), [lineup.groups]);
@@ -120,13 +124,14 @@ export default function FavoritesPage() {
           badges: c.qualityLabel !== null ? [c.qualityLabel] : [],
           versions:
             group !== undefined && group.versions.length > 1
-              ? group.versions.map((v) => ({ id: v.id, label: v.qualityLabel }))
+              ? rank(group.versions).map((v) => ({ id: v.id, label: v.qualityLabel }))
               : undefined,
           categoryId: c.categoryId,
           categoryName: categoryName.get(c.categoryId),
+          now: group !== undefined && group.country === null ? nowFor(group.name) : null,
         };
       }),
-    [channels, groupByKey, categoryName],
+    [channels, groupByKey, categoryName, nowFor, rank],
   );
   const onPlayChannel = useCallback(() => {
     setZapContext({

@@ -1,9 +1,14 @@
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import { findChannelVersions } from '@/services/live/channelGroupingService';
-import { isSeparatorOrEvent } from '@/services/live/channelNormalizer';
+import { cleanChannelDisplay, isSeparatorOrEvent } from '@/services/live/channelNormalizer';
 import { ensureFrenchLineup, getLineupEntries, getLineupGroups, getLineupVersions } from '@/services/live/frenchLineupService';
 import type { ChannelVersion } from '@/types/liveGrouping';
 import type { LiveChannel } from '@/types/models';
+import { loadReliability, streamStat } from '@/services/live/streamReliabilityService';
+import { isNetworkConstrained } from '@/services/player/networkQualityService';
+import type { LineupGroup, LiveLineupEntry } from '@/types/liveLineup';
+import { rankVersionLogos } from '@/utils/channelLogos';
+import { rankVersions } from '@/utils/versionRanking';
 
 /**
  * Zapping Live : chaines voisines JOUABLES et versions (HD/FHD/4K…) d'une
@@ -80,6 +85,61 @@ export function getZapContextLabel(): string | null {
   return zapContext?.label ?? null;
 }
 
+/** Chaine de la liste laterale (iPad) : nom, numero, logos, version a lancer. */
+export interface ZapListItem {
+  id: string;
+  groupKey: string | null;
+  name: string;
+  lcn: number | null;
+  logos: string[];
+  isFrench: boolean;
+}
+
+/**
+ * Liste parcourue par le zapping, prete a afficher : le contexte d'ou l'on
+ * vient (vue Live, onglet…) sinon toute la grille FR. Version lancee = la
+ * mieux classee (fiabilite apprise, reseau) pour les chaines de la grille.
+ */
+export async function getZapList(): Promise<{ label: string; items: ZapListItem[] }> {
+  await ensureFrenchLineup().catch(() => undefined);
+  await loadReliability();
+  const groups = await getLineupGroups().catch(() => [] as LineupGroup[]);
+  const byKey = new Map(groups.map((g) => [g.key, g] as const));
+  const constrained = isNetworkConstrained();
+  const now = Date.now();
+  const fromGroup = (g: LineupGroup, id?: string): ZapListItem => ({
+    id: id ?? rankVersions(g.versions, streamStat, { constrained, now })[0]!.id,
+    groupKey: g.key,
+    name: g.name,
+    lcn: g.lcn,
+    logos: rankVersionLogos(g.versions),
+    isFrench: g.country === null,
+  });
+  const context = zapContext;
+  if (context === null) return { label: 'Chaînes françaises', items: groups.map((g) => fromGroup(g)) };
+
+  const loose = context.entries.filter((e) => e.groupKey === null || !byKey.has(e.groupKey)).map((e) => e.id);
+  const rows = loose.length > 0 ? await catalogRepository.getLiveChannelsByIds(loose) : [];
+  const rowById = new Map(rows.map((c) => [c.id, c] as const));
+  const items = context.entries.flatMap((e): ZapListItem[] => {
+    const group = e.groupKey !== null ? byKey.get(e.groupKey) : undefined;
+    if (group !== undefined) return [fromGroup(group, e.id)];
+    const row = rowById.get(e.id);
+    if (row === undefined) return [];
+    return [
+      {
+        id: row.id,
+        groupKey: null,
+        name: cleanChannelDisplay(row.name) || row.name,
+        lcn: null,
+        logos: row.logoUrl !== null ? [row.logoUrl] : [],
+        isFrench: row.isFrench === 1,
+      },
+    ];
+  });
+  return { label: context.label, items };
+}
+
 /** `label` : liste parcourue (« TNT », nom d'onglet…), null = categorie fournisseur. */
 type Neighbors = { previous: LiveChannel | null; next: LiveChannel | null; label: string | null };
 
@@ -121,11 +181,10 @@ async function lineupNeighbors(channel: LiveChannel): Promise<Neighbors | null> 
   const index = groups.findIndex((g) => g.key === entry.groupKey);
   if (index === -1 || groups.length < 2) return null;
   const n = groups.length;
-  return neighborsByIds(
-    groups[(index - 1 + n) % n]!.versions[0]!.id,
-    groups[(index + 1) % n]!.versions[0]!.id,
-    'Chaînes françaises',
-  );
+  await loadReliability();
+  const best = (versions: LiveLineupEntry[]) =>
+    rankVersions(versions, streamStat, { constrained: isNetworkConstrained(), now: Date.now() })[0]!.id;
+  return neighborsByIds(best(groups[(index - 1 + n) % n]!.versions), best(groups[(index + 1) % n]!.versions), 'Chaînes françaises');
 }
 
 function playable(candidate: LiveChannel, currentId: string): boolean {

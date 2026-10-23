@@ -10,7 +10,13 @@ import { cn } from '@/lib/cn';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import { useFavoritesUiStore } from '@/stores/favoritesUiStore';
 import { usePlayerStore } from '@/stores/playerStore';
+import type { TvNow } from '@/types/tvGuide';
 import { liveHref } from '@/utils/appRoutes';
+import { tvProgress } from '@/utils/tvNow';
+
+function formatHour(ms: number): string {
+  return new Date(ms).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+}
 
 /**
  * Ligne de chaine Live (grille FR, favoris, international) : numero TNT,
@@ -40,6 +46,8 @@ export interface LiveRowData {
   versions?: LiveRowVersion[];
   categoryId: string;
   categoryName?: string;
+  /** Programme a l'antenne (guide TV), si connu. */
+  now?: TvNow | null;
 }
 
 function LiveChannelRowImpl({ row, onPlay }: { row: LiveRowData; onPlay?: (id: string) => void }) {
@@ -93,8 +101,8 @@ function LiveChannelRowImpl({ row, onPlay }: { row: LiveRowData; onPlay?: (id: s
                 </span>
               )}
             </span>
-            {(playingId !== null || (row.badges?.length ?? 0) > 0) && (
-              <span className="mt-0.5 flex items-center gap-1.5">
+            {(playingId !== null || (row.badges?.length ?? 0) > 0 || row.now != null) && (
+              <span className="mt-0.5 flex min-w-0 items-center gap-1.5">
                 {playingId !== null && (
                   <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-accent">
                     <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
@@ -102,10 +110,27 @@ function LiveChannelRowImpl({ row, onPlay }: { row: LiveRowData; onPlay?: (id: s
                   </span>
                 )}
                 {row.badges?.map((badge) => (
-                  <span key={badge} className="rounded bg-ink-600/80 px-1 py-px text-[10px] font-semibold text-fg-muted">
+                  <span
+                    key={badge}
+                    className="shrink-0 rounded bg-ink-600/80 px-1 py-px text-[10px] font-semibold text-fg-muted"
+                  >
                     {badge}
                   </span>
                 ))}
+                {row.now != null && (
+                  <span className="min-w-0 truncate text-[11px] text-fg-muted" title={row.now.nextTitle ?? undefined}>
+                    <span className="tabular-nums text-fg-faint">{formatHour(row.now.start)}</span> · {row.now.title}
+                  </span>
+                )}
+              </span>
+            )}
+            {/* Avancement du programme : fin trait sous le texte. */}
+            {row.now != null && (
+              <span className="mt-1 block h-0.5 overflow-hidden rounded-full bg-ink-600">
+                <span
+                  className="block h-full rounded-full bg-accent/70"
+                  style={{ width: `${Math.round(tvProgress(row.now, Date.now()) * 100)}%` }}
+                />
               </span>
             )}
           </span>

@@ -69,11 +69,17 @@ const config: Config = {
         shimmer: {
           '100%': { transform: 'translateX(100%)' },
         },
+        'page-in': {
+          from: { opacity: '0', transform: 'translate3d(0, 6px, 0)' },
+          to: { opacity: '1', transform: 'none' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 0.25s ease-out both',
         'modal-rise': 'modal-rise 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both',
         shimmer: 'shimmer 1.6s ease-in-out infinite',
+        // « backwards » : aucun transform residuel apres l'animation (voir PageTransition).
+        'page-in': 'page-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) backwards',
       },
     },
   },

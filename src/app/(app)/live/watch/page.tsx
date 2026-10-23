@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { ArrangeButton } from '@/components/favorites/ArrangeButton';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
+import { ChannelSidebar } from '@/components/live/ChannelSidebar';
 import { NowPlaying } from '@/components/live/NowPlaying';
 import { ExternalPlayer, launchVlc } from '@/components/player/ExternalPlayer';
 import { PlayerSlot } from '@/components/player/host/PlayerSlot';
@@ -14,15 +15,18 @@ import { useLandscapeFullscreen } from '@/hooks/useLandscapeFullscreen';
 import { useLineupLogos } from '@/hooks/useLineupLogos';
 import { useLineupNames } from '@/hooks/useLineupNames';
 import { useMediaSession } from '@/hooks/useMediaSession';
+import { useTvNow } from '@/hooks/useTvNow';
+import { useVersionRanking } from '@/hooks/useVersionRanking';
 import { cn } from '@/lib/cn';
 import * as catalogRepository from '@/services/data/catalogService';
-import { getChannelVersions, getZapNeighbors } from '@/services/live/liveZappingService';
+import { getChannelVersions, getZapList, getZapNeighbors, type ZapListItem } from '@/services/live/liveZappingService';
 import { isGatewayConfigured } from '@/services/player/mediaGatewayService';
 import { buildLiveStreamUrl } from '@/services/xtream/xtreamUrls';
 import { useAuthStore } from '@/stores/authStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import { cleanChannelDisplay } from '@/services/live/channelNormalizer';
+import { isHeavyQuality } from '@/utils/versionRanking';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { ChannelVersion } from '@/types/liveGrouping';
@@ -110,10 +114,34 @@ function LiveWatch() {
     return () => clearTimeout(timer);
   }, [failoverNotice]);
 
+  // Grand ecran (iPad) : liste des chaines a cote du lecteur.
+  const [zapList, setZapList] = useState<{ label: string; items: ZapListItem[] } | null>(null);
+  useEffect(() => {
+    let active = true;
+    void getZapList()
+      .then((list) => {
+        if (active) setZapList(list);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, []);
+  const { nowFor } = useTvNow();
+  const showSidebar = zapList !== null && zapList.items.length > 1;
+
+  // Ordre de bascule : version fiable d'abord, versions qui viennent d'echouer
+  // en dernier, HD avant FHD/4K si le reseau est faible.
+  const { rank, constrained } = useVersionRanking();
+  const rankedVersions = useMemo(
+    () => rank(versions.map((v) => ({ ...v, id: v.channel.id, qualityScore: v.score }))),
+    [rank, versions],
+  );
+
   const handlePlaybackFailure = () => {
     // Page quittee (lecture en mini-lecteur) : ne jamais y ramener l'utilisateur.
     if (!mountedRef.current) return;
-    const next = versions.find((v) => !triedRef.current.has(v.channel.id));
+    const next = rankedVersions.find((v) => !triedRef.current.has(v.channel.id));
     if (next === undefined) return;
     const current = versions.find((v) => v.channel.id === streamId);
     failoverTargetRef.current = next.channel.id;
@@ -244,11 +272,31 @@ function LiveWatch() {
   const src = credentials !== null && streamId !== '' ? buildLiveStreamUrl(credentials, streamId, liveExt) : null;
   const vlcSrc = credentials !== null && streamId !== '' ? buildLiveStreamUrl(credentials, streamId, 'ts') : null;
 
+  // Reseau faible pendant une version lourde (FHD/4K) : proposer plus leger.
+  const currentVersion = versions.find((v) => v.channel.id === streamId) ?? null;
+  const lighterVersion =
+    constrained && currentVersion !== null && isHeavyQuality(currentVersion.quality)
+      ? (rankedVersions.find((v) => !isHeavyQuality(v.quality) && v.channel.id !== streamId) ?? null)
+      : null;
+
   // Ouverte directement (PWA rouverte sur la chaine) : pas d'historique.
   const goBack = () => (canGoBack() ? router.back() : router.replace(LIVE_HREF));
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8">
+    <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8 lg:max-w-7xl">
+      <div className={cn(showSidebar && 'lg:grid lg:grid-cols-[19rem_minmax(0,1fr)] lg:items-start lg:gap-6')}>
+      {showSidebar && zapList !== null && (
+        <ChannelSidebar
+          label={zapList.label}
+          items={zapList.items}
+          isCurrent={(item) => currentIds.has(item.id)}
+          nowFor={nowFor}
+          onSelect={(id) => {
+            if (!currentIds.has(id)) zapTo(id);
+          }}
+        />
+      )}
+      <div className="min-w-0">
       <div className="mb-4 flex items-center gap-3 phone-land:hidden">
         <button
           onClick={goBack}
@@ -346,6 +394,20 @@ function LiveWatch() {
                   {failoverNotice}
                 </p>
               )}
+              {lighterVersion !== null && (
+                <div className="flex items-center gap-3 rounded-xl bg-amber-400/10 px-4 py-2.5">
+                  <p className="min-w-0 flex-1 text-xs text-amber-200">
+                    Connexion lente : la version {lighterVersion.label} sera plus fluide.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => zapTo(lighterVersion.channel.id)}
+                    className="h-10 shrink-0 rounded-lg bg-amber-400/20 px-3 text-xs font-semibold text-amber-100 hover:bg-amber-400/30"
+                  >
+                    Passer en {lighterVersion.label}
+                  </button>
+                </div>
+              )}
               <NowPlaying credentials={credentials} streamId={streamId} />
               {versions.length > 1 && (
                 <div>
@@ -423,6 +485,8 @@ function LiveWatch() {
           </div>
         )
       )}
+      </div>
+      </div>
     </main>
   );
 }

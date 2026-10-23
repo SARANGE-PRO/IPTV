@@ -116,6 +116,9 @@ export const CHANNEL_THEME_KEYWORDS: Record<string, readonly string[]> = {
 export const UHD_KEYWORDS = ['4k', 'uhd', 'ultra hd', 'ultrahd', 'hevc', 'raw', 'hdr'] as const;
 
 /** Durees de vie de cache par domaine (millisecondes). */
+/** Age du catalogue au-dela duquel il se resynchronise seul (fond, banniere reduite). */
+export const CATALOG_AUTO_SYNC_MS = 1000 * 60 * 60 * 24 * 7; // 7 j
+
 export const CACHE_TTL = {
   liveStreams: 1000 * 60 * 60 * 6, // 6 h
   vod: 1000 * 60 * 60 * 24, // 24 h

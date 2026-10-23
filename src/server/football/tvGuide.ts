@@ -3,6 +3,9 @@ import { get as httpGet } from 'node:http';
 import { get as httpsGet } from 'node:https';
 import { createGunzip } from 'node:zlib';
 import { guideChannelDisplay, isFootballGuideChannel } from '@/services/football/tvChannels';
+import { referenceKey } from '@/services/live/channelNormalizer';
+import type { TvSchedule, TvSlot } from '@/types/tvGuide';
+import { matchFrenchChannel } from '@/utils/frenchChannelReference';
 
 /**
  * GUIDE TV FRANCAIS (XMLTV xmltvfr.fr) -> diffusions de football (SERVEUR).
@@ -16,6 +19,10 @@ import { guideChannelDisplay, isFootballGuideChannel } from '@/services/football
  * C'est la source de la chaine EXACTE de chaque match : les guides FR listent
  * les rencontres (« Hoffenheim / Lyon », « Ligue Europa - 3e journee ») sur la
  * chaine qui les diffuse, a l'heure du direct.
+ *
+ * La MEME lecture produit aussi le programme TV (24 h) des chaines du
+ * referentiel FR (utils/frenchChannelReference) : « en cours » dans la liste
+ * Live. Une seule analyse du fichier, un seul cache.
  */
 
 export interface GuideProgramme {
@@ -33,6 +40,13 @@ export interface GuideData {
   ok: boolean;
   fetchedAt: number;
   programmes: GuideProgramme[];
+  /** Programme des chaines FR (liste Live). */
+  schedule: TvSchedule['channels'];
+}
+
+export interface ParsedGuide {
+  football: GuideProgramme[];
+  schedule: TvSchedule['channels'];
 }
 
 const DEFAULT_URLS = ['https://xmltvfr.fr/xmltv/xmltv.xml.gz', 'https://xmltvfr.fr/xmltv/xmltv_fr.xml'];
@@ -40,6 +54,10 @@ const FETCH_TIMEOUT_MS = 50_000;
 /** Fenetre conservee : 6 h dans le passe (matchs en cours) a 11 jours. */
 const PAST_MS = 6 * 3_600_000;
 const FUTURE_MS = 11 * 86_400_000;
+/** Programme TV : de 3 h avant a 27 h apres l'analyse (le cache dure 3 h). */
+const SCHEDULE_PAST_MS = 3 * 3_600_000;
+const SCHEDULE_FUTURE_MS = 27 * 3_600_000;
+const SCHEDULE_TITLE_MAX = 80;
 
 function guideUrls(): string[] {
   const configured = process.env.FOOTBALL_TV_GUIDE_URL?.trim() ?? '';
@@ -111,10 +129,27 @@ export function isFootballListing(title: string, subtitle: string | null, catego
  * chaines retenues. Exportee pour les tests (fichier local).
  */
 export async function parseGuideStream(chunks: AsyncIterable<string>, now: number): Promise<GuideProgramme[]> {
+  return (await parseGuide(chunks, now)).football;
+}
+
+/** Guide -> nom du referentiel FR (« France 2 ») ; null : chaine hors referentiel. */
+function scheduleName(displayName: string): string | null {
+  const ref = matchFrenchChannel(referenceKey(displayName));
+  return ref !== null && ref.country === null && ref.name !== null ? ref.name : null;
+}
+
+/** Analyse complete : matchs de football + programme 24 h des chaines FR. */
+export async function parseGuide(chunks: AsyncIterable<string>, now: number): Promise<ParsedGuide> {
   const channels = new Map<string, string>();
+  /** Chaine du guide -> nom du referentiel (premiere chaine du guide qui le revendique). */
+  const scheduleIds = new Map<string, string>();
+  const claimed = new Set<string>();
+  const schedule: TvSchedule['channels'] = {};
   const out: GuideProgramme[] = [];
   const from = now - PAST_MS;
   const to = now + FUTURE_MS;
+  const scheduleFrom = now - SCHEDULE_PAST_MS;
+  const scheduleTo = now + SCHEDULE_FUTURE_MS;
   let buf = '';
 
   const consume = (final: boolean): void => {
@@ -140,16 +175,37 @@ export async function parseGuideStream(chunks: AsyncIterable<string>, now: numbe
       const headEnd = block.indexOf('>');
       const head = block.slice(0, headEnd);
       const id = /\b(?:channel|id)="([^"]+)"/.exec(head)?.[1];
-      if (id === undefined || !isFootballGuideChannel(id)) continue;
-      const body = block.slice(headEnd + 1);
+      if (id === undefined) continue;
+      const football = isFootballGuideChannel(id);
       if (!isProgramme) {
-        const name = textOf(body, 'display-name');
-        if (name !== null) channels.set(id, guideChannelDisplay(id, name));
+        const name = textOf(block.slice(headEnd + 1), 'display-name');
+        if (name === null) continue;
+        if (football) channels.set(id, guideChannelDisplay(id, name));
+        const refName = scheduleName(name);
+        if (refName !== null && !claimed.has(refName)) {
+          claimed.add(refName);
+          scheduleIds.set(id, refName);
+        }
         continue;
       }
+      const refName = scheduleIds.get(id);
+      if (!football && refName === undefined) continue;
+      const body = block.slice(headEnd + 1);
       const start = parseXmltvDate(/\bstart="([^"]+)"/.exec(head)?.[1] ?? '');
       const end = parseXmltvDate(/\bstop="([^"]+)"/.exec(head)?.[1] ?? '');
-      if (start === null || start < from || start > to) continue;
+      if (start === null) continue;
+      if (refName !== undefined && (end ?? start) > scheduleFrom && start < scheduleTo) {
+        const t = textOf(body, 'title');
+        if (t !== null && t !== '') {
+          const slot: TvSlot = [
+            Math.floor(start / 60_000),
+            Math.floor((end ?? start + 3_600_000) / 60_000),
+            t.length > SCHEDULE_TITLE_MAX ? `${t.slice(0, SCHEDULE_TITLE_MAX - 1)}…` : t,
+          ];
+          (schedule[refName] ??= []).push(slot);
+        }
+      }
+      if (!football || start < from || start > to) continue;
       const title = textOf(body, 'title') ?? '';
       const subtitle = textOf(body, 'sub-title');
       if (title === '' || !isFootballListing(title, subtitle, categoriesOf(body))) continue;
@@ -175,7 +231,8 @@ export async function parseGuideStream(chunks: AsyncIterable<string>, now: numbe
     const name = channels.get(p.channelId);
     if (name !== undefined) p.channel = name;
   }
-  return out.sort((a, b) => a.start - b.start);
+  for (const slots of Object.values(schedule)) slots.sort((a, b) => a[0] - b[0]);
+  return { football: out.sort((a, b) => a.start - b.start), schedule };
 }
 
 /**
@@ -233,11 +290,13 @@ export async function fetchFootballGuide(): Promise<GuideData> {
   const now = Date.now();
   for (const url of guideUrls()) {
     try {
-      const programmes = await parseGuideStream(textChunks(url, Date.now() + FETCH_TIMEOUT_MS), now);
-      if (programmes.length > 0) return { ok: true, fetchedAt: now, programmes };
+      const { football, schedule } = await parseGuide(textChunks(url, Date.now() + FETCH_TIMEOUT_MS), now);
+      if (football.length > 0 || Object.keys(schedule).length > 0) {
+        return { ok: true, fetchedAt: now, programmes: football, schedule };
+      }
     } catch {
       // URL suivante.
     }
   }
-  return { ok: false, fetchedAt: now, programmes: [] };
+  return { ok: false, fetchedAt: now, programmes: [], schedule: {} };
 }

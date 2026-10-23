@@ -32,7 +32,7 @@ const cachedGuide = unstable_cache(
     if (!guide.ok) throw new Error('guide unavailable');
     return guide;
   },
-  ['fr-football-tv-guide-v1'],
+  ['fr-tv-guide-v2'],
   { revalidate: GUIDE_REVALIDATE_S },
 );
 
