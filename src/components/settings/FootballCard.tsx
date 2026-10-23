@@ -1,18 +1,27 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import type { FootballTeam } from '@/types/football';
+import {
+  COMPETITION_GROUP_LABEL,
+  FOOTBALL_COMPETITIONS,
+  type CompetitionDef,
+  type CompetitionGroup,
+} from '@/config/footballCompetitions';
 import { cn } from '@/lib/cn';
 import { loadCompetitionTeams } from '@/services/football/footballService';
-import { FOOTBALL_COMPETITIONS, useFootballStore, type CompetitionInfo } from '@/stores/footballStore';
+import { useFootballStore } from '@/stores/footballStore';
+import type { FootballTeam } from '@/types/football';
+import { secureImageSrc } from '@/utils/secureUrl';
 
 /**
- * Reglage Football : choix des competitions (nationales + internationales) et
- * des equipes favorites. Le header d'accueil n'affiche QUE les matchs de ces
- * competitions, priorite aux equipes favorites.
+ * Reglage Football : competitions suivies (coupes d'Europe, championnats,
+ * coupes nationales, selections) et equipes favorites (mises en avant dans
+ * le bandeau d'accueil et la page Football).
  */
 
-function CompChip({ c, active, onToggle }: { c: CompetitionInfo; active: boolean; onToggle: () => void }) {
+const GROUPS: CompetitionGroup[] = ['europe', 'league', 'cup', 'nations'];
+
+function CompChip({ c, active, onToggle }: { c: CompetitionDef; active: boolean; onToggle: () => void }) {
   return (
     <button
       type="button"
@@ -52,41 +61,36 @@ export function FootballCard() {
     let active = true;
     setLoadingTeams(true);
     void loadCompetitionTeams(pickComp)
-      .then((t) => {
-        if (active) setTeams(t);
-      })
-      .finally(() => {
-        if (active) setLoadingTeams(false);
-      });
+      .then((t) => active && setTeams(t))
+      .finally(() => active && setLoadingTeams(false));
     return () => {
       active = false;
     };
   }, [pickComp]);
 
   const favIds = new Set(favoriteTeams.map((t) => t.id));
-  const international = FOOTBALL_COMPETITIONS.filter((c) => c.kind === 'international');
-  const national = FOOTBALL_COMPETITIONS.filter((c) => c.kind === 'national');
-  const selectedComps = FOOTBALL_COMPETITIONS.filter((c) => competitions.includes(c.code));
+  // Equipes : championnats et selections (les coupes reprennent les memes clubs).
+  const teamSources = FOOTBALL_COMPETITIONS.filter((c) => c.group === 'league' || c.code === 'uefa.nations');
 
   return (
     <section className="rounded-2xl bg-ink-800 p-5">
-      <h2 className="mb-3 text-sm font-semibold text-fg">Football</h2>
+      <h2 className="mb-1 text-sm font-semibold text-fg">Football</h2>
+      <p className="mb-4 text-[11px] leading-relaxed text-fg-faint">
+        Matchs, scores en direct et chaîne TV de chaque match en France (guide TV), pour les compétitions choisies.
+      </p>
 
-      <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-faint">Internationales</p>
-      <div className="mb-3 flex flex-wrap gap-2">
-        {international.map((c) => (
-          <CompChip key={c.code} c={c} active={competitions.includes(c.code)} onToggle={() => void toggleCompetition(c.code)} />
-        ))}
-      </div>
+      {GROUPS.map((group) => (
+        <div key={group} className="mb-3">
+          <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-faint">{COMPETITION_GROUP_LABEL[group]}</p>
+          <div className="flex flex-wrap gap-2">
+            {FOOTBALL_COMPETITIONS.filter((c) => c.group === group).map((c) => (
+              <CompChip key={c.code} c={c} active={competitions.includes(c.code)} onToggle={() => void toggleCompetition(c.code)} />
+            ))}
+          </div>
+        </div>
+      ))}
 
-      <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-faint">Championnats nationaux</p>
-      <div className="mb-4 flex flex-wrap gap-2">
-        {national.map((c) => (
-          <CompChip key={c.code} c={c} active={competitions.includes(c.code)} onToggle={() => void toggleCompetition(c.code)} />
-        ))}
-      </div>
-
-      <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-faint">Équipes favorites</p>
+      <p className="mb-1.5 mt-4 text-[11px] font-medium uppercase tracking-wide text-fg-faint">Équipes favorites</p>
       {favoriteTeams.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-1.5">
           {favoriteTeams.map((t) => (
@@ -108,8 +112,8 @@ export function FootballCard() {
         onChange={(e) => setPickComp(e.target.value)}
         className="h-10 w-full rounded-xl border border-ink-600 bg-ink-800 px-3 text-sm text-fg outline-none focus:border-accent/70"
       >
-        <option value="">Ajouter des équipes depuis une compétition…</option>
-        {selectedComps.map((c) => (
+        <option value="">Ajouter des équipes depuis un championnat…</option>
+        {teamSources.map((c) => (
           <option key={c.code} value={c.code}>
             {c.name}
           </option>
@@ -117,21 +121,28 @@ export function FootballCard() {
       </select>
 
       {loadingTeams && <p className="mt-2 text-xs text-fg-faint">Chargement…</p>}
+      {!loadingTeams && pickComp !== '' && teams.length === 0 && (
+        <p className="mt-2 text-xs text-fg-faint">Équipes indisponibles pour le moment.</p>
+      )}
       {teams.length > 0 && (
         <div className="mt-2 flex flex-wrap gap-1.5">
           {teams.map((t) => {
-            const name = t.short !== '' ? t.short : t.name;
+            const logo = secureImageSrc(t.logo);
             return (
               <button
                 key={t.id}
                 type="button"
-                onClick={() => void toggleFavoriteTeam({ id: t.id, name })}
+                onClick={() => void toggleFavoriteTeam({ id: t.id, name: t.short || t.name })}
                 className={cn(
-                  'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
+                  'flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
                   favIds.has(t.id) ? 'bg-amber-400/15 text-amber-300' : 'bg-ink-700 text-fg-muted hover:text-fg',
                 )}
               >
-                {name}
+                {logo !== null && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={logo} alt="" aria-hidden className="h-4 w-4 object-contain" />
+                )}
+                {t.short || t.name}
               </button>
             );
           })}

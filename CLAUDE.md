@@ -62,6 +62,19 @@ Gestionnaire de paquets : **npm**.
    hors-ligne, autoplay refusé) ; `onError` = échec DÉFINITIF seulement.
    VLC : dernier recours, affiché uniquement si activé dans les Réglages.
 
+## Football (refonte oct. 2026)
+- Matchs/scores : API publique ESPN (`src/server/football/espn.ts`, sans clé,
+  1 appel/compétition/mois) ; football-data.org = secours si clé configurée.
+- Chaîne FR EXACTE : guide XMLTV xmltvfr.fr lu EN FLUX côté serveur
+  (`tvGuide.ts`, client HTTP natif Node — jamais le `fetch` de Next sur ce
+  fichier de 16 Mo), cache 3 h (`unstable_cache`), rattaché match par match
+  (`broadcasts.ts` : affiche « A / B » ±30 min du coup d'envoi, noms EN↔FR
+  dans `utils/footballMatch.ts`). Sinon « probable » : droits APPRIS du guide,
+  puis table 2026-27 de `config/footballCompetitions.ts`. Jamais de certitude
+  affichée sans le guide (ou l'EPG Xtream, confirmé côté client).
+- Guide → bouquet : `services/football/tvChannels.ts` (`tvChannelKey`) +
+  `channelIndex.ts`. Liste blanche de chaînes nationales (pas de régionales).
+
 ## Méthode de travail
 - Avancer **module par module**, jamais tout d'un coup. Indiquer les fichiers
   créés/modifiés et justifier les choix.

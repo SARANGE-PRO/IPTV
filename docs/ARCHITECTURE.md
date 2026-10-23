@@ -277,3 +277,27 @@ Types : `src/types/diagnostics.ts`.
 
 Règle : avancer module par module ; à chaque étape, fichiers créés/modifiés + choix
 techniques justifiés.
+
+---
+
+## 10. Football (refonte oct. 2026)
+
+```
+/api/football?comps=…  ──►  server/football/feed.ts
+                               ├─ espn.ts          matchs + scores live (ESPN, sans clé)
+                               ├─ footballData.ts  secours (FOOTBALL_API_KEY)
+                               ├─ tvGuide.ts       guide XMLTV FR en flux, cache 3 h
+                               └─ broadcasts.ts    chaîne exacte / multiplex / probable
+client : useFootballFeed (polling 30 s live / 2 min) → services/football/*
+         (channelIndex : chaîne TV → chaîne du bouquet ; EPG Xtream en complément)
+UI : bandeau d'accueil (FootballHeader), page /football, fiche FootballMatchModal
+```
+
+- **Fiabilité des chaînes** : `confirmed` = le guide TV FR montre CE match sur
+  cette chaîne au coup d'envoi (attribution gloutonne : un créneau = un match) ;
+  `probable` = droits observés dans le guide (≥ 2 occurrences), sinon table
+  2026-27. Les chaînes à numéro d'événement (Canal+ Live N, beIN MAX N,
+  Ligue 1+ N) ne sont jamais « probables ».
+- **Source vérifiée** (oct. 2026) : sur 4 jours, ~80 % des matchs ont leur
+  chaîne exacte (100 % Europa/Conférence/Premier League), aucun sans diffusion.
+- Cron Vercel `/api/football?warm=1` : préchauffe le guide.

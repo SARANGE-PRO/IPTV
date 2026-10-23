@@ -1,23 +1,31 @@
-import type { FootballMatch, FootballTeam } from '@/types/football';
 import * as catalogRepository from '@/db/repositories/catalogRepository';
-import { getFullChannelEpg } from '@/services/epg/epgService';
-import { detectQuality, sportChannelMatchKey } from '@/services/live/channelNormalizer';
-import type { XtreamCredentials } from '@/types/xtream';
-import { broadcastersFor } from '@/utils/footballBroadcasters';
-import { epgMentionsMatch, teamNameForms } from '@/utils/footballMatch';
 import { apiUrl } from '@/services/apiBase';
+import { getFullChannelEpg } from '@/services/epg/epgService';
+import type { FavoriteTeam, FootballFeed, FootballMatch, FootballTeam, MatchSide, TvBroadcast } from '@/types/football';
+import type { XtreamCredentials } from '@/types/xtream';
+import { epgMentionsMatch, teamForms } from '@/utils/footballMatch';
+import { normalizeText } from '@/utils/text';
+import { findBouquetChannels, type ChannelRef } from './channelIndex';
 
-/** Acces client a la route /api/football (jamais d'appel direct a l'API foot). */
+/**
+ * Acces client au football : flux /api/football (matchs + diffusions FR) et
+ * resolution des diffusions vers les chaines JOUABLES du bouquet Xtream.
+ */
 
-export async function loadFootballMatches(comps: string[]): Promise<FootballMatch[]> {
-  if (comps.length === 0) return [];
+export async function loadFootballFeed(comps: string[]): Promise<FootballFeed | null> {
+  if (comps.length === 0) return { matches: [], guide: 'ready', guideAt: null, failed: [] };
   try {
     const res = await fetch(apiUrl(`/api/football?comps=${encodeURIComponent(comps.join(','))}`), { cache: 'no-store' });
-    if (!res.ok) return [];
-    const data = (await res.json()) as { matches?: FootballMatch[] };
-    return Array.isArray(data.matches) ? data.matches : [];
+    if (!res.ok) return null;
+    const data = (await res.json()) as Partial<FootballFeed>;
+    return {
+      matches: Array.isArray(data.matches) ? data.matches : [],
+      guide: data.guide ?? 'unavailable',
+      guideAt: data.guideAt ?? null,
+      failed: Array.isArray(data.failed) ? data.failed : [],
+    };
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -32,101 +40,111 @@ export async function loadCompetitionTeams(code: string): Promise<FootballTeam[]
   }
 }
 
-export function isLiveStatus(status: string): boolean {
-  return status === 'IN_PLAY' || status === 'PAUSED';
+export function isLive(m: FootballMatch): boolean {
+  return m.state === 'live' || m.state === 'halftime';
 }
 
-export function isFinishedStatus(status: string): boolean {
-  return status === 'FINISHED' || status === 'AWARDED';
+export function isFinished(m: FootballMatch): boolean {
+  return m.state === 'finished';
 }
 
-export interface BroadcastChannel {
-  id: string;
-  name: string;
+export function isUpcoming(m: FootballMatch): boolean {
+  return m.state === 'scheduled';
 }
 
-/**
- * Resout les chaines FR candidates d'une competition (mapping diffuseurs) vers
- * les vraies chaines du bouquet Live de l'utilisateur (recherche Dexie + cle
- * canonique). Sert au « Voir le match » click-to-play.
- */
-export async function resolveBroadcastChannels(competitionCode: string): Promise<BroadcastChannel[]> {
-  const names = broadcastersFor(competitionCode);
-  // Une entree par chaine (cle canonique) : on garde la MEILLEURE qualite, pas
-  // toutes les variantes (FHD/HD/4K/backup) qui encombraient l'affichage. `order`
-  // preserve l'ordre du mapping (probabilite decroissante des droits TV).
-  const bestByKey = new Map<string, { id: string; name: string; score: number; order: number }>();
-  let order = 0;
-  for (const name of names) {
-    const key = sportChannelMatchKey(name);
-    // >= 2 : laisse passer M6 / W9 (cle a 2 caracteres) sans admettre le bruit
-    // 1-caractere. Le rapprochement se fait par EGALITE stricte de cle canonique
-    // (un `startsWith` faisait matcher beIN 1 avec beIN 10/11/12).
-    if (key.length < 2) {
-      order += 1;
-      continue;
-    }
-    const candidates = await catalogRepository.searchLiveChannels(name, 25);
-    for (const c of candidates) {
-      if (sportChannelMatchKey(c.name) !== key) continue;
-      const score = detectQuality(c.name).score;
-      const existing = bestByKey.get(key);
-      if (existing === undefined) {
-        bestByKey.set(key, { id: c.id, name: c.name, score, order });
-      } else if (score > existing.score) {
-        bestByKey.set(key, { id: c.id, name: c.name, score, order: existing.order });
-      }
-    }
-    order += 1;
-    if (bestByKey.size >= 8) break;
-  }
-  return [...bestByKey.values()]
-    .sort((a, b) => a.order - b.order)
-    .map(({ id, name }) => ({ id, name }));
+/** Equipe favorite : par identifiant, sinon par nom (anciens favoris migres). */
+export function isFavoriteSide(side: MatchSide, favorites: FavoriteTeam[]): boolean {
+  if (favorites.length === 0) return false;
+  const names = [normalizeText(side.name), normalizeText(side.short)];
+  return favorites.some((f) => f.id === side.id || names.includes(normalizeText(f.name)));
 }
 
-export interface MatchChannel {
-  id: string;
-  name: string;
-  /** L'EPG de cette chaine mentionne CE match autour du coup d'envoi (chaine exacte). */
-  confirmed: boolean;
+export function involvesFavorite(m: FootballMatch, favorites: FavoriteTeam[]): boolean {
+  return isFavoriteSide(m.home, favorites) || isFavoriteSide(m.away, favorites);
+}
+
+// --- Diffusions -> chaines jouables ----------------------------------------------
+
+export interface ResolvedBroadcast {
+  broadcast: TvBroadcast;
+  /** Chaine du bouquet, null si absente du bouquet. */
+  channel: ChannelRef | null;
+  /** Source de la certitude : guide TV FR, ou EPG du serveur Xtream. */
+  confirmedBy: 'guide' | 'xtream' | null;
+}
+
+export interface MatchWatchOptions {
+  /** Diffusions officielles (guide / probables), resolues vers le bouquet. */
+  broadcasts: ResolvedBroadcast[];
+  /** Flux « evenement » du bouquet dont le NOM cite les deux equipes. */
+  eventChannels: ChannelRef[];
+}
+
+/** Flux evenementiels du fournisseur nommes d'apres le match (« PSG vs Lyon 21:00 »). */
+async function findEventChannels(match: FootballMatch): Promise<ChannelRef[]> {
+  const home = teamForms(match.home);
+  const away = teamForms(match.away);
+  const token = [...home.tokens].sort((a, b) => b.length - a.length)[0];
+  if (token === undefined) return [];
+  const rows = await catalogRepository.searchLiveChannels(token, 40);
+  return rows
+    .filter((c) => epgMentionsMatch(c.name, home, away))
+    .slice(0, 4)
+    .map((c) => ({ id: c.id, name: c.name }));
 }
 
 /**
- * Chaine EXACTE d'un match (Alternative B) : croise les chaines candidates
- * (mapping diffuseurs) avec leur EPG autour du coup d'envoi. Une chaine est
- * « confirmee » si son programme mentionne les deux equipes (nom EN + trad FR).
- * Les confirmees remontent en tete. EPG = metadonnees (proxy), aucune connexion
- * de flux consommee (sur un compte max_connections:1).
+ * Ou regarder un match : diffusions du flux resolues vers le bouquet. Si rien
+ * n'est confirme par le guide, l'EPG du serveur Xtream des chaines probables
+ * est interroge (metadonnees uniquement, aucune connexion de flux).
  */
-export async function resolveMatchChannels(
-  credentials: XtreamCredentials,
+export async function resolveWatchOptions(
   match: FootballMatch,
-): Promise<MatchChannel[]> {
-  const candidates = await resolveBroadcastChannels(match.competitionCode);
-  if (candidates.length === 0) return [];
-  const homeForms = teamNameForms(match.home);
-  const awayForms = teamNameForms(match.away);
-  const winStart = match.start - 25 * 60_000;
-  const winEnd = match.start + 45 * 60_000;
+  credentials: XtreamCredentials | null,
+): Promise<MatchWatchOptions> {
+  const channels = await findBouquetChannels(match.tv.map((b) => b.channel));
+  const broadcasts: ResolvedBroadcast[] = match.tv.map((broadcast, i) => ({
+    broadcast,
+    channel: channels[i] ?? null,
+    confirmedBy: broadcast.confidence === 'confirmed' ? 'guide' : null,
+  }));
 
-  const out = await Promise.all(
-    candidates.map(async (c) => {
-      let confirmed = false;
-      try {
-        const epg = await getFullChannelEpg(credentials, c.id);
-        confirmed = epg.some(
-          (p) =>
-            p.start <= winEnd &&
-            p.end >= winStart &&
-            epgMentionsMatch(`${p.title} ${p.description ?? ''}`, homeForms, awayForms),
-        );
-      } catch {
-        confirmed = false;
-      }
-      return { id: c.id, name: c.name, confirmed };
-    }),
+  const needsEpg = credentials !== null && !broadcasts.some((b) => b.confirmedBy !== null) && match.state !== 'finished';
+  if (needsEpg) {
+    const home = teamForms(match.home);
+    const away = teamForms(match.away);
+    const winStart = match.start - 30 * 60_000;
+    const winEnd = match.start + 45 * 60_000;
+    await Promise.all(
+      broadcasts.map(async (b) => {
+        if (b.channel === null) return;
+        try {
+          const epg = await getFullChannelEpg(credentials, b.channel.id);
+          const hit = epg.some(
+            (p) => p.start <= winEnd && p.end >= winStart && epgMentionsMatch(`${p.title} ${p.description ?? ''}`, home, away),
+          );
+          if (hit) b.confirmedBy = 'xtream';
+        } catch {
+          // EPG indisponible : la diffusion reste « probable ».
+        }
+      }),
+    );
+  }
+
+  // Jouables d'abord, puis certitude, puis ordre serveur.
+  const order = (b: ResolvedBroadcast): number =>
+    (b.channel !== null ? 100 : 0) + (b.confirmedBy !== null ? 10 : 0) + (b.broadcast.kind === 'match' ? 1 : 0);
+  broadcasts.sort((a, b) => order(b) - order(a));
+
+  const eventChannels = (await findEventChannels(match).catch(() => [])).filter(
+    (e) => !broadcasts.some((b) => b.channel?.id === e.id),
   );
-  out.sort((a, b) => Number(b.confirmed) - Number(a.confirmed));
-  return out;
+  return { broadcasts, eventChannels };
+}
+
+/** Chaines du bouquet pour une liste de matchs (pastilles « dans ton bouquet »). */
+export async function bouquetAvailability(matches: FootballMatch[]): Promise<Map<string, ChannelRef | null>> {
+  const names = [...new Set(matches.flatMap((m) => m.tv.map((b) => b.channel)))];
+  const resolved = await findBouquetChannels(names);
+  return new Map(names.map((n, i) => [n, resolved[i] ?? null]));
 }

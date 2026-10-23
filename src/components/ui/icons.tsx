@@ -155,3 +155,11 @@ export const IconSkipNext = ({ className }: IconProps) => (
     <path d="M6 5v14l9-7-9-7zM16 5h2v14h-2z" />
   </svg>
 );
+
+export const IconBall = ({ className }: IconProps) => (
+  <Svg className={className}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="m12 7.5 4.3 3.1-1.6 5h-5.4l-1.6-5z" />
+    <path d="M12 7.5V3.2M16.3 10.6l4.1-1.4M14.7 15.6l2.6 3.6M9.3 15.6l-2.6 3.6M7.7 10.6 3.6 9.2" />
+  </Svg>
+);
