@@ -66,6 +66,10 @@ Gestionnaire de paquets : **npm**.
    `services/player/playbackRecoveryPolicy.ts` (gel, coupure du direct, pause subie tampon vide,
    hors-ligne, autoplay refusé) ; `onError` = échec DÉFINITIF seulement.
    VLC : dernier recours, affiché uniquement si activé dans les Réglages.
+   **PiP** (`services/player/pictureInPicture`, `PipButton`, interrupteur
+   Réglages) : iOS n'ouvre le PiP QUE dans un tap (jamais à la mise en
+   arrière-plan) ; pendant le PiP la surface est FIGÉE (`setSurfaceFrozen` :
+   déplacer la `<video>` fermerait le PiP), sauf si sa page se ferme.
    Exception : bouton **« Diffuser sur la TV »** (`components/player/CastButton`,
    icône Cast dans l'en-tête du lecteur / des fiches, visible par défaut,
    désactivable) — une PWA ne peut pas caster (kit Google Cast natif) : il

@@ -11,6 +11,7 @@ import { TitleRail } from '@/components/media/TitleRail';
 import { TrailerButton } from '@/components/media/TrailerButton';
 import { PosterImage } from '@/components/shared/PosterImage';
 import { CastButton } from '@/components/player/CastButton';
+import { PipButton } from '@/components/player/PipButton';
 import { ExternalPlayer, launchVlc } from '@/components/player/ExternalPlayer';
 import { DirectMkvProbe } from '@/components/player/DirectMkvProbe';
 import { PlayerSlot } from '@/components/player/host/PlayerSlot';
@@ -308,7 +309,7 @@ export function SeriesDetailView({
       )}
 
       <div className={cn('px-4 pb-8 md:px-8', inPlayer ? 'pt-6' : 'relative -mt-16 sm:-mt-24')}>
-        <div className="sticky top-safe z-20 -mx-4 mb-2 flex items-center gap-3 bg-ink-950/75 px-4 py-2 backdrop-blur-md md:-mx-8 md:px-8">
+        <div className="sticky top-safe z-20 -mx-4 mb-2 flex items-center gap-2 bg-ink-950/75 px-4 py-2 backdrop-blur-md md:-mx-8 md:px-8">
           <button
             onClick={() => (onBack !== undefined ? onBack() : router.back())}
             aria-label="Retour"
@@ -319,20 +320,25 @@ export function SeriesDetailView({
           <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg drop-shadow">
             {series != null ? displayTitle(series.name) : ''}
           </h1>
-          <CastButton
-            streamUrl={
-              castEpisode !== null && credentials !== null
-                ? buildSeriesEpisodeUrl(credentials, castEpisode.id, castEpisode.containerExtension)
-                : null
-            }
-            title={
-              castEpisode !== null
-                ? `${series != null ? displayTitle(series.name) : ''} · S${castEpisode.seasonNumber}E${castEpisode.episodeNumber}`
-                : ''
-            }
-          />
-          <ArrangeButton type="series" itemId={seriesId} title={series != null ? displayTitle(series.name) : ''} />
-          <FavoriteButton type="series" itemId={seriesId} title={series != null ? displayTitle(series.name) : ''} />
+          {/* Actions du lecteur : groupe serre (le titre garde de la place sur iPhone). */}
+          <div className="flex shrink-0 items-center gap-0.5">
+            <PipButton video={video} className="h-10 w-10" />
+            <CastButton
+              className="h-10 w-10"
+              streamUrl={
+                castEpisode !== null && credentials !== null
+                  ? buildSeriesEpisodeUrl(credentials, castEpisode.id, castEpisode.containerExtension)
+                  : null
+              }
+              title={
+                castEpisode !== null
+                  ? `${series != null ? displayTitle(series.name) : ''} · S${castEpisode.seasonNumber}E${castEpisode.episodeNumber}`
+                  : ''
+              }
+            />
+            <ArrangeButton className="h-10 w-10" type="series" itemId={seriesId} title={series != null ? displayTitle(series.name) : ''} />
+            <FavoriteButton className="h-10 w-10" type="series" itemId={seriesId} title={series != null ? displayTitle(series.name) : ''} />
+          </div>
         </div>
 
         {playingEp !== null && src !== null ? (

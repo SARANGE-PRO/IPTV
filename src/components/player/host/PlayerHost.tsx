@@ -10,8 +10,10 @@ import {
   getSurfaceSnapshot,
   setActiveSurfaceKey,
   setDockTarget,
+  setSurfaceFrozen,
   subscribeSurface,
 } from '@/components/player/host/playerSurface';
+import { isInPip, onPipChange } from '@/services/player/pictureInPicture';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { useMiniPlayerMediaSession } from '@/hooks/useMiniPlayerMediaSession';
 import { bindPlayPause } from '@/services/player/mediaSessionService';
@@ -65,6 +67,18 @@ export function PlayerHost() {
   useEffect(() => {
     if (video === null) return;
     return bindPlayPause(video);
+  }, [video]);
+
+  // Image dans l'image : tant qu'elle est ouverte, la video ne change plus de
+  // place dans la page (un deplacement fermerait le PiP).
+  useEffect(() => {
+    if (video === null) return;
+    setSurfaceFrozen(isInPip(video));
+    const unsubscribe = onPipChange(video, setSurfaceFrozen);
+    return () => {
+      unsubscribe();
+      setSurfaceFrozen(false);
+    };
   }, [video]);
 
   const sessionKey = session?.key ?? null;

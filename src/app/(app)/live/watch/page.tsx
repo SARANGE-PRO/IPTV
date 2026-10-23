@@ -9,6 +9,7 @@ import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { ChannelSidebar } from '@/components/live/ChannelSidebar';
 import { NowPlaying } from '@/components/live/NowPlaying';
 import { CastButton } from '@/components/player/CastButton';
+import { PipButton } from '@/components/player/PipButton';
 import { ExternalPlayer, launchVlc } from '@/components/player/ExternalPlayer';
 import { PlayerSlot } from '@/components/player/host/PlayerSlot';
 import { IconArrowLeft } from '@/components/ui/icons';
@@ -298,7 +299,7 @@ function LiveWatch() {
         />
       )}
       <div className="min-w-0">
-      <div className="mb-4 flex items-center gap-3 phone-land:hidden">
+      <div className="mb-4 flex items-center gap-2 phone-land:hidden">
         <button
           onClick={goBack}
           aria-label="Retour"
@@ -309,10 +310,14 @@ function LiveWatch() {
         <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg">
           {channelTitle}
         </h1>
-        {/* Diffuser sur la TV : VLC (.ts direct) caste vers Android TV / Chromecast. */}
-        <CastButton streamUrl={vlcSrc} title={channelTitle} />
-        {streamId !== '' && <ArrangeButton type="live" itemId={ownerId} title={channelTitle} />}
-        {streamId !== '' && <FavoriteButton type="live" itemId={ownerId} title={channelTitle} />}
+        {/* Actions du lecteur : groupe serre (le titre garde de la place sur iPhone). */}
+        <div className="flex shrink-0 items-center gap-0.5">
+          <PipButton video={video} className="h-10 w-10" />
+          {/* Diffuser sur la TV : VLC (.ts direct) caste vers Android TV / Chromecast. */}
+          <CastButton className="h-10 w-10" streamUrl={vlcSrc} title={channelTitle} />
+          {streamId !== '' && <ArrangeButton className="h-10 w-10" type="live" itemId={ownerId} title={channelTitle} />}
+          {streamId !== '' && <FavoriteButton className="h-10 w-10" type="live" itemId={ownerId} title={channelTitle} />}
+        </div>
       </div>
 
       {channel === null ? (

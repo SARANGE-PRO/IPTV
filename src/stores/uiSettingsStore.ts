@@ -13,6 +13,8 @@ interface UiSettingsState {
   showCastButton: boolean;
   /** Guide « comment caster depuis VLC » deja vu : le bouton ouvre VLC directement. */
   castHintSeen: boolean;
+  /** Image dans l'image (PiP) autorisee : bouton dedie + PiP auto du plein ecran iOS. */
+  pipEnabled: boolean;
   /** Langue/variante audio preferee (VF par defaut). Voir types/mediaLanguage. */
   preferredLanguage: PreferredLanguage;
   /** Vrai pendant le re-classement des versions apres changement de langue preferee. */
@@ -22,6 +24,7 @@ interface UiSettingsState {
   setShowVlcButton: (value: boolean) => Promise<void>;
   setShowCastButton: (value: boolean) => Promise<void>;
   markCastHintSeen: () => Promise<void>;
+  setPipEnabled: (value: boolean) => Promise<void>;
   setPreferredLanguage: (value: PreferredLanguage) => Promise<void>;
 }
 
@@ -29,21 +32,24 @@ export const useUiSettingsStore = create<UiSettingsState>()((set) => ({
   showVlcButton: false,
   showCastButton: true,
   castHintSeen: false,
+  pipEnabled: true,
   preferredLanguage: 'VF',
   regrouping: false,
   hydrated: false,
 
   hydrate: async () => {
-    const [vlc, lang, cast, castHint] = await Promise.all([
+    const [vlc, lang, cast, castHint, pip] = await Promise.all([
       settingsRepository.getSetting<boolean>('showVlcButton'),
       settingsRepository.getSetting<PreferredLanguage>('preferredLanguage'),
       settingsRepository.getSetting<boolean>('showCastButton'),
       settingsRepository.getSetting<boolean>('castHintSeen'),
+      settingsRepository.getSetting<boolean>('pipEnabled'),
     ]);
     set({
       showVlcButton: vlc === true,
       showCastButton: cast !== false,
       castHintSeen: castHint === true,
+      pipEnabled: pip !== false,
       preferredLanguage: lang ?? 'VF',
       hydrated: true,
     });
@@ -57,6 +63,11 @@ export const useUiSettingsStore = create<UiSettingsState>()((set) => ({
   setShowCastButton: async (value) => {
     await settingsRepository.setSetting('showCastButton', value);
     set({ showCastButton: value });
+  },
+
+  setPipEnabled: async (value) => {
+    await settingsRepository.setSetting('pipEnabled', value);
+    set({ pipEnabled: value });
   },
 
   markCastHintSeen: async () => {

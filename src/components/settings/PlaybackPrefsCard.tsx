@@ -27,6 +27,8 @@ export function PlaybackPrefsCard() {
   const regrouping = useUiSettingsStore((s) => s.regrouping);
   const showVlcButton = useUiSettingsStore((s) => s.showVlcButton);
   const showCastButton = useUiSettingsStore((s) => s.showCastButton);
+  const pipEnabled = useUiSettingsStore((s) => s.pipEnabled);
+  const setPipEnabled = useUiSettingsStore((s) => s.setPipEnabled);
   const setShowCastButton = useUiSettingsStore((s) => s.setShowCastButton);
   const setShowVlcButton = useUiSettingsStore((s) => s.setShowVlcButton);
   const country = useFilterStore((s) => s.country);
@@ -72,6 +74,12 @@ export function PlaybackPrefsCard() {
             onChange={(c) => void setDefaultCountry(c)}
             className="w-full"
           />
+        </SettingsRow>
+        <SettingsRow
+          label="Image dans l’image (PiP)"
+          hint="Bouton PiP sur la vidéo. En plein écran, l’iPhone passe aussi en PiP quand tu quittes l’app (Réglages iOS › Général › Image dans l’image)."
+        >
+          <Switch checked={pipEnabled} onChange={(v) => void setPipEnabled(v)} label="Image dans l’image" />
         </SettingsRow>
         <SettingsRow label="Bouton « Diffuser sur la TV »" hint="Ouvre la vidéo dans VLC, qui la diffuse sur ta TV (Android TV, Chromecast).">
           <Switch checked={showCastButton} onChange={(v) => void setShowCastButton(v)} label="Bouton Diffuser sur la TV" />

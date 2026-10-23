@@ -8,6 +8,7 @@ import { cn } from '@/lib/cn';
 import { nativeDurationSeconds } from '@/services/player/mediaDurationService';
 import { bufferedAhead, isSeekable } from '@/services/player/playbackCapabilityService';
 import { noteStarvation } from '@/services/player/networkQualityService';
+import { exitPip, isInPip } from '@/services/player/pictureInPicture';
 import { wasPausedByUser } from '@/services/player/playbackIntent';
 import {
   AUTO_RESUME_POKE_MS,
@@ -118,37 +119,7 @@ export interface VideoPlayerProps {
  */
 type PlayerPhase = 'loading' | 'ready' | 'reconnecting' | 'buffering' | 'offline' | 'error';
 
-/** Safari (iOS surtout) n'expose PAS `pictureInPictureEnabled` : il utilise
- * l'API webkit `webkitSetPresentationMode` (hors typings standard). */
-type WebkitVideo = HTMLVideoElement & {
-  webkitSupportsPresentationMode?: (mode: string) => boolean;
-  webkitSetPresentationMode?: (mode: 'inline' | 'picture-in-picture' | 'fullscreen') => void;
-  webkitPresentationMode?: string;
-  webkitShowPlaybackTargetPicker?: () => void;
-  /** Plein ecran video iOS (le seul fiable en PWA installee — hors typings standard). */
-  webkitEnterFullscreen?: () => void;
-};
 
-function isInPip(video: HTMLVideoElement): boolean {
-  if ((video as WebkitVideo).webkitPresentationMode === 'picture-in-picture') return true;
-  return typeof document !== 'undefined' && document.pictureInPictureElement === video;
-}
-
-/** Ferme un eventuel PiP pointant sur cette video (standard ou webkit). */
-function exitPipFor(video: HTMLVideoElement): void {
-  const v = video as WebkitVideo;
-  if (typeof v.webkitSetPresentationMode === 'function' && v.webkitPresentationMode === 'picture-in-picture') {
-    try {
-      v.webkitSetPresentationMode('inline');
-    } catch {
-      // PiP webkit indisponible : rien a faire.
-    }
-    return;
-  }
-  if (typeof document !== 'undefined' && document.pictureInPictureElement === video) {
-    void document.exitPictureInPicture().catch(() => {});
-  }
-}
 
 const PROGRESS_INTERVAL_MS = 4000;
 
@@ -215,6 +186,7 @@ export function VideoPlayer({
   const hlsRef = useRef<Hls | null>(null);
   const mkvEngineRef = useRef<MkvDirectEngine | null>(null);
   const preferredLanguage = useUiSettingsStore((s) => s.preferredLanguage);
+  const pipEnabled = useUiSettingsStore((s) => s.pipEnabled);
   const onDirectMkvFailedRef = useRef(onDirectMkvFailed);
   onDirectMkvFailedRef.current = onDirectMkvFailed;
   const [phase, setPhase] = useState<PlayerPhase>('loading');
@@ -666,7 +638,7 @@ export function VideoPlayer({
       // Pause SUBIE : Safari iOS suspend la lecture quand le tampon se vide sur
       // un reseau faible. Ce n'est pas l'utilisateur -> on relancera seul.
       const starved =
-        document.visibilityState === 'visible' &&
+        (document.visibilityState === 'visible' || isInPip(video)) &&
         !wasPausedByUser(video) &&
         isStarvedPause({ bufferAhead: bufferedAhead(video), readyState: video.readyState, starving });
       if (starved) {
@@ -819,6 +791,8 @@ export function VideoPlayer({
     };
     const handleVisibility = () => {
       if (document.visibilityState === 'hidden') {
+        // Image dans l'image : la video reste regardee, rien n'est suspendu.
+        if (isInPip(video)) return;
         sendProgress(true);
         // iOS suspend la video de la PWA en arriere-plan (sans PiP) : on date
         // la « pause » pour rejoindre le direct a la reprise.
@@ -883,18 +857,19 @@ export function VideoPlayer({
   useEffect(() => {
     const video = videoRef.current;
     return () => {
-      if (video !== null) exitPipFor(video);
+      if (video !== null) exitPip(video);
     };
   }, []);
 
-  // PiP desactive dans l'app : bouton natif masque (disablePictureInPicture,
+  // PiP coupe dans les Reglages : bouton natif masque (disablePictureInPicture,
   // Chrome/Edge) et, la ou l'attribut est ignore (Safari iPhone), toute entree
   // en PiP est aussitot annulee — la video reste dans ZiBTV.
   useEffect(() => {
     const video = videoRef.current;
-    if (video === null) return;
+    if (video === null || pipEnabled) return;
+    if (isInPip(video)) exitPip(video);
     const refusePip = () => {
-      if (isInPip(video)) exitPipFor(video);
+      if (isInPip(video)) exitPip(video);
     };
     video.addEventListener('webkitpresentationmodechanged', refusePip);
     video.addEventListener('enterpictureinpicture', refusePip);
@@ -902,7 +877,7 @@ export function VideoPlayer({
       video.removeEventListener('webkitpresentationmodechanged', refusePip);
       video.removeEventListener('enterpictureinpicture', refusePip);
     };
-  }, []);
+  }, [pipEnabled]);
 
   const busy = phase === 'loading' || phase === 'reconnecting' || phase === 'buffering';
 
@@ -912,7 +887,7 @@ export function VideoPlayer({
         <video
           ref={videoRef}
           controls={!compact}
-          disablePictureInPicture
+          disablePictureInPicture={!pipEnabled}
           playsInline
           autoPlay
           poster={posterUrl ?? undefined}

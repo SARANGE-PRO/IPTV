@@ -84,3 +84,11 @@ export const IconCast = ({ className }: IconProps) => (
     <circle cx="3.6" cy="18.4" r="0.6" fill="currentColor" />
   </Svg>
 );
+
+/** Image dans l'image : ecran + petite fenetre en bas a droite. */
+export const IconPip = ({ className }: IconProps) => (
+  <Svg className={className}>
+    <rect x="3" y="5" width="18" height="14" rx="2" />
+    <rect x="12" y="12" width="7" height="5" rx="1" fill="currentColor" stroke="none" />
+  </Svg>
+);

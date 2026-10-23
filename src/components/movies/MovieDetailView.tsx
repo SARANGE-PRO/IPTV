@@ -11,6 +11,7 @@ import { TrailerButton } from '@/components/media/TrailerButton';
 import { ClampedText } from '@/components/shared/ClampedText';
 import { PosterImage } from '@/components/shared/PosterImage';
 import { CastButton } from '@/components/player/CastButton';
+import { PipButton } from '@/components/player/PipButton';
 import { ExternalPlayer, launchVlc } from '@/components/player/ExternalPlayer';
 import { DirectMkvProbe } from '@/components/player/DirectMkvProbe';
 import { PlayerSlot } from '@/components/player/host/PlayerSlot';
@@ -270,7 +271,7 @@ export function MovieDetailView({
       )}
 
       <div className={cn('px-4 pb-8 md:px-8', playing ? 'pt-6' : 'relative -mt-16 sm:-mt-24')}>
-        <div className="sticky top-safe z-20 -mx-4 mb-2 flex items-center gap-3 bg-ink-950/75 px-4 py-2 backdrop-blur-md md:-mx-8 md:px-8">
+        <div className="sticky top-safe z-20 -mx-4 mb-2 flex items-center gap-2 bg-ink-950/75 px-4 py-2 backdrop-blur-md md:-mx-8 md:px-8">
           <button
             onClick={() => (onBack !== undefined ? onBack() : router.back())}
             aria-label="Retour"
@@ -281,9 +282,13 @@ export function MovieDetailView({
           <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg drop-shadow">
             {movie != null ? displayTitle(movie.name) : ''}
           </h1>
-          <CastButton streamUrl={src} title={movie != null ? displayTitle(movie.name) : ''} />
-          <ArrangeButton type="vod" itemId={vodId} title={movie != null ? displayTitle(movie.name) : ''} />
-          <FavoriteButton type="vod" itemId={vodId} title={movie != null ? displayTitle(movie.name) : ''} />
+          {/* Actions du lecteur : groupe serre (le titre garde de la place sur iPhone). */}
+          <div className="flex shrink-0 items-center gap-0.5">
+            <PipButton video={video} className="h-10 w-10" />
+            <CastButton className="h-10 w-10" streamUrl={src} title={movie != null ? displayTitle(movie.name) : ''} />
+            <ArrangeButton className="h-10 w-10" type="vod" itemId={vodId} title={movie != null ? displayTitle(movie.name) : ''} />
+            <FavoriteButton className="h-10 w-10" type="vod" itemId={vodId} title={movie != null ? displayTitle(movie.name) : ''} />
+          </div>
         </div>
 
         {playing && src !== null && movie !== undefined ? (

@@ -28,6 +28,7 @@
  */
 
 import { dropSurface, getDockTarget, liftSurface, onLiftedSlotReleased } from '@/components/player/host/playerSurface';
+import { isInPip } from '@/services/player/pictureInPicture';
 import { PHONE_LANDSCAPE_QUERY } from '@/utils/videoFullscreen';
 
 /** Deplacement (px) qui engage le geste. */
@@ -365,7 +366,7 @@ export function bindSlotGestures(
     const el = e.target instanceof Element ? e.target : null;
     if (el?.closest(INTERACTIVE) != null) return;
     const video = target.querySelector('video');
-    if (video === null) return;
+    if (video === null || isInPip(video)) return;
     const box = video.getBoundingClientRect();
     if (touch.clientY > box.bottom - CONTROLS_BAND_PX) return;
     const handlers = getSwipe();

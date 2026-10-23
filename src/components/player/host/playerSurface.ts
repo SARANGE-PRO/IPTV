@@ -11,7 +11,11 @@
  *    seul un emplacement DANS le modal reste eligible ;
  *  - sinon : mini-lecteur ;
  *  - pendant le geste « glisser pour reduire », la video est SOULEVEE dans un
- *    calque flottant (playerGesture) et y reste jusqu'au relachement.
+ *    calque flottant (playerGesture) et y reste jusqu'au relachement ;
+ *  - pendant l'IMAGE DANS L'IMAGE, la video ne bouge plus (un deplacement
+ *    fermerait le PiP) : la place est recalculee a la sortie du PiP. Seule
+ *    exception : son emplacement disparait (page fermee) — elle part alors
+ *    dans le mini-lecteur pour ne jamais etre detachee du document.
  *
  * Mini-lecteur -> emplacement : la video « vole » de la vignette jusqu'a sa
  * place (animation FLIP, compositeur uniquement).
@@ -50,6 +54,8 @@ let lifted: HTMLElement | null = null;
 /** Appele quand l'emplacement d'une video soulevee disparait (page fermee). */
 let liftedReleaseHook: (() => void) | null = null;
 let covers = 0;
+/** Image dans l'image ouverte : placement fige. */
+let frozen = false;
 const slots: Slot[] = [];
 let snapshot: SurfaceSnapshot = { mode: 'mini', layout: 'default' };
 const listeners = new Set<() => void>();
@@ -99,7 +105,9 @@ function place(): void {
     }
   }
   const node = getSurface();
-  if (lifted !== null) {
+  if (frozen && node.isConnected) {
+    // PiP : on ne touche pas au DOM ; l'etat (mode) reste a jour.
+  } else if (lifted !== null) {
     if (node.parentNode !== lifted) lifted.appendChild(node);
   } else {
     const target = slot?.el ?? dock;
@@ -155,7 +163,14 @@ export function registerSlot(el: HTMLElement, layout: SlotLayout): SlotHandle {
         return;
       }
       // Synchrone, AVANT que React ne retire l'emplacement du DOM : la <video>
-      // part dans le mini-lecteur sans jamais etre detachee du document.
+      // part dans le mini-lecteur sans jamais etre detachee du document
+      // (meme en PiP : sinon elle partirait avec la page).
+      if (frozen && slot.el.contains(getSurface())) {
+        frozen = false;
+        place();
+        frozen = true;
+        return;
+      }
       place();
     },
   };
@@ -186,6 +201,13 @@ export function getSurfaceSnapshot(): SurfaceSnapshot {
 /** Vignette du mini-lecteur (cible de l'atterrissage du geste). */
 export function getDockTarget(): HTMLElement | null {
   return dock;
+}
+
+/** Image dans l'image ouverte / fermee : fige puis rejoue le placement. */
+export function setSurfaceFrozen(value: boolean): void {
+  if (frozen === value) return;
+  frozen = value;
+  if (!value) place();
 }
 
 /** Geste en cours : la video quitte sa page pour le calque flottant. */
