@@ -1,3 +1,5 @@
+import type { PlaybackFailure } from '@/types/playbackDiagnostics';
+
 /**
  * Lecture en cours (lecteur unique de l'app, voir components/player/host).
  * Types partages store <-> composants : aucune dependance UI.
@@ -37,7 +39,8 @@ export interface PlayerSource {
 export interface PlayerHandlers {
   onProgress?: (positionSec: number, durationSec: number | null, force: boolean) => void;
   onEnded?: () => void;
-  onError?: () => void;
+  /** Echec definitif (apres les relances automatiques du lecteur). */
+  onError?: (failure: PlaybackFailure) => void;
   onDirectMkvFailed?: () => void;
 }
 

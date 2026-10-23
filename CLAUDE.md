@@ -55,7 +55,12 @@ Gestionnaire de paquets : **npm**.
    (`components/player/host/PlayerHost`, monté dans le layout (app)). Les pages
    n'utilisent JAMAIS `VideoPlayer` directement mais `PlayerSlot` (mêmes props
    + `media`) : quitter la page laisse la lecture continuer en mini-lecteur.
-   État dans `stores/playerStore`.
+   État dans `stores/playerStore`. La MÊME `<video>` enchaîne les flux (pas de
+   `key` par session : iOS n'autorise le son qu'après un geste sur l'élément).
+   Échecs transitoires relancés par le lecteur selon
+   `services/player/playbackRecoveryPolicy.ts` (gel, coupure du direct,
+   hors-ligne, autoplay refusé) ; `onError` = échec DÉFINITIF seulement.
+   VLC : dernier recours, affiché uniquement si activé dans les Réglages.
 
 ## Méthode de travail
 - Avancer **module par module**, jamais tout d'un coup. Indiquer les fichiers

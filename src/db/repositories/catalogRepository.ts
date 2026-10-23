@@ -177,6 +177,39 @@ export async function getLiveChannelNeighbors(
   return { previous: previous ?? null, next: next ?? null };
 }
 
+/**
+ * Chaines encadrant une position dans sa categorie (les plus proches d'abord),
+ * `limit` de chaque cote — le service de zapping y saute separateurs et
+ * evenements. Index compose v4, jamais de scan.
+ */
+export async function getLiveChannelsAround(
+  categoryId: string,
+  sortOrder: number,
+  limit: number,
+): Promise<{ before: LiveChannel[]; after: LiveChannel[] }> {
+  const index = db.xtream_live_streams.where('[categoryId+sortOrder]');
+  const [before, after] = await Promise.all([
+    index
+      .between([categoryId, Dexie.minKey], [categoryId, sortOrder], true, false)
+      .reverse()
+      .limit(limit)
+      .toArray(),
+    index
+      .between([categoryId, sortOrder], [categoryId, Dexie.maxKey], false, true)
+      .limit(limit)
+      .toArray(),
+  ]);
+  return { before, after };
+}
+
+/** Premieres (`start`) ou dernieres (`end`) chaines d'une categorie : zapping en boucle. */
+export function getLiveCategoryEdge(categoryId: string, edge: 'start' | 'end', limit: number): Promise<LiveChannel[]> {
+  const range = db.xtream_live_streams
+    .where('[categoryId+sortOrder]')
+    .between([categoryId, Dexie.minKey], [categoryId, Dexie.maxKey], true, true);
+  return (edge === 'end' ? range.reverse() : range).limit(limit).toArray();
+}
+
 // --- Films ------------------------------------------------------------------------
 
 export function replaceMovies(movies: Movie[]): Promise<void> {

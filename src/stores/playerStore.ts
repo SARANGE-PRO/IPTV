@@ -71,6 +71,8 @@ interface PlayerState {
   refresh: (key: string, media: NowPlayingMedia, handlers: PlayerHandlers) => void;
   stop: () => void;
   markFailed: () => void;
+  /** La lecture est repartie (relance, bouton Reessayer) : plus d'echec affiche. */
+  clearFailed: () => void;
   setVideo: (video: HTMLVideoElement | null) => void;
 }
 
@@ -98,5 +100,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
 
   stop: () => set({ session: null, failed: false }),
   markFailed: () => set({ failed: true }),
+  clearFailed: () => {
+    if (get().failed) set({ failed: false });
+  },
   setVideo: (video) => set({ video }),
 }));

@@ -10,6 +10,7 @@ import {
   type CategoryContext,
 } from '@/services/xtream/normalize';
 import { regroupSection } from '@/services/catalog/catalogGroupingService';
+import { invalidateLivePool } from '@/services/live/liveZappingService';
 import { ensureAllGenres } from '@/services/tmdb/tmdbGenreService';
 import * as xtreamApi from '@/services/xtream/xtreamApi';
 import type { Category, Section } from '@/types/models';
@@ -61,9 +62,11 @@ async function storeSection(
 
   if (section === 'live') {
     const raw = await xtreamApi.getLiveStreams(creds);
-    return catalogRepository.replaceLiveCatalog(categories, Array.isArray(raw) ? raw : [], (r) =>
+    const count = await catalogRepository.replaceLiveCatalog(categories, Array.isArray(raw) ? raw : [], (r) =>
       normalizeLiveChannel(r, context(r.category_id)),
     );
+    invalidateLivePool();
+    return count;
   }
   if (section === 'vod') {
     const raw = await xtreamApi.getVodStreams(creds);

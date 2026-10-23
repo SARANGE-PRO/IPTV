@@ -17,6 +17,8 @@ export type PlaybackErrorCode =
   | 'mkv_direct_unsupported'
   | 'mkv_direct_network'
   | 'mkv_direct_media'
+  | 'stream_stalled'
+  | 'live_ended'
   | 'unknown';
 
 /** Detail structure d'un echec, rempli au plus pres de la source. */

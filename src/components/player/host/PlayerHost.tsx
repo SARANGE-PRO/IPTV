@@ -14,6 +14,7 @@ import {
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { useMiniPlayerMediaSession } from '@/hooks/useMiniPlayerMediaSession';
 import { getPlayerHandlers, usePlayerStore } from '@/stores/playerStore';
+import type { PlaybackFailure } from '@/types/playbackDiagnostics';
 import { nowPlayingHref } from '@/utils/appRoutes';
 
 /** Mise en page de la video selon l'endroit ou elle se trouve. */
@@ -73,9 +74,12 @@ export function PlayerHost() {
           usePlayerStore.getState().stop();
         }
       },
-      onError: () => {
+      onError: (failure: PlaybackFailure) => {
         if (usePlayerStore.getState().session?.key === key) usePlayerStore.getState().markFailed();
-        getPlayerHandlers(key)?.onError?.();
+        getPlayerHandlers(key)?.onError?.(failure);
+      },
+      onPlaying: () => {
+        if (usePlayerStore.getState().session?.key === key) usePlayerStore.getState().clearFailed();
       },
       onDirectMkvFailed: () => getPlayerHandlers(key)?.onDirectMkvFailed?.(),
     };
@@ -95,8 +99,10 @@ export function PlayerHost() {
         session !== null &&
         callbacks !== null &&
         createPortal(
+          // PAS de `key` par session : la MEME <video> enchaine les flux
+          // (zapping, episode suivant). iOS n'autorise le son qu'apres un geste
+          // sur l'element ; un nouvel element par chaine pourrait exiger un tap.
           <VideoPlayer
-            key={session.key}
             {...session.source}
             {...layout}
             compact={mini}
@@ -104,6 +110,7 @@ export function PlayerHost() {
             onProgress={callbacks.onProgress}
             onEnded={callbacks.onEnded}
             onError={callbacks.onError}
+            onPlaying={callbacks.onPlaying}
             onDirectMkvFailed={callbacks.onDirectMkvFailed}
           />,
           getSurface(),

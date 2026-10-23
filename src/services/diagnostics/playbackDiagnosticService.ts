@@ -116,6 +116,10 @@ function likelyCause(f: PlaybackFailure): string {
       return 'HLS non supporte par ce navigateur.';
     case 'hls_module_failed':
       return 'Le module de lecture HLS n a pas pu se charger (reseau/blocage de script).';
+    case 'stream_stalled':
+      return 'Le flux s est fige (plus aucune image recue) et les relances automatiques n ont pas suffi : serveur sature, limite de connexions ou reseau instable.';
+    case 'live_ended':
+      return 'Le serveur a coupe le direct et ne l a pas rouvert apres plusieurs relances.';
     case 'native_error':
       if (f.mediaErrorCode === 4)
         return 'Format/codec non supporte par le navigateur (ex. MKV, HEVC 10-bit, audio AC3/DTS).';

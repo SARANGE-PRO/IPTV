@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { NowPlaying } from '@/components/live/NowPlaying';
@@ -10,9 +10,11 @@ import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { PlayerSlot } from '@/components/player/host/PlayerSlot';
 import { IconArrowLeft } from '@/components/ui/icons';
 import { useLandscapeFullscreen } from '@/hooks/useLandscapeFullscreen';
+import { useMediaSession } from '@/hooks/useMediaSession';
 import { cn } from '@/lib/cn';
 import * as catalogRepository from '@/services/data/catalogService';
-import { findChannelVersions } from '@/services/live/channelGroupingService';
+import { getChannelVersions, getZapNeighbors } from '@/services/live/liveZappingService';
+import { isGatewayConfigured } from '@/services/player/mediaGatewayService';
 import { buildLiveStreamUrl } from '@/services/xtream/xtreamUrls';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
@@ -46,32 +48,84 @@ function LiveWatch() {
     next: null,
   });
   const [versions, setVersions] = useState<ChannelVersion[]>([]);
-  const [failed, setFailed] = useState(false);
   // <video> du lecteur unique, SEULEMENT si c'est cette chaine qui joue
   // (sinon le plein ecran paysage piloterait un film en mini-lecteur).
   const video = usePlayerStore((s) =>
     s.session?.media.kind === 'live' && s.session.media.ownerId === streamId ? s.video : null,
   );
+  // Echec definitif de CETTE chaine (le lecteur l'efface s'il repart).
+  const failed = usePlayerStore(
+    (s) => s.failed && s.session?.media.kind === 'live' && s.session.media.ownerId === streamId,
+  );
+  const [failoverNotice, setFailoverNotice] = useState<string | null>(null);
   // Telephone a l'horizontale : 1er tap = lecteur plein ecran natif.
   const { landscape, fullscreen } = useLandscapeFullscreen(video);
   const [showFullscreenHint, setShowFullscreenHint] = useState(false);
   // Le titre en surimpression s'efface apres quelques secondes pour ne pas
   // recouvrir le bouton plein ecran natif (le nom reste dans l'en-tete au-dessus).
   const [showTitleOverlay, setShowTitleOverlay] = useState(true);
-  // Safari (iPhone/iPad/macOS) : Live en HLS .m3u8 natif — il refuse le fMP4
-  // progressif de la passerelle. Chrome/Edge : .ts transcode (robuste).
-  const [liveExt] = useState<'m3u8' | 'ts'>(() => (supportsNativeHls() ? 'm3u8' : 'ts'));
+  // Safari (iPhone/iPad/macOS) : Live en HLS .m3u8 natif. Ailleurs : .ts
+  // transcode si une passerelle est configuree, sinon .m3u8 via hls.js (le
+  // .ts brut n'est lu par aucun <video>).
+  const [liveExt] = useState<'m3u8' | 'ts'>(() =>
+    supportsNativeHls() || !isGatewayConfigured() ? 'm3u8' : 'ts',
+  );
+
+  // Zapper REMPLACE l'entree d'historique : « Retour » ramene a la liste, pas
+  // a chaque chaine traversee.
+  const zapTo = useCallback((id: string) => router.replace(liveHref(id)), [router]);
+
+  // Bascule automatique : une version qui ne repart pas (relances du lecteur
+  // epuisees) cede la place a la version suivante de la meme chaine. Chaque
+  // version n'est tentee qu'une fois ; un zapping manuel remet a zero.
+  const mountedRef = useRef(false);
+  const triedRef = useRef<Set<string>>(new Set());
+  const failoverTargetRef = useRef<string | null>(null);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (failoverTargetRef.current !== streamId) {
+      triedRef.current = new Set();
+      setFailoverNotice(null);
+    }
+    failoverTargetRef.current = null;
+    triedRef.current.add(streamId);
+  }, [streamId]);
+  useEffect(() => {
+    if (failoverNotice === null) return;
+    const timer = setTimeout(() => setFailoverNotice(null), 6000);
+    return () => clearTimeout(timer);
+  }, [failoverNotice]);
+
+  const handlePlaybackFailure = () => {
+    // Page quittee (lecture en mini-lecteur) : ne jamais y ramener l'utilisateur.
+    if (!mountedRef.current) return;
+    const next = versions.find((v) => !triedRef.current.has(v.channel.id));
+    if (next === undefined) return;
+    const current = versions.find((v) => v.channel.id === streamId);
+    failoverTargetRef.current = next.channel.id;
+    setFailoverNotice(`${current?.label ?? 'Cette version'} ne répond pas — passage automatique sur ${next.label}.`);
+    zapTo(next.channel.id);
+  };
 
   useEffect(() => {
-    setFailed(false);
     if (streamId === '') {
       setChannel(null);
       return;
     }
     let active = true;
-    void catalogRepository.getLiveChannelById(streamId).then((c) => {
-      if (active) setChannel(c ?? null);
-    });
+    void catalogRepository
+      .getLiveChannelById(streamId)
+      .then((c) => {
+        if (active) setChannel(c ?? null);
+      })
+      .catch(() => {
+        // Stockage indisponible : le flux (construit depuis l'id) joue quand meme.
+      });
     return () => {
       active = false;
     };
@@ -95,12 +149,17 @@ function LiveWatch() {
     return () => clearTimeout(timer);
   }, [landscape, fullscreen]);
 
+  // Voisins JOUABLES (separateurs sautes, en boucle dans la categorie).
   useEffect(() => {
     if (channel === null || channel === undefined) return;
     let active = true;
-    void catalogRepository.getLiveChannelNeighbors(channel.categoryId, channel.sortOrder).then((result) => {
-      if (active) setNeighbors(result);
-    });
+    void getZapNeighbors(channel)
+      .then((result) => {
+        if (active) setNeighbors(result);
+      })
+      .catch(() => {
+        if (active) setNeighbors({ previous: null, next: null });
+      });
     return () => {
       active = false;
     };
@@ -112,21 +171,38 @@ function LiveWatch() {
     }
   }, [channel, recordLiveWatch]);
 
-  // Variantes (HD/FHD/4K/RAW…) de la chaine — pool FR borne, uniquement pour les
-  // chaines FR (l'international reste "en vrac", sans selecteur).
+  // Variantes (HD/FHD/4K/RAW…) de la chaine — pool FR borne et mis en cache,
+  // uniquement pour les chaines FR (l'international reste "en vrac").
   useEffect(() => {
-    if (channel === null || channel === undefined || channel.isFrench !== 1) {
+    if (channel === null || channel === undefined) {
       setVersions([]);
       return;
     }
     let active = true;
-    void catalogRepository.getLiveChannelsPage({ kind: 'french' }, 0, 4000).then((pool) => {
-      if (active) setVersions(findChannelVersions(pool, channel));
-    });
+    void getChannelVersions(channel)
+      .then((list) => {
+        if (active) setVersions(list);
+      })
+      .catch(() => {
+        if (active) setVersions([]);
+      });
     return () => {
       active = false;
     };
   }, [channel]);
+
+  const channelTitle = channel != null ? displayChannelName(channel.name) : 'Chaîne';
+  const nextId = neighbors.next?.id ?? null;
+  const previousId = neighbors.previous?.id ?? null;
+  // Ecran verrouille / Centre de controle / AirPods : ⏮ ⏭ = chaine precedente /
+  // suivante (au lieu de ±15 s, sans objet en direct).
+  useMediaSession(
+    video !== null && channel != null ? { title: channelTitle, subtitle: 'En direct', artwork: channel.logoUrl } : null,
+    {
+      onNext: nextId !== null ? () => zapTo(nextId) : null,
+      onPrevious: previousId !== null ? () => zapTo(previousId) : null,
+    },
+  );
 
   // Player : extension selon le navigateur. VLC : toujours .ts (universel).
   const src = credentials !== null && streamId !== '' ? buildLiveStreamUrl(credentials, streamId, liveExt) : null;
@@ -172,14 +248,14 @@ function LiveWatch() {
                 transcode={liveExt === 'ts'}
                 contentType="live"
                 container={liveExt}
-                onError={() => setFailed(true)}
+                onError={handlePlaybackFailure}
                 layout="live"
                 className="phone-land:h-full"
                 media={{
                   kind: 'live',
                   ownerId: streamId,
                   itemId: streamId,
-                  title: channel != null ? displayChannelName(channel.name) : 'Chaîne',
+                  title: channelTitle,
                   subtitle: 'En direct',
                   artwork: channel?.logoUrl ?? null,
                 }}
@@ -217,6 +293,11 @@ function LiveWatch() {
             </div>
             {/* Masque en paysage : rien a faire defiler sous le plein ecran. */}
             <div className="space-y-4 phone-land:hidden">
+              {failoverNotice !== null && (
+                <p role="status" className="rounded-xl bg-ink-800 px-4 py-2.5 text-xs text-fg-muted">
+                  {failoverNotice}
+                </p>
+              )}
               <NowPlaying credentials={credentials} streamId={streamId} />
               {versions.length > 1 && (
                 <div>
@@ -226,6 +307,7 @@ function LiveWatch() {
                       <Link
                         key={version.channel.id}
                         href={liveHref(version.channel.id)}
+                        replace
                         className={cn(
                           'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
                           version.channel.id === streamId
@@ -244,11 +326,11 @@ function LiveWatch() {
                   type="button"
                   disabled={neighbors.previous === null}
                   onClick={() => {
-                    if (neighbors.previous !== null) router.push(liveHref(neighbors.previous.id));
+                    if (neighbors.previous !== null) zapTo(neighbors.previous.id);
                   }}
                   className="min-w-0 rounded-xl bg-ink-800 px-4 py-3 text-left text-xs text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg disabled:opacity-35"
                 >
-                  <span className="block text-[10px] uppercase tracking-wider text-fg-faint">Precedente</span>
+                  <span className="block text-[10px] uppercase tracking-wider text-fg-faint">Précédente</span>
                   <span className="mt-1 block truncate">
                     {neighbors.previous != null ? displayChannelName(neighbors.previous.name) : 'Indisponible'}
                   </span>
@@ -257,7 +339,7 @@ function LiveWatch() {
                   type="button"
                   disabled={neighbors.next === null}
                   onClick={() => {
-                    if (neighbors.next !== null) router.push(liveHref(neighbors.next.id));
+                    if (neighbors.next !== null) zapTo(neighbors.next.id);
                   }}
                   className="min-w-0 rounded-xl bg-ink-800 px-4 py-3 text-right text-xs text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg disabled:opacity-35"
                 >
@@ -267,7 +349,8 @@ function LiveWatch() {
                   </span>
                 </button>
               </div>
-              {(showVlcButton || failed) && vlcSrc !== null && (
+              {/* VLC : dernier recours, seulement si active dans les Reglages. */}
+              {showVlcButton && vlcSrc !== null && (
                 <ExternalPlayer
                   streamUrl={vlcSrc}
                   label={failed ? 'Ça ne marche pas ici ? Ouvrir dans VLC' : 'Regarder dans VLC'}

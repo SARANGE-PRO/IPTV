@@ -21,7 +21,7 @@ import { cn } from '@/lib/cn';
 import * as catalogRepository from '@/services/data/catalogService';
 import * as playbackRepository from '@/services/data/playbackDataService';
 import { nextEpisode, primaryAction, resumePosition, watchedRatio } from '@/services/media/episodeService';
-import { resetGatewayHealthCache } from '@/services/player/mediaGatewayService';
+import { isGatewayConfigured, resetGatewayHealthCache } from '@/services/player/mediaGatewayService';
 import { findSeriesVariants, type LanguageVariant } from '@/services/media/languageVariantService';
 import { getSeriesDetailsCached } from '@/services/xtream/seriesDetailsService';
 import { tmdbBackdrop, tmdbPoster } from '@/services/tmdb/tmdbImage';
@@ -287,18 +287,31 @@ export function SeriesDetailView({
                   Cet épisode est en {playingEp.containerExtension?.toUpperCase() ?? 'un format non lisible'} — un
                   iPhone ou iPad ne le décode pas dans le navigateur.
                 </p>
-                <p className="mt-1.5 text-xs text-fg-muted">
-                  Allume la passerelle pour le lire ici, ou ouvre-le dans VLC (lecture native).
-                </p>
-                <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-                  <Button size="sm" variant="secondary" onClick={() => setPlanRetry((n) => n + 1)}>
-                    Réessayer la passerelle
-                  </Button>
-                  <ExternalPlayer
-                    streamUrl={src}
-                    label={`Ouvrir S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`}
-                  />
-                </div>
+                {(isGatewayConfigured() || showVlcButton) && (
+                  <>
+                    <p className="mt-1.5 text-xs text-fg-muted">
+                      {isGatewayConfigured() && showVlcButton
+                        ? 'Allume la passerelle pour le lire ici, ou ouvre-le dans VLC (lecture native).'
+                        : isGatewayConfigured()
+                          ? 'Allume la passerelle pour le lire ici.'
+                          : 'Tu peux l’ouvrir dans VLC (lecture native).'}
+                    </p>
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+                      {isGatewayConfigured() && (
+                        <Button size="sm" variant="secondary" onClick={() => setPlanRetry((n) => n + 1)}>
+                          Réessayer la passerelle
+                        </Button>
+                      )}
+                      {/* VLC : dernier recours, seulement si active dans les Reglages. */}
+                      {showVlcButton && (
+                        <ExternalPlayer
+                          streamUrl={src}
+                          label={`Ouvrir S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`}
+                        />
+                      )}
+                    </div>
+                  </>
+                )}
                 <DirectMkvProbe streamUrl={src} />
               </div>
             ) : plan === 'checking' ? (
@@ -307,7 +320,7 @@ export function SeriesDetailView({
               </div>
             ) : (
               <>
-                {(showVlcButton || failed) && (
+                {showVlcButton && (
                   <ExternalPlayer
                     streamUrl={src}
                     label={

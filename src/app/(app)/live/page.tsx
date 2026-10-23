@@ -15,6 +15,7 @@ import * as catalogRepository from '@/services/data/catalogService';
 import type { LiveFilter } from '@/services/data/catalogService';
 import { groupChannels } from '@/services/live/channelGroupingService';
 import { isSeparatorOrEvent } from '@/services/live/channelNormalizer';
+import { FRENCH_POOL_CAP, getFrenchLivePool } from '@/services/live/liveZappingService';
 import type { ChannelGroup } from '@/types/liveGrouping';
 import * as settingsRepository from '@/services/data/settingsDataService';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -72,7 +73,7 @@ const FILTERS: { id: FilterId; label: string }[] = [
 
 const STEP = 60;
 const PAGE = 200;
-const CAP = 4000; // filtres bornes : jamais les 55k en memoire
+const CAP = FRENCH_POOL_CAP; // filtres bornes : jamais les 55k en memoire
 
 /** Filtres servis par pagination Dexie (jamais tout le catalogue en RAM). */
 const PAGINATED: FilterId[] = ['all', 'international'];
@@ -245,6 +246,15 @@ export default function LivePage() {
 
   const categoryOf = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories]);
   const notHidden = useCallback((c: LiveChannel) => !hidden.has(c.categoryId), [hidden]);
+  // Favoris / recents ne pilotent le chargement QUE des vues qui les listent :
+  // ailleurs, cocher une etoile rechargeait des milliers de chaines et
+  // ramenait la liste en haut.
+  const favoritesRef = useRef(favLiveIds);
+  favoritesRef.current = favLiveIds;
+  const recentRef = useRef(recentChannels);
+  recentRef.current = recentChannels;
+  const favoritesDep = filter === 'favorites' && !searching ? favLiveIds : null;
+  const recentDep = filter === 'recent' && !searching ? recentChannels : null;
 
   useEffect(() => {
     let active = true;
@@ -283,7 +293,7 @@ export default function LivePage() {
       // un favori explicite prime sur le masquage de categorie (regle unifiee
       // avec la page Favoris et les rails d'accueil qui ne filtrent pas non plus).
       if (filter === 'favorites') {
-        const res = orderChannels(await catalogRepository.getLiveChannelsByIds([...favLiveIds]));
+        const res = orderChannels(await catalogRepository.getLiveChannelsByIds([...favoritesRef.current]));
         if (active) {
           setPool(res);
           setCount(res.length);
@@ -292,7 +302,7 @@ export default function LivePage() {
       }
       // Recents : ordre de visionnage conserve (idem, pas de filtre blacklist).
       if (filter === 'recent') {
-        const ids = recentChannels.map((e) => e.itemId);
+        const ids = recentRef.current.map((e) => e.itemId);
         const byId = new Map((await catalogRepository.getLiveChannelsByIds(ids)).map((c) => [c.id, c]));
         const res = ids.map((id) => byId.get(id)).filter((c): c is LiveChannel => c !== undefined);
         if (active) {
@@ -315,7 +325,11 @@ export default function LivePage() {
       // CAP, affine cote client puis tri intelligent.
       const repoFilter = boundedBaseFilter(filter);
       const predicate = boundedPredicate(filter);
-      const raw = await catalogRepository.getLiveChannelsPage(repoFilter, 0, CAP);
+      // France / Principales : pool FR partage avec le lecteur (cache court).
+      const raw =
+        repoFilter.kind === 'french'
+          ? await getFrenchLivePool()
+          : await catalogRepository.getLiveChannelsPage(repoFilter, 0, CAP);
       const loaded = raw.filter(notHidden).filter(predicate);
       if (active) {
         setPool(orderChannels(loaded));
@@ -324,13 +338,17 @@ export default function LivePage() {
       }
     };
 
-    void run().finally(() => {
-      if (active) setLoading(false);
-    });
+    void run()
+      .catch(() => {
+        // Stockage indisponible : on garde l'affichage precedent plutot que planter.
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
     return () => {
       active = false;
     };
-  }, [filter, searching, debouncedQuery, favLiveIds, recentChannels, notHidden, hidden]);
+  }, [filter, searching, debouncedQuery, favoritesDep, recentDep, notHidden, hidden]);
 
   // Charge plus : fenetre (pool) + pagination Dexie pour les filtres pagines.
   const loadMore = useCallback(() => {
