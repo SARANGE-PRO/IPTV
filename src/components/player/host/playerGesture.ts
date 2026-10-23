@@ -18,6 +18,13 @@
  *
  * Touch events (et non pointer events) : seul moyen sur iOS d'empecher le
  * defilement de la page des le premier mouvement vers le bas.
+ *
+ * Le geste ne s'engage que si la page (ou la fiche) est TOUT EN HAUT : plus
+ * bas, glisser vers le bas sur la video fait simplement remonter la page.
+ *
+ * Swipe HORIZONTAL (optionnel, Live) : gauche = suivant, droite = precedent.
+ * Actif aussi en paysage (plein ecran CSS) ; la video ne bouge pas, la page
+ * affiche seulement le changement.
  */
 
 import { dropSurface, getDockTarget, liftSurface, onLiftedSlotReleased } from '@/components/player/host/playerSurface';
@@ -35,6 +42,11 @@ const COMMIT_VELOCITY = 0.45;
 const CANCEL_VELOCITY = -0.3;
 /** Fenetre (ms) de calcul de la vitesse au relachement. */
 const VELOCITY_WINDOW_MS = 90;
+/** Swipe horizontal : distance OU coup sec qui valide le changement. */
+const SWIPE_PX = 64;
+const SWIPE_VELOCITY = 0.5;
+/** Tolerance de defilement (px) sous laquelle la page est consideree en haut. */
+const AT_TOP_PX = 4;
 /** Delai max entre la fermeture demandee et le demontage effectif de la page. */
 const NAVIGATION_TIMEOUT_MS = 1500;
 const EASE = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
@@ -45,6 +57,21 @@ interface Box {
   top: number;
   width: number;
 }
+
+export interface SwipeHandlers {
+  onNext: (() => void) | null;
+  onPrevious: (() => void) | null;
+}
+
+interface Swipe {
+  touchId: number;
+  startX: number;
+  startY: number;
+  startT: number;
+  handlers: SwipeHandlers;
+}
+
+let swipe: Swipe | null = null;
 
 interface Gesture {
   phase: 'pending' | 'dragging' | 'settling';
@@ -78,6 +105,12 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 function inLandscapeFullscreen(): boolean {
   return typeof window.matchMedia === 'function' && window.matchMedia(PHONE_LANDSCAPE_QUERY).matches;
+}
+
+/** La page (ou la fiche qui defile) est-elle tout en haut ? */
+function scrolledToTop(wrapper: HTMLElement): boolean {
+  const scroller = wrapper.closest<HTMLElement>('[data-zib-backdrop]') ?? document.scrollingElement;
+  return scroller === null || scroller.scrollTop <= AT_TOP_PX;
 }
 
 function findTouch(list: TouchList, id: number): Touch | null {
@@ -272,7 +305,8 @@ function onTouchMove(e: TouchEvent): void {
   const dy = touch.clientY - g.startY;
 
   if (g.phase === 'pending') {
-    // Vers le haut ou de cote : la page defile normalement.
+    // Vers le haut ou de cote : la page defile normalement (le swipe
+    // horizontal, s'il est branche, est suivi a part).
     if (dy < 0 || Math.abs(dx) > Math.max(dy, 3)) {
       gesture = null;
       return;
@@ -322,18 +356,25 @@ export function bindSlotGestures(
   wrapper: HTMLElement,
   target: HTMLElement,
   getOnMinimize: () => (() => void) | null,
+  getSwipe: () => SwipeHandlers | null = () => null,
 ): () => void {
   const onTouchStart = (e: TouchEvent) => {
-    if (gesture !== null || e.touches.length !== 1 || inLandscapeFullscreen()) return;
+    if (gesture !== null || e.touches.length !== 1) return;
     const touch = e.touches[0];
-    const onMinimize = getOnMinimize();
-    if (touch === undefined || onMinimize === null) return;
+    if (touch === undefined) return;
     const el = e.target instanceof Element ? e.target : null;
     if (el?.closest(INTERACTIVE) != null) return;
     const video = target.querySelector('video');
     if (video === null) return;
     const box = video.getBoundingClientRect();
     if (touch.clientY > box.bottom - CONTROLS_BAND_PX) return;
+    const handlers = getSwipe();
+    swipe =
+      handlers !== null && (handlers.onNext !== null || handlers.onPrevious !== null)
+        ? { touchId: touch.identifier, startX: touch.clientX, startY: touch.clientY, startT: e.timeStamp, handlers }
+        : null;
+    const onMinimize = getOnMinimize();
+    if (onMinimize === null || inLandscapeFullscreen() || !scrolledToTop(wrapper)) return;
     gesture = {
       phase: 'pending',
       touchId: touch.identifier,
@@ -358,15 +399,37 @@ export function bindSlotGestures(
     };
   };
 
+  // Swipe horizontal : decide au relachement (aucun suivi visuel du doigt).
+  const onSwipeEnd = (e: TouchEvent) => {
+    const s = swipe;
+    swipe = null;
+    if (s === null || e.type !== 'touchend' || gesture?.phase === 'dragging') return;
+    const touch = findTouch(e.changedTouches, s.touchId);
+    if (touch === null) return;
+    const dx = touch.clientX - s.startX;
+    const dy = touch.clientY - s.startY;
+    // Franchement horizontal, assez long ou assez vif.
+    if (Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    const velocity = Math.abs(dx) / Math.max(1, e.timeStamp - s.startT);
+    if (Math.abs(dx) < SWIPE_PX && velocity < SWIPE_VELOCITY) return;
+    if (Math.abs(dx) < 24) return;
+    (dx < 0 ? s.handlers.onNext : s.handlers.onPrevious)?.();
+  };
+
   wrapper.addEventListener('touchstart', onTouchStart, { passive: true });
   wrapper.addEventListener('touchmove', onTouchMove, { passive: false });
   wrapper.addEventListener('touchend', onTouchEnd);
   wrapper.addEventListener('touchcancel', onTouchEnd);
+  wrapper.addEventListener('touchend', onSwipeEnd);
+  wrapper.addEventListener('touchcancel', onSwipeEnd);
   return () => {
     wrapper.removeEventListener('touchstart', onTouchStart);
     wrapper.removeEventListener('touchmove', onTouchMove);
     wrapper.removeEventListener('touchend', onTouchEnd);
     wrapper.removeEventListener('touchcancel', onTouchEnd);
+    wrapper.removeEventListener('touchend', onSwipeEnd);
+    wrapper.removeEventListener('touchcancel', onSwipeEnd);
+    swipe = null;
     // Emplacement retire en plein glissement (hors atterrissage) : on annule.
     const g = gesture;
     if (g !== null && g.wrapper === wrapper && g.phase === 'dragging') restore(g);

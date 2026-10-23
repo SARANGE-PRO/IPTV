@@ -34,6 +34,26 @@
     text-rendering: optimizeLegibility;
   }
 
+  /* Appui long iOS : pas d'apercu de lien ni de menu « Enregistrer l'image »
+     (les lignes et cartes ont leurs propres actions). */
+  a,
+  img {
+    -webkit-touch-callout: none;
+  }
+
+  /* Retour visuel au tap (ecrans tactiles) : la surbrillance native est
+     coupee plus haut, sans cela un tap ne donnait aucun signe. */
+  @media (hover: none) {
+    :where(a, button, summary, [role='button']):active:not(:disabled) {
+      opacity: 0.7;
+    }
+  }
+
+  /* Champs de recherche : la croix native est remplacee par la notre (44 px). */
+  input[type='search']::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+  }
+
   /* Cibles tactiles : pas de surbrillance bleue sur iOS, selection maitrisee. */
   ::selection {
     @apply bg-accent/30 text-fg;
@@ -49,6 +69,17 @@
 }
 
 @layer components {
+  /* Zone de tap d'au moins 44 x 44 px (guide Apple) sans changer le visuel :
+     a poser sur un element deja positionne (relative / absolute). */
+  .hit-44::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
   /* Chrome "verre depoli" iOS : le contenu defile flou dessous. */
   .glass {
     background-color: rgba(14, 14, 17, 0.72);

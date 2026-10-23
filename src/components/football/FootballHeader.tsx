@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { FOOTBALL_HREF } from '@/utils/appRoutes';
 import { useMemo, useState } from 'react';
 import { FootballMatchModal } from '@/components/football/FootballMatchModal';
 import { StatusPill, TeamCrest, TvLine } from '@/components/football/matchUi';
@@ -92,7 +93,22 @@ export function FootballHeader() {
   }, [matches, favorites]);
 
   const selected = selectedId !== null ? (matches.find((m) => m.id === selectedId) ?? null) : null;
-  if (cards.length === 0) return null;
+  // Sans match proche, l'entree vers la page Football reste visible (seul acces).
+  if (cards.length === 0) {
+    return (
+      <Link
+        href={FOOTBALL_HREF}
+        className="mt-6 flex items-center justify-between rounded-2xl bg-ink-800 px-4 py-3 transition-colors hover:bg-ink-700"
+      >
+        <span className="flex items-center gap-2 text-sm font-semibold text-fg">
+          <span className="h-4 w-1 rounded-full bg-accent" aria-hidden />
+          Football
+          <span className="font-normal text-fg-faint">· calendrier et résultats</span>
+        </span>
+        <span className="text-xs text-fg-muted">Tous les matchs ›</span>
+      </Link>
+    );
+  }
 
   return (
     <section className="mt-6">
@@ -104,7 +120,7 @@ export function FootballHeader() {
             <span className="rounded bg-accent px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">Direct</span>
           )}
         </h2>
-        <Link href="/football" className="text-xs text-fg-faint hover:text-fg">
+        <Link href={FOOTBALL_HREF} className="-my-2 -mr-2 px-2 py-3 text-xs text-fg-faint hover:text-fg">
           Tous les matchs
         </Link>
       </div>

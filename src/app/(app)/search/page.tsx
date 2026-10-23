@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
-import { BrandMark } from '@/components/shared/BrandMark';
 import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
@@ -18,6 +17,15 @@ import type { Movie, Series } from '@/types/models';
 import { liveHref, movieHref, seriesHref } from '@/utils/appRoutes';
 import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
 import { variantBadge } from '@/utils/variantPreference';
+
+/** Comparaison souple : casse et accents ignores. */
+function normalizeQuery(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
 
 /**
  * RECHERCHE facon Netflix (chantier P7) : titres (une carte par titre, version
@@ -93,14 +101,34 @@ export default function SearchPage() {
   const rememberOnOpen = () => s.remember(s.debounced);
   const trendingItems = [...s.trending.movies, ...s.trending.series];
 
+  // « TF1 », « bein » : on cherche une chaine -> chaines AVANT les films.
+  const needle = normalizeQuery(query);
+  const channelsFirst =
+    needle !== '' && titles.live.some((c) => normalizeQuery(displayChannelName(c.name)).startsWith(needle));
+  const channelsSection =
+    titles.live.length > 0 ? (
+      <Section title={`Chaînes (${titles.live.length})`}>
+        <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4">
+          {titles.live.map((c) => (
+            <div key={c.id} className="flex items-center gap-3 rounded-xl px-2 py-1.5 hover:bg-ink-800">
+              <Link href={liveHref(c.id)} className="flex min-w-0 flex-1 items-center gap-3">
+                <ChannelLogo channel={c} className="h-11 w-11 shrink-0" />
+                <span className="min-w-0 flex-1 truncate text-sm text-fg">{displayChannelName(c.name)}</span>
+                {c.isFrench === 1 && (
+                  <span className="rounded bg-accent/15 px-1 py-0.5 text-[10px] font-semibold text-accent">FR</span>
+                )}
+              </Link>
+              <FavoriteButton type="live" itemId={c.id} className="bg-transparent" />
+            </div>
+          ))}
+        </div>
+      </Section>
+    ) : null;
+
   return (
     <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
       <h1 className="sr-only">Recherche</h1>
-      <div className="flex justify-end md:hidden">
-        <BrandMark />
-      </div>
-
-      <div className="relative mt-4">
+      <div className="relative">
         <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-fg-faint" />
         <Input
           ref={inputRef}
@@ -109,14 +137,17 @@ export default function SearchPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Enter') s.remember(query);
+            if (e.key !== 'Enter') return;
+            s.remember(query);
+            // Ferme le clavier : les resultats deviennent visibles.
+            e.currentTarget.blur();
           }}
+          type="search"
+          enterKeyHint="search"
           autoFocus
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
-          inputMode="search"
-          enterKeyHint="search"
         />
         {query !== '' && (
           <button
@@ -126,7 +157,7 @@ export default function SearchPage() {
               setQuery('');
               inputRef.current?.focus();
             }}
-            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 text-fg-faint hover:text-fg"
+            className="absolute right-1 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full text-fg-faint hover:text-fg"
           >
             <IconX className="h-4 w-4" />
           </button>
@@ -140,23 +171,23 @@ export default function SearchPage() {
             <section className="mt-6">
               <div className="mb-2 flex items-center justify-between">
                 <h2 className="text-sm font-semibold text-fg">Recherches récentes</h2>
-                <button type="button" onClick={s.clearRecent} className="text-xs text-fg-faint hover:text-fg">
+                <button type="button" onClick={s.clearRecent} className="-my-2 px-2 py-3 text-xs text-fg-faint hover:text-fg">
                   Effacer
                 </button>
               </div>
               <div className="flex flex-wrap gap-2">
                 {s.recent.map((r) => (
-                  <span key={r} className="flex items-center gap-1 rounded-full bg-ink-800 py-1 pl-3.5 pr-1.5 text-sm text-fg-muted">
-                    <button type="button" onClick={() => setQuery(r)} className="hover:text-fg">
+                  <span key={r} className="flex items-center gap-1 rounded-full bg-ink-800 pl-3.5 pr-1 text-sm text-fg-muted">
+                    <button type="button" onClick={() => setQuery(r)} className="py-2.5 hover:text-fg">
                       {r}
                     </button>
                     <button
                       type="button"
                       aria-label={`Retirer ${r}`}
                       onClick={() => s.forget(r)}
-                      className="rounded-full p-1 text-fg-faint hover:text-fg"
+                      className="grid h-9 w-9 place-items-center rounded-full text-fg-faint hover:text-fg"
                     >
-                      <IconX className="h-3 w-3" />
+                      <IconX className="h-3.5 w-3.5" />
                     </button>
                   </span>
                 ))}
@@ -195,6 +226,7 @@ export default function SearchPage() {
 
       {s.active && (
         <div onClickCapture={rememberOnOpen}>
+          {channelsFirst && channelsSection}
           {titles.movies.length > 0 && (
             <Section title={`Films (${titles.movies.length})`}>
               <div className={GRID}>
@@ -248,24 +280,7 @@ export default function SearchPage() {
             </Section>
           ))}
 
-          {titles.live.length > 0 && (
-            <Section title={`Chaînes (${titles.live.length})`}>
-              <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4">
-                {titles.live.map((c) => (
-                  <div key={c.id} className="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-ink-800">
-                    <Link href={liveHref(c.id)} className="flex min-w-0 flex-1 items-center gap-3">
-                      <ChannelLogo channel={c} className="h-11 w-11 shrink-0" />
-                      <span className="min-w-0 flex-1 truncate text-sm text-fg">{displayChannelName(c.name)}</span>
-                      {c.isFrench === 1 && (
-                        <span className="rounded bg-accent/15 px-1 py-0.5 text-[10px] font-semibold text-accent">FR</span>
-                      )}
-                    </Link>
-                    <FavoriteButton type="live" itemId={c.id} />
-                  </div>
-                ))}
-              </div>
-            </Section>
-          )}
+          {!channelsFirst && channelsSection}
 
           {s.personLoading && hasAny && (
             <p className="mt-6 text-center text-xs text-fg-faint">Recherche des acteurs et réalisateurs…</p>

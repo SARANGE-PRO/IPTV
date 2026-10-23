@@ -14,6 +14,7 @@ import {
 } from '@/components/player/host/playerSurface';
 import { VideoPlayer } from '@/components/player/VideoPlayer';
 import { useMiniPlayerMediaSession } from '@/hooks/useMiniPlayerMediaSession';
+import { bindPlayPause } from '@/services/player/mediaSessionService';
 import { getPlayerHandlers, usePlayerStore } from '@/stores/playerStore';
 import type { PlaybackFailure } from '@/types/playbackDiagnostics';
 import { nowPlayingHref } from '@/utils/appRoutes';
@@ -59,6 +60,12 @@ export function PlayerHost() {
     return bindLiftLayer(el);
   }, []);
 
+  // Lecture / pause de l'ecran verrouille et des AirPods (pause = voulue).
+  useEffect(() => {
+    if (video === null) return;
+    return bindPlayPause(video);
+  }, [video]);
+
   const sessionKey = session?.key ?? null;
   useLayoutEffect(() => {
     setActiveSurfaceKey(sessionKey);
@@ -91,6 +98,7 @@ export function PlayerHost() {
         if (usePlayerStore.getState().session?.key === key) usePlayerStore.getState().clearFailed();
       },
       onDirectMkvFailed: () => getPlayerHandlers(key)?.onDirectMkvFailed?.(),
+      getErrorActions: () => getPlayerHandlers(key)?.errorActions ?? [],
     };
   }, [sessionKey]);
 
@@ -121,6 +129,7 @@ export function PlayerHost() {
             onError={callbacks.onError}
             onPlaying={callbacks.onPlaying}
             onDirectMkvFailed={callbacks.onDirectMkvFailed}
+            getErrorActions={callbacks.getErrorActions}
           />,
           getSurface(),
         )}

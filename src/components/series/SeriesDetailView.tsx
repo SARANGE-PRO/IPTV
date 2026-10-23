@@ -10,9 +10,11 @@ import { LanguageVariantSwitcher } from '@/components/media/LanguageVariantSwitc
 import { TitleRail } from '@/components/media/TitleRail';
 import { TrailerButton } from '@/components/media/TrailerButton';
 import { PosterImage } from '@/components/shared/PosterImage';
-import { ExternalPlayer } from '@/components/player/ExternalPlayer';
+import { ExternalPlayer, launchVlc } from '@/components/player/ExternalPlayer';
 import { DirectMkvProbe } from '@/components/player/DirectMkvProbe';
 import { PlayerSlot } from '@/components/player/host/PlayerSlot';
+import { ClampedText } from '@/components/shared/ClampedText';
+import { LandscapeStage } from '@/components/player/LandscapeStage';
 import { EpisodeRow } from '@/components/series/EpisodeRow';
 import { UpNextOverlay } from '@/components/series/UpNextOverlay';
 import { Button } from '@/components/ui/Button';
@@ -35,6 +37,7 @@ import { useSimilarSeries } from '@/hooks/useTitleExtras';
 import { useMediaSession } from '@/hooks/useMediaSession';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
+import { usePlayerStore } from '@/stores/playerStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { Episode, PlaybackEntry, Series, SeriesDetails } from '@/types/models';
 import { displayTitle } from '@/utils/displayTitle';
@@ -70,6 +73,10 @@ export function SeriesDetailView({
   const markFinished = usePlaybackStore((s) => s.markFinished);
   const setWatched = usePlaybackStore((s) => s.setWatched);
   const showVlcButton = useUiSettingsStore((s) => s.showVlcButton);
+  // <video> du lecteur unique, seulement quand c'est CETTE serie qui joue ici.
+  const video = usePlayerStore((s) =>
+    s.session?.media.kind === 'episode' && s.session.media.ownerId === seriesId ? s.video : null,
+  );
   const preferredLanguage = useUiSettingsStore((s) => s.preferredLanguage);
   const router = useRouter();
 
@@ -213,6 +220,13 @@ export function SeriesDetailView({
     `${series?.name ?? 'Série'} · S${ep.seasonNumber}E${ep.episodeNumber}`;
 
   const toggleWatched = async (list: Episode[], watched: boolean) => {
+    // Toute une saison d'un coup : confirmation (un tap rate effacait les reprises).
+    if (list.length > 1) {
+      const message = watched
+        ? `Marquer les ${list.length} épisodes de la saison comme vus ?`
+        : `Marquer les ${list.length} épisodes comme non vus ? Leur progression sera effacée.`;
+      if (!window.confirm(message)) return;
+    }
     await setWatched(
       {
         type: 'episode',
@@ -266,11 +280,11 @@ export function SeriesDetailView({
       )}
 
       <div className={cn('px-4 pb-8 md:px-8', inPlayer ? 'pt-6' : 'relative -mt-16 sm:-mt-24')}>
-        <div className="mb-4 flex items-center gap-3">
+        <div className="sticky top-safe z-20 -mx-4 mb-2 flex items-center gap-3 bg-ink-950/75 px-4 py-2 backdrop-blur-md md:-mx-8 md:px-8">
           <button
             onClick={() => (onBack !== undefined ? onBack() : router.back())}
             aria-label="Retour"
-            className="glass rounded-full p-2 text-fg-muted transition-colors hover:text-fg"
+            className="glass grid h-11 w-11 shrink-0 place-items-center rounded-full text-fg-muted transition-colors hover:text-fg"
           >
             <IconArrowLeft className="h-5 w-5" />
           </button>
@@ -322,18 +336,16 @@ export function SeriesDetailView({
               </div>
             ) : (
               <>
-                {showVlcButton && (
-                  <ExternalPlayer
-                    streamUrl={src}
-                    label={
-                      failed
-                        ? 'Ça ne marche pas ici ? Ouvrir dans VLC'
-                        : `Lire S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`
-                    }
-                  />
-                )}
-                <div className="relative">
+                <LandscapeStage video={video}>
                   <PlayerSlot
+                    layout="live"
+                    className="phone-land:h-full"
+                    errorActions={[
+                      ...(followingEp !== null
+                        ? [{ label: 'Épisode suivant', onSelect: () => playEpisode(followingEp, 0) }]
+                        : []),
+                      ...(showVlcButton ? [{ label: 'Ouvrir dans VLC', onSelect: () => launchVlc(src) }] : []),
+                    ]}
                     onMinimize={() => (onBack !== undefined ? onBack() : router.back())}
                     media={{
                       kind: 'episode',
@@ -381,7 +393,18 @@ export function SeriesDetailView({
                       onCancel={() => setUpNext(null)}
                     />
                   )}
-                </div>
+                </LandscapeStage>
+                {/* VLC : meme place que film et Live, juste sous le lecteur. */}
+                {showVlcButton && (
+                  <ExternalPlayer
+                    streamUrl={src}
+                    label={
+                      failed
+                        ? 'Ça ne marche pas ici ? Ouvrir dans VLC'
+                        : `Lire S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`
+                    }
+                  />
+                )}
               </>
             )}
             <div className="flex items-center gap-3">
@@ -423,14 +446,15 @@ export function SeriesDetailView({
                       .join(' · ')}
                   </span>
                 </div>
-                {overview !== null && (
-                  <p className="mt-2 line-clamp-4 text-sm leading-relaxed text-fg-muted">{overview}</p>
-                )}
-                {tmdb !== null && tmdb.cast.length > 0 && (
-                  <p className="mt-2 text-xs text-fg-faint">
-                    <span className="text-fg-muted">Avec </span>
-                    {tmdb.cast.slice(0, 5).map((c) => c.name).join(', ')}
-                  </p>
+                {/* Meme ordre que la fiche film : version, action, puis synopsis. */}
+                {variants.length >= 2 && (
+                  <div className="mt-4">
+                    <LanguageVariantSwitcher
+                      variants={variants}
+                      activeId={seriesId}
+                      onSelect={(v) => router.replace(seriesHref(v.id))}
+                    />
+                  </div>
                 )}
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   {primary !== null && (
@@ -441,14 +465,12 @@ export function SeriesDetailView({
                   )}
                   {trailerKey !== null && <TrailerButton videoId={trailerKey} />}
                 </div>
-                {variants.length >= 2 && (
-                  <div className="mt-4">
-                    <LanguageVariantSwitcher
-                      variants={variants}
-                      activeId={seriesId}
-                      onSelect={(v) => router.replace(seriesHref(v.id))}
-                    />
-                  </div>
+                {overview !== null && <ClampedText text={overview} className="mt-3" />}
+                {tmdb !== null && tmdb.cast.length > 0 && (
+                  <p className="mt-2 text-xs text-fg-faint">
+                    <span className="text-fg-muted">Avec </span>
+                    {tmdb.cast.slice(0, 5).map((c) => c.name).join(', ')}
+                  </p>
                 )}
               </div>
             </div>
@@ -483,7 +505,7 @@ export function SeriesDetailView({
                     key={s.seasonNumber}
                     onClick={() => setSeason(s.seasonNumber)}
                     className={cn(
-                      'shrink-0 rounded-full px-4 py-1.5 text-xs font-medium transition-colors',
+                      'shrink-0 rounded-full px-4 py-2.5 text-[13px] font-medium transition-colors',
                       s.seasonNumber === season ? 'bg-accent text-white' : 'bg-ink-800 text-fg-muted hover:text-fg',
                     )}
                   >
@@ -495,7 +517,7 @@ export function SeriesDetailView({
                 <button
                   type="button"
                   onClick={() => void toggleWatched(episodes, !seasonWatched)}
-                  className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[11px] font-medium text-fg-faint transition-colors hover:bg-ink-800 hover:text-fg"
+                  className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-medium text-fg-faint transition-colors hover:bg-ink-800 hover:text-fg"
                 >
                   <IconCheck className="h-3.5 w-3.5" />
                   {seasonWatched ? 'Saison non vue' : 'Saison vue'}

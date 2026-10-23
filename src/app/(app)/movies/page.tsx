@@ -46,7 +46,6 @@ export default function MoviesPage() {
   return (
     <MediaBrowser<Movie>
       section="vod"
-      favoriteType="vod"
       title="Films"
       itemNoun="films"
       hrefFor={hrefFor}

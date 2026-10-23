@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import * as playbackRepository from '@/db/repositories/playbackRepository';
 import { dismissContinue, type DismissTarget } from '@/services/home/continueWatchingService';
+import { getRecentChannels } from '@/services/live/recentChannelsService';
 import { FINISHED_RATIO } from '@/services/player/resumePlaybackService';
 import type { MediaType, PlaybackEntry } from '@/types/models';
 
@@ -53,7 +54,7 @@ export const usePlaybackStore = create<PlaybackState>()((set, get) => ({
   hydrateRails: async () => {
     const [continueWatching, recentChannels] = await Promise.all([
       playbackRepository.getContinueWatching(15),
-      playbackRepository.getRecentLiveChannels(12),
+      getRecentChannels(12),
     ]);
     set({ continueWatching, recentChannels });
   },
@@ -96,7 +97,7 @@ export const usePlaybackStore = create<PlaybackState>()((set, get) => ({
         posterUrl: logoUrl,
       })
       // Bandeau « Récemment regardées » du Live : a jour des le retour.
-      .then(() => playbackRepository.getRecentLiveChannels(12))
+      .then(() => getRecentChannels(12))
       .then((recentChannels) => set({ recentChannels }))
       .catch(() => undefined);
   },

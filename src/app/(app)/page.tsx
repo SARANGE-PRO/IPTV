@@ -1,27 +1,29 @@
 'use client';
 
 import Link from 'next/link';
+import { useCallback } from 'react';
 import { Billboard } from '@/components/home/Billboard';
 import { ContinueCard } from '@/components/home/ContinueCard';
 import { Top10Card } from '@/components/home/Top10Card';
 import { FootballHeader } from '@/components/football/FootballHeader';
+import { RecentChannelsStrip } from '@/components/live/RecentChannelsStrip';
 import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { MediaCard } from '@/components/shared/MediaCard';
-import { PosterImage } from '@/components/shared/PosterImage';
 import { Rail } from '@/components/shared/Rail';
 import { ZibLogo } from '@/components/shared/ZibLogo';
 import { Button } from '@/components/ui/Button';
-import { IconRefresh, IconSearch } from '@/components/ui/icons';
+import { IconRefresh, IconSettings } from '@/components/ui/icons';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useHomeFeed } from '@/hooks/useHomeFeed';
+import { setZapContext } from '@/services/live/liveZappingService';
 import { tmdbPoster } from '@/services/tmdb/tmdbImage';
 import type { TrendingItem } from '@/services/discovery/trendingService';
 import { useAuthStore } from '@/stores/authStore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import type { Movie, Series } from '@/types/models';
-import { liveHref, movieHref, seriesHref } from '@/utils/appRoutes';
+import { FAVORITES_HREF, LIVE_HREF, liveHref, movieHref, seriesHref, SETTINGS_HREF } from '@/utils/appRoutes';
 import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
 import { variantBadge } from '@/utils/variantPreference';
 
@@ -80,7 +82,7 @@ function TrendingCard({ item }: { item: TrendingItem }) {
 
 function SeeAll({ href, label }: { href: string; label: string }) {
   return (
-    <Link href={href} className="text-xs text-fg-faint hover:text-fg">
+    <Link href={href} className="-my-2 -mr-2 px-2 py-3 text-xs text-fg-faint hover:text-fg">
       {label}
     </Link>
   );
@@ -112,6 +114,23 @@ export default function HomePage() {
   const [firstGenres, moreGenres] = [discovery.movieGenres.slice(0, 2), discovery.movieGenres.slice(2)];
   const nothingYet =
     discoveryLoading && discovery.topMovies.length === 0 && discovery.newFrMovies.length === 0;
+  // Catalogue present mais aucune rangee : erreur silencieuse -> on le dit.
+  const emptyHome =
+    billboard.length === 0 &&
+    continueItems.length === 0 &&
+    myList.length === 0 &&
+    recentChannels.length === 0 &&
+    discovery.topMovies.length === 0 &&
+    discovery.newFrMovies.length === 0 &&
+    discovery.topSeries.length === 0 &&
+    discovery.newFrSeries.length === 0;
+  // Zapping depuis les chaines recentes de l'accueil (comme dans la page Live).
+  const onPlayRecent = useCallback(() => {
+    setZapContext({
+      label: 'Récemment regardées',
+      entries: recentChannels.slice(0, 10).map((e) => ({ id: e.itemId, groupKey: null })),
+    });
+  }, [recentChannels]);
 
   return (
     <main className="mx-auto w-full max-w-6xl px-4 pb-6 pt-3 md:px-8 md:pt-6">
@@ -119,11 +138,11 @@ export default function HomePage() {
       <div className="mb-3 flex items-center justify-between md:hidden">
         <ZibLogo className="h-9 w-auto" />
         <Link
-          href="/search"
-          aria-label="Rechercher"
-          className="rounded-full p-2 text-fg-muted transition-colors hover:bg-ink-800 hover:text-fg"
+          href={SETTINGS_HREF}
+          aria-label="Réglages"
+          className="grid h-11 w-11 place-items-center rounded-full text-fg-muted transition-colors hover:bg-ink-800 hover:text-fg"
         >
-          <IconSearch className="h-6 w-6" />
+          <IconSettings className="h-6 w-6" />
         </Link>
       </div>
 
@@ -150,8 +169,6 @@ export default function HomePage() {
 
       {billboard.length > 0 && <Billboard items={billboard} />}
 
-      <FootballHeader />
-
       {continueItems.length > 0 && (
         <Rail title="Continuer à regarder">
           {continueItems.map((item) => (
@@ -160,8 +177,12 @@ export default function HomePage() {
         </Rail>
       )}
 
+      {recentChannels.length > 0 && <RecentChannelsStrip onPlay={onPlayRecent} />}
+
+      <FootballHeader />
+
       {myList.length > 0 && (
-        <Rail title="Ma liste" action={<SeeAll href="/favorites" label="Tout voir" />}>
+        <Rail title="Ma liste" action={<SeeAll href={FAVORITES_HREF} label="Tout voir" />}>
           {myList.map((entry) =>
             entry.type === 'vod' ? (
               <MediaCard
@@ -171,7 +192,6 @@ export default function HomePage() {
                 title={displayTitle(entry.item.name)}
                 posterUrl={entry.item.posterUrl}
                 tag={variantBadge(entry.item.variant, entry.item.variantSource)}
-                favorite={{ type: 'vod', itemId: entry.item.id }}
               />
             ) : (
               <MediaCard
@@ -181,7 +201,6 @@ export default function HomePage() {
                 title={displayTitle(entry.item.name)}
                 posterUrl={entry.item.posterUrl}
                 tag={variantBadge(entry.item.variant, entry.item.variantSource)}
-                favorite={{ type: 'series', itemId: entry.item.id }}
               />
             ),
           )}
@@ -210,7 +229,7 @@ export default function HomePage() {
         </Rail>
       )}
 
-      {trending.movies.length > 0 && (
+      {trending.movies.length > 0 && billboard.length === 0 && (
         <Rail title="Tendances de la semaine">
           {trending.movies.map((t) => (
             <TrendingCard key={t.xtreamId} item={t} />
@@ -219,7 +238,7 @@ export default function HomePage() {
       )}
 
       {discovery.newFrMovies.length > 0 && (
-        <Rail title="Nouveautés en VF" action={<SeeAll href="/movies" label="Voir les films" />}>
+        <Rail title="Nouveautés en VF">
           {discovery.newFrMovies.map((movie) => (
             <MovieCard key={movie.id} movie={movie} />
           ))}
@@ -274,7 +293,7 @@ export default function HomePage() {
       )}
 
       {discovery.newFrSeries.length > 0 && (
-        <Rail title="Séries en VF récemment mises à jour" action={<SeeAll href="/series" label="Voir les séries" />}>
+        <Rail title="Séries en VF récemment mises à jour">
           {discovery.newFrSeries.map((series) => (
             <SeriesCard key={series.id} series={series} />
           ))}
@@ -298,7 +317,7 @@ export default function HomePage() {
       ))}
 
       {discovery.liveSports.length > 0 && (
-        <Rail title="Sport en direct" action={<SeeAll href="/live" label="Tout le Live" />}>
+        <Rail title="Sport en direct" action={<SeeAll href={LIVE_HREF} label="Tout le Live" />}>
           {discovery.liveSports.map((channel) => (
             <Link
               key={channel.id}
@@ -312,19 +331,19 @@ export default function HomePage() {
         </Rail>
       )}
 
-      {recentChannels.length > 0 && (
-        <Rail title="Chaînes récentes">
-          {recentChannels.map((entry) => (
-            <Link
-              key={entry.itemId}
-              href={liveHref(entry.itemId)}
-              className="flex w-44 shrink-0 items-center gap-2.5 rounded-xl bg-ink-800 p-3 transition-colors hover:bg-ink-700"
-            >
-              <PosterImage src={entry.posterUrl} alt={entry.label ?? 'Chaîne'} className="h-9 w-9 shrink-0 rounded-lg" />
-              <span className="min-w-0 truncate text-xs text-fg">{displayChannelName(entry.label ?? 'Chaîne')}</span>
-            </Link>
-          ))}
-        </Rail>
+      {hasCatalog && !discoveryLoading && emptyHome && (
+        <div className="mt-8">
+          <EmptyState
+            title="Rien à afficher pour le moment"
+            hint="Les recommandations n'ont pas pu être chargées."
+            action={
+              <Button variant="secondary" onClick={() => window.location.reload()}>
+                <IconRefresh className="h-4 w-4" />
+                Réessayer
+              </Button>
+            }
+          />
+        </div>
       )}
     </main>
   );

@@ -16,13 +16,13 @@ import type { FavoriteTab } from '@/types/models';
 export function LiveViewBar({
   view,
   tabs,
-  disabled,
+  disabled = false,
   onSelect,
   onCreateTab,
 }: {
   view: LiveViewId;
   tabs: FavoriteTab[];
-  disabled: boolean;
+  disabled?: boolean;
   onSelect: (view: LiveViewId) => void;
   onCreateTab: () => void;
 }) {
@@ -47,7 +47,7 @@ export function LiveViewBar({
         disabled={disabled}
         aria-pressed={active}
         className={cn(
-          'flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-medium transition-colors',
+          'flex h-10 shrink-0 items-center gap-1.5 rounded-full px-4 text-[13px] font-medium transition-colors',
           active ? 'bg-accent text-white' : 'bg-ink-800 text-fg-muted hover:text-fg disabled:opacity-40',
         )}
       >
@@ -68,7 +68,7 @@ export function LiveViewBar({
         disabled={disabled}
         aria-label="Créer un onglet"
         title="Créer un onglet"
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-dashed border-ink-500 text-fg-muted hover:border-fg-faint hover:text-fg disabled:opacity-40"
+        className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-dashed border-ink-500 text-fg-muted hover:border-fg-faint hover:text-fg disabled:opacity-40"
       >
         <IconPlus className="h-4 w-4" />
       </button>

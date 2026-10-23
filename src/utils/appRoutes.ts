@@ -10,6 +10,13 @@
  *    (ex. depuis la palette de commandes, hors de tout contexte de liste).
  *  - Live : page plein ecran `/live/watch?id=`.
  */
+export const HOME_HREF = '/';
+export const LIVE_HREF = '/live';
+export const SEARCH_HREF = '/search';
+export const SETTINGS_HREF = '/settings';
+export const FOOTBALL_HREF = '/football';
+export const FAVORITES_HREF = '/favorites';
+
 export function liveHref(streamId: string): string {
   return `/live/watch?id=${encodeURIComponent(streamId)}`;
 }

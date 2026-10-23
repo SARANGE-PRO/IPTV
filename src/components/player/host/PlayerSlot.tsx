@@ -17,6 +17,9 @@ interface PlayerSlotProps extends PlayerSource, PlayerHandlers {
   /** Glisser la video vers le bas (mobile) : meme action que le bouton retour
    *  de la page -> la lecture continue en mini-lecteur. */
   onMinimize?: () => void;
+  /** Swipe horizontal sur la video (Live) : gauche = suivant, droite = precedent. */
+  onSwipeNext?: (() => void) | null;
+  onSwipePrevious?: (() => void) | null;
   /** Surimpressions qui suivent la video (titre de chaine…). */
   children?: ReactNode;
 }
@@ -41,11 +44,14 @@ export function PlayerSlot({
   layout = 'default',
   className,
   onMinimize,
+  onSwipeNext = null,
+  onSwipePrevious = null,
   children,
   onProgress,
   onEnded,
   onError,
   onDirectMkvFailed,
+  errorActions,
   ...source
 }: PlayerSlotProps) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -67,7 +73,7 @@ export function PlayerSlot({
   const sessionKey = adoptKey !== null && key === mountKey ? adoptKey : key;
   const active = usePlayerStore((s) => s.session?.key === sessionKey);
 
-  const handlers: PlayerHandlers = { onProgress, onEnded, onError, onDirectMkvFailed };
+  const handlers: PlayerHandlers = { onProgress, onEnded, onError, onDirectMkvFailed, errorActions };
   const latest = useRef({ media, source, handlers });
   latest.current = { media, source, handlers };
 
@@ -110,21 +116,29 @@ export function PlayerSlot({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKey]);
 
-  // Geste « glisser vers le bas » (mobile) tant que la video est ici.
+  // Gestes (mobile) tant que la video est ici : glisser vers le bas, swipe.
   const minimizeRef = useRef(onMinimize);
   minimizeRef.current = onMinimize;
+  const swipeRef = useRef({ onNext: onSwipeNext, onPrevious: onSwipePrevious });
+  swipeRef.current = { onNext: onSwipeNext, onPrevious: onSwipePrevious };
   const canMinimize = onMinimize !== undefined;
+  const canSwipe = onSwipeNext !== null || onSwipePrevious !== null;
   useEffect(() => {
     const wrapper = wrapperRef.current;
     const target = targetRef.current;
-    if (!active || !canMinimize || wrapper === null || target === null) return;
-    return bindSlotGestures(wrapper, target, () => minimizeRef.current ?? null);
-  }, [active, canMinimize]);
+    if (!active || (!canMinimize && !canSwipe) || wrapper === null || target === null) return;
+    return bindSlotGestures(
+      wrapper,
+      target,
+      () => minimizeRef.current ?? null,
+      () => swipeRef.current,
+    );
+  }, [active, canMinimize, canSwipe]);
 
   const poster = secureImageSrc(source.poster ?? media.artwork);
 
   return (
-    <div ref={wrapperRef} className={cn('relative', className)}>
+    <div ref={wrapperRef} data-player-slot className={cn('relative', className)}>
       <div ref={targetRef} className={cn('h-full', !active && 'hidden')} />
       {active && children}
       {!active && (

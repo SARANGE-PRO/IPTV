@@ -6,6 +6,9 @@ import type { Config } from 'tailwindcss';
  */
 const config: Config = {
   content: ['./src/**/*.{ts,tsx}'],
+  // `hover:` seulement sur les appareils qui survolent vraiment (souris) : sur
+  // iPhone/iPad un tap laissait l'etat de survol « colle » apres coup.
+  future: { hoverOnlyWhenSupported: true },
   theme: {
     extend: {
       screens: {
@@ -13,6 +16,10 @@ const config: Config = {
         // d'ordinateur) : le lecteur Live passe en plein ecran. DOIT rester
         // identique a PHONE_LANDSCAPE_QUERY (src/utils/videoFullscreen.ts).
         'phone-land': { raw: '(orientation: landscape) and (max-height: 500px) and (pointer: coarse)' },
+        // Mini-lecteur en CARTE (tablette, ordinateur) ; un telephone a
+        // l'horizontale (large mais bas) garde le bandeau compact. DOIT rester
+        // identique a la requete de player/host/miniPlayer.css.
+        'mini-card': { raw: '(min-width: 768px) and (min-height: 501px)' },
       },
       colors: {
         ink: {

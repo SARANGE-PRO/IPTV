@@ -64,7 +64,7 @@ export function DetailModalHost() {
 
   if (vodId !== null) {
     return (
-      <DetailModal onClose={close}>
+      <DetailModal key={`vod:${vodId}`} onClose={close}>
         <MovieDetailView
           key={vodId}
           vodId={vodId}
@@ -77,7 +77,7 @@ export function DetailModalHost() {
   }
   if (seriesId !== null) {
     return (
-      <DetailModal onClose={close}>
+      <DetailModal key={`series:${seriesId}`} onClose={close}>
         <SeriesDetailView
           key={seriesId}
           seriesId={seriesId}

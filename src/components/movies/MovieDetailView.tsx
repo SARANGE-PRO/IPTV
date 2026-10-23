@@ -8,11 +8,14 @@ import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { LanguageVariantSwitcher } from '@/components/media/LanguageVariantSwitcher';
 import { TitleRail } from '@/components/media/TitleRail';
 import { TrailerButton } from '@/components/media/TrailerButton';
+import { ClampedText } from '@/components/shared/ClampedText';
 import { PosterImage } from '@/components/shared/PosterImage';
-import { ExternalPlayer } from '@/components/player/ExternalPlayer';
+import { ExternalPlayer, launchVlc } from '@/components/player/ExternalPlayer';
 import { DirectMkvProbe } from '@/components/player/DirectMkvProbe';
 import { PlayerSlot } from '@/components/player/host/PlayerSlot';
+import { LandscapeStage } from '@/components/player/LandscapeStage';
 import { Button } from '@/components/ui/Button';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { IconArrowLeft, IconPlay } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
 import { mediaBadges, BADGE_TONE_CLASS } from '@/utils/mediaBadges';
@@ -38,6 +41,7 @@ import { useMediaSession } from '@/hooks/useMediaSession';
 import { youtubeId } from '@/utils/youtube';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
+import { usePlayerStore } from '@/stores/playerStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { Movie, PlaybackEntry } from '@/types/models';
 import { displayTitle, displayYear } from '@/utils/displayTitle';
@@ -66,6 +70,10 @@ export function MovieDetailView({
   const saveProgress = usePlaybackStore((s) => s.saveProgress);
   const markFinished = usePlaybackStore((s) => s.markFinished);
   const showVlcButton = useUiSettingsStore((s) => s.showVlcButton);
+  // <video> du lecteur unique, seulement quand c'est CE film qui joue ici.
+  const video = usePlayerStore((s) =>
+    s.session?.media.kind === 'vod' && s.session.media.ownerId === vodId ? s.video : null,
+  );
   const preferredLanguage = useUiSettingsStore((s) => s.preferredLanguage);
   const router = useRouter();
 
@@ -260,11 +268,11 @@ export function MovieDetailView({
       )}
 
       <div className={cn('px-4 pb-8 md:px-8', playing ? 'pt-6' : 'relative -mt-16 sm:-mt-24')}>
-        <div className="mb-4 flex items-center gap-3">
+        <div className="sticky top-safe z-20 -mx-4 mb-2 flex items-center gap-3 bg-ink-950/75 px-4 py-2 backdrop-blur-md md:-mx-8 md:px-8">
           <button
             onClick={() => (onBack !== undefined ? onBack() : router.back())}
             aria-label="Retour"
-            className="glass rounded-full p-2 text-fg-muted transition-colors hover:text-fg"
+            className="glass grid h-11 w-11 shrink-0 place-items-center rounded-full text-fg-muted transition-colors hover:text-fg"
           >
             <IconArrowLeft className="h-5 w-5" />
           </button>
@@ -311,50 +319,55 @@ export function MovieDetailView({
             </div>
           ) : (
             <>
-              <PlayerSlot
-                onMinimize={() => (onBack !== undefined ? onBack() : router.back())}
-                media={{
-                  kind: 'vod',
-                  ownerId: vodId,
-                  itemId: activeMovieId ?? vodId,
-                  title: displayTitle(movie.name),
-                  subtitle: [displayYear(movie.name, movie.tmdbYear ?? movie.year)?.toString() ?? null, 'Film']
-                    .filter((v): v is string => v !== null)
-                    .join(' · '),
-                  artwork: posterUrl,
-                }}
-                src={src}
-                transcode={plan === 'gateway'}
-                directMkv={plan === 'direct-mkv'}
-                onDirectMkvFailed={() => setDirectMkvFailed(true)}
-                preferHls={plan === 'gateway' && supportsNativeHls()}
-                contentType="vod"
-                container={movie.containerExtension}
-                startAt={plan === 'gateway' && supportsNativeHls() ? 0 : startAt}
-                startOffset={plan === 'gateway' && supportsNativeHls() ? startAt : 0}
-                duration={fallbackDuration}
-                poster={backdropUrl ?? posterUrl}
-                onProgress={(pos, dur, force) =>
-                  saveProgress(
-                    {
-                      type: 'vod',
-                      itemId: vodId,
-                      positionSec: pos,
-                      durationSec: dur,
-                      label: movie.name,
-                      posterUrl,
-                    },
-                    { force },
-                  )
-                }
-                onEnded={() => void markFinished('vod', vodId)}
-                onError={() => {
-                  setFailed(true);
-                  // Invalide le cache sante : une eventuelle passerelle morte sera
-                  // re-sondee au prochain essai (bouton, replay), sans boucler ici.
-                  resetGatewayHealthCache();
-                }}
-              />
+              <LandscapeStage video={video}>
+                <PlayerSlot
+                  layout="live"
+                  className="phone-land:h-full"
+                  errorActions={showVlcButton ? [{ label: 'Ouvrir dans VLC', onSelect: () => launchVlc(src) }] : []}
+                  onMinimize={() => (onBack !== undefined ? onBack() : router.back())}
+                  media={{
+                    kind: 'vod',
+                    ownerId: vodId,
+                    itemId: activeMovieId ?? vodId,
+                    title: displayTitle(movie.name),
+                    subtitle: [displayYear(movie.name, movie.tmdbYear ?? movie.year)?.toString() ?? null, 'Film']
+                      .filter((v): v is string => v !== null)
+                      .join(' · '),
+                    artwork: posterUrl,
+                  }}
+                  src={src}
+                  transcode={plan === 'gateway'}
+                  directMkv={plan === 'direct-mkv'}
+                  onDirectMkvFailed={() => setDirectMkvFailed(true)}
+                  preferHls={plan === 'gateway' && supportsNativeHls()}
+                  contentType="vod"
+                  container={movie.containerExtension}
+                  startAt={plan === 'gateway' && supportsNativeHls() ? 0 : startAt}
+                  startOffset={plan === 'gateway' && supportsNativeHls() ? startAt : 0}
+                  duration={fallbackDuration}
+                  poster={backdropUrl ?? posterUrl}
+                  onProgress={(pos, dur, force) =>
+                    saveProgress(
+                      {
+                        type: 'vod',
+                        itemId: vodId,
+                        positionSec: pos,
+                        durationSec: dur,
+                        label: movie.name,
+                        posterUrl,
+                      },
+                      { force },
+                    )
+                  }
+                  onEnded={() => void markFinished('vod', vodId)}
+                  onError={() => {
+                    setFailed(true);
+                    // Invalide le cache sante : une eventuelle passerelle morte sera
+                    // re-sondee au prochain essai (bouton, replay), sans boucler ici.
+                    resetGatewayHealthCache();
+                  }}
+                />
+              </LandscapeStage>
               {showVlcButton && (
                 <ExternalPlayer
                   streamUrl={src}
@@ -365,9 +378,16 @@ export function MovieDetailView({
           )}
         </div>
       ) : (
-        movie !== undefined && (
+        movie === undefined ? (
+          // Chargement de la fiche : la silhouette de la page, pas un vide.
+          <div className="flex flex-col gap-3" aria-hidden>
+            <Skeleton className="h-5 w-40 rounded-md" />
+            <Skeleton className="h-12 w-44 rounded-xl" />
+            <Skeleton className="h-16 w-full rounded-xl" />
+          </div>
+        ) : (
           <div className="flex animate-fade-in flex-col gap-6 sm:flex-row">
-            <div className="w-40 shrink-0 sm:w-52">
+            <div className="hidden w-52 shrink-0 sm:block">
               <div className="relative">
                 <PosterImage
                   src={posterUrl}
@@ -428,19 +448,6 @@ export function MovieDetailView({
                   ))}
                 </div>
               )}
-              {overview !== null && <p className="mt-3 text-sm leading-relaxed text-fg-muted">{overview}</p>}
-              {tmdb !== null && tmdb.cast.length > 0 && (
-                <div className="mt-3">
-                  <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-faint">Avec</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {tmdb.cast.slice(0, 6).map((c) => (
-                      <span key={c.name} className="rounded-full bg-ink-800 px-2.5 py-1 text-[11px] text-fg-muted">
-                        {c.name}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
               {variants.length >= 2 && activeId !== null && (
                 <div className="mt-4">
                   <LanguageVariantSwitcher
@@ -450,7 +457,7 @@ export function MovieDetailView({
                   />
                 </div>
               )}
-              <div className="mt-6 flex flex-wrap items-start gap-3">
+              <div className="mt-4 flex flex-wrap items-start gap-3">
                 <Button size="lg" onClick={() => play(canResume && progress !== null ? progress.positionSec : 0)}>
                   <IconPlay className="mr-2 h-4 w-4" />
                   {canResume && progress !== null ? `Reprendre (${formatClock(progress.positionSec)})` : 'Regarder'}
@@ -463,6 +470,19 @@ export function MovieDetailView({
                 {trailerKey !== null && <TrailerButton videoId={trailerKey} />}
                 {showVlcButton && src !== null && <ExternalPlayer streamUrl={src} label="Lire dans VLC" />}
               </div>
+              {overview !== null && <ClampedText text={overview} className="mt-4" />}
+              {tmdb !== null && tmdb.cast.length > 0 && (
+                <div className="mt-3">
+                  <p className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-fg-faint">Avec</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {tmdb.cast.slice(0, 6).map((c) => (
+                      <span key={c.name} className="rounded-full bg-ink-800 px-2.5 py-1 text-[11px] text-fg-muted">
+                        {c.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )

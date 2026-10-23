@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState, type TouchEvent } from 'react';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { PosterImage } from '@/components/shared/PosterImage';
 import { IconPlay } from '@/components/ui/icons';
@@ -34,6 +34,23 @@ export function Billboard({ items }: { items: BillboardItem[] }) {
     setIndex(0);
   }, [items]);
 
+  // Swipe horizontal : titre precedent / suivant (et la rotation s'arrete).
+  const swipe = useRef<{ x: number; y: number } | null>(null);
+  const onTouchStart = (e: TouchEvent) => {
+    const t = e.touches[0];
+    swipe.current = t !== undefined ? { x: t.clientX, y: t.clientY } : null;
+    setPaused(true);
+  };
+  const onTouchEnd = (e: TouchEvent) => {
+    const start = swipe.current;
+    const t = e.changedTouches[0];
+    swipe.current = null;
+    if (start === null || t === undefined || items.length <= 1) return;
+    const dx = t.clientX - start.x;
+    if (Math.abs(dx) < 48 || Math.abs(dx) < Math.abs(t.clientY - start.y) * 1.5) return;
+    setIndex((i) => (i + (dx < 0 ? 1 : items.length - 1)) % items.length);
+  };
+
   useEffect(() => {
     if (items.length <= 1 || paused) return;
     const id = window.setInterval(() => setIndex((i) => (i + 1) % items.length), ROTATE_MS);
@@ -56,7 +73,10 @@ export function Billboard({ items }: { items: BillboardItem[] }) {
       aria-label="À la une"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
-      className="relative -mx-4 h-[62vh] max-h-[560px] min-h-[380px] overflow-hidden bg-ink-900 md:mx-0 md:h-[460px] md:rounded-3xl"
+      // Au doigt : la rotation s'arrete (le titre ne change plus sous le tap).
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+      className="relative -mx-4 h-[50vh] max-h-[520px] min-h-[340px] overflow-hidden bg-ink-900 md:mx-0 md:h-[460px] md:rounded-3xl"
     >
       <PosterImage
         key={item.key}
@@ -109,16 +129,22 @@ export function Billboard({ items }: { items: BillboardItem[] }) {
       </div>
 
       {items.length > 1 && (
-        <div className="absolute right-5 top-5 flex gap-1.5 md:right-8 md:top-8">
+        <div className="absolute right-3 top-2 flex md:right-6 md:top-5">
           {items.map((b, i) => (
+            // Zone de tap genereuse autour d'un point fin.
             <button
               key={b.key}
               type="button"
               aria-label={`Afficher ${b.title}`}
               aria-current={i === index}
-              onClick={() => setIndex(i)}
-              className={cn('h-1.5 rounded-full transition-all', i === index ? 'w-6 bg-white' : 'w-1.5 bg-white/45')}
-            />
+              onClick={() => {
+                setPaused(true);
+                setIndex(i);
+              }}
+              className="grid h-11 min-w-[1.75rem] place-items-center px-1"
+            >
+              <span className={cn('h-1.5 rounded-full transition-all', i === index ? 'w-6 bg-white' : 'w-1.5 bg-white/45')} />
+            </button>
           ))}
         </div>
       )}

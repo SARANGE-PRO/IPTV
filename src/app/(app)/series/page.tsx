@@ -45,7 +45,6 @@ export default function SeriesPage() {
   return (
     <MediaBrowser<Series>
       section="series"
-      favoriteType="series"
       title="Séries"
       itemNoun="séries"
       hrefFor={hrefFor}

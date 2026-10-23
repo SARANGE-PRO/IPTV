@@ -1,11 +1,13 @@
 'use client';
 
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 import { HScroll } from '@/components/shared/HScroll';
 import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { IconClock } from '@/components/ui/actionIcons';
 import { useLineupLogos } from '@/hooks/useLineupLogos';
 import { useLineupNames } from '@/hooks/useLineupNames';
+import { useLongPress } from '@/hooks/useLongPress';
 import { cn } from '@/lib/cn';
 import { cleanChannelDisplay } from '@/services/live/channelNormalizer';
 import { usePlaybackStore } from '@/stores/playbackStore';
@@ -14,7 +16,8 @@ import { liveHref } from '@/utils/appRoutes';
 
 const MAX_RECENTS = 10;
 
-/** Les 10 dernieres chaines regardees, a un tap (haut de la page Live). */
+/** Les 10 dernieres chaines regardees, a un tap (haut de la page Live).
+ *  Appui long : retirer la chaine de la liste. */
 export function RecentChannelsStrip({ onPlay }: { onPlay?: (id: string) => void }) {
   const recents = usePlaybackStore((s) => s.recentChannels);
   const playingId = usePlayerStore((s) => (s.session?.media.kind === 'live' ? s.session.media.ownerId : null));
@@ -42,11 +45,11 @@ export function RecentChannelsStrip({ onPlay }: { onPlay?: (id: string) => void 
             ...(entry.posterUrl ? [entry.posterUrl] : []),
           ];
           return (
-            <Link
+            <RecentLink
               key={entry.itemId}
-              href={liveHref(entry.itemId)}
-              onClick={() => onPlay?.(entry.itemId)}
-              className="group w-[4.5rem] shrink-0"
+              itemId={entry.itemId}
+              name={name}
+              onPlay={onPlay}
             >
               <span
                 className={cn(
@@ -66,10 +69,37 @@ export function RecentChannelsStrip({ onPlay }: { onPlay?: (id: string) => void 
               <span className="mt-1 block truncate text-center text-[11px] text-fg-muted group-hover:text-fg">
                 {name}
               </span>
-            </Link>
+            </RecentLink>
           );
         })}
       </HScroll>
     </section>
+  );
+}
+
+function RecentLink({
+  itemId,
+  name,
+  onPlay,
+  children,
+}: {
+  itemId: string;
+  name: string;
+  onPlay?: (id: string) => void;
+  children: ReactNode;
+}) {
+  const removeEntry = usePlaybackStore((s) => s.removeEntry);
+  const longPress = useLongPress(() => {
+    if (window.confirm(`Retirer « ${name} » des chaînes récentes ?`)) void removeEntry('live', itemId);
+  });
+  return (
+    <Link
+      href={liveHref(itemId)}
+      onClick={() => onPlay?.(itemId)}
+      {...longPress}
+      className="group w-[4.5rem] shrink-0 select-none"
+    >
+      {children}
+    </Link>
   );
 }

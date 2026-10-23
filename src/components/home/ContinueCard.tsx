@@ -46,7 +46,7 @@ export function ContinueCard({ item, onDismiss }: { item: ContinueItem; onDismis
         type="button"
         aria-label={`Retirer ${item.title} de Continuer à regarder`}
         onClick={onDismiss}
-        className="absolute right-1.5 top-1.5 rounded-full bg-black/60 p-1.5 text-white/80 backdrop-blur-sm transition-opacity hover:text-white md:opacity-0 md:group-hover:opacity-100"
+        className="hit-44 absolute right-1.5 top-1.5 grid h-8 w-8 place-items-center rounded-full bg-black/60 text-white/80 backdrop-blur-sm transition-opacity hover:text-white [@media(hover:hover)]:md:opacity-0 [@media(hover:hover)]:md:group-hover:opacity-100"
       >
         <IconX className="h-3.5 w-3.5" />
       </button>

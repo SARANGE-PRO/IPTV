@@ -27,6 +27,7 @@ export function TitleRail({
           key={`vod:${m.id}`}
           className={`w-28 shrink-0 sm:w-32 ${current ? 'opacity-50' : ''}`}
           href={movieHref(m.id)}
+          replace
           title={displayTitle(m.name)}
           posterUrl={m.posterUrl}
           rating={m.ratingSort > 0 ? m.ratingSort : null}
@@ -42,6 +43,7 @@ export function TitleRail({
           key={`series:${s.id}`}
           className="w-28 shrink-0 sm:w-32"
           href={seriesHref(s.id)}
+          replace
           title={displayTitle(s.name)}
           posterUrl={s.posterUrl}
           rating={s.ratingSort > 0 ? s.ratingSort : null}

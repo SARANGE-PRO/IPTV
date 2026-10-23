@@ -86,6 +86,11 @@ Gestionnaire de paquets : **npm**.
 - TypeScript strict : pas de `any` implicite, composants petits, logique métier
   hors composants.
 - Toujours prévoir les états loading / empty / error / retry.
+- Tactile d'abord (iPhone) : cibles ≥ 44 px (classe `hit-44` si le visuel est
+  plus petit), `hover:` réservé à la souris (`hoverOnlyWhenSupported`), jamais
+  d'action accessible seulement au survol. Gestes : glisser la vidéo vers le
+  bas = réduire (seulement page en haut), swipe ← → sur la vidéo Live = zapper,
+  fiche tirée vers le bas = fermer, appui long (`useLongPress`) = options.
 
 ## Commandes
 ```bash
@@ -107,3 +112,7 @@ jamais d'overlay maison · P7 ✅ recherche (titres, genres, acteurs TMDB, réce
 · P8 abandonné. Schéma Dexie v10 = purge
 films/séries + resync. v11 = tables additives (grille Live FR, onglets de
 favoris), sans resync. Live : grille FR + onglets de favoris + 10 récents ✅.
+Ergonomie (oct. 2026) ✅ : barre du bas avec Recherche (Réglages = engrenage de
+l'accueil), lecteur (paysage plein écran partout, actions sur l'écran d'échec,
+mini-lecteur annulable), Live (swipe, chaîne précédente, état conservé),
+fiches (en-tête collant, glisser pour fermer), accueil réordonné.

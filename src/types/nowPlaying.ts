@@ -34,6 +34,12 @@ export interface PlayerSource {
   container?: string | null;
 }
 
+/** Action proposee sur l'ecran d'echec definitif (« Chaine suivante », VLC…). */
+export interface PlayerErrorAction {
+  label: string;
+  onSelect: () => void;
+}
+
 /** Rappels de la page qui a lance la lecture. Survivent a sa fermeture (la
  *  progression continue d'etre enregistree en mini-lecteur). */
 export interface PlayerHandlers {
@@ -42,6 +48,8 @@ export interface PlayerHandlers {
   /** Echec definitif (apres les relances automatiques du lecteur). */
   onError?: (failure: PlaybackFailure) => void;
   onDirectMkvFailed?: () => void;
+  /** Alternatives affichees sous le message d'echec definitif. */
+  errorActions?: PlayerErrorAction[];
 }
 
 export interface PlayerSession {

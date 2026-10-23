@@ -2,6 +2,16 @@
 
 import { cn } from '@/lib/cn';
 import { VARIANT_LABEL, type LanguageVariant } from '@/services/media/languageVariantService';
+import type { MediaVariant } from '@/types/mediaLanguage';
+
+/** Ce que veut dire la version choisie (MULTI, VOSTFR : jamais evident). */
+const VARIANT_HINT: Record<MediaVariant, string> = {
+  VF: 'Version française.',
+  MULTI: 'Plusieurs pistes audio (VF et VO) : la langue se choisit dans le lecteur.',
+  VOSTFR: 'Version originale sous-titrée en français.',
+  VO: 'Version originale, sans sous-titres français.',
+  OTHER: 'Autre langue.',
+};
 
 /**
  * Selecteur de VARIANTE DE LANGUE (VF / MULTI / VOSTFR / VO). Le provider livre
@@ -20,11 +30,12 @@ export function LanguageVariantSwitcher({
 }) {
   if (variants.length < 2) return null;
   const showQuality = new Set(variants.map((v) => v.qualityLabel)).size > 1;
+  const active = variants.find((v) => v.id === activeId);
 
   return (
     <div className="flex flex-col gap-1.5">
       <span className="text-[11px] font-medium uppercase tracking-wide text-fg-faint">Version</span>
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Choix de la version linguistique">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Choix de la version linguistique">
         {variants.map((v) => {
           const active = v.id === activeId;
           return (
@@ -34,7 +45,7 @@ export function LanguageVariantSwitcher({
               aria-pressed={active}
               onClick={() => onSelect(v)}
               className={cn(
-                'rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors',
+                'rounded-lg px-3.5 py-2.5 text-[13px] font-semibold transition-colors',
                 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60',
                 active ? 'bg-accent text-white' : 'bg-ink-700 text-fg-muted hover:bg-ink-600 hover:text-fg',
               )}
@@ -45,6 +56,7 @@ export function LanguageVariantSwitcher({
           );
         })}
       </div>
+      {active !== undefined && <p className="text-[11px] text-fg-faint">{VARIANT_HINT[active.tag]}</p>}
     </div>
   );
 }

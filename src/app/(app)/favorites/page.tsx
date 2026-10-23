@@ -11,15 +11,18 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { MediaCard } from '@/components/shared/MediaCard';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useFavoriteItems } from '@/hooks/useFavoriteItems';
+import { useLiveLineup } from '@/hooks/useLiveLineup';
 import { cn } from '@/lib/cn';
 import * as settingsRepository from '@/services/data/settingsDataService';
 import { itemKey, parseItemKey } from '@/services/favorites/favoriteTabsService';
 import { setZapContext } from '@/services/live/liveZappingService';
+import { useCatalogStore } from '@/stores/catalogStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import { useFavoritesUiStore } from '@/stores/favoritesUiStore';
 import type { MediaType } from '@/types/models';
 import { displayTitle, displayYear } from '@/utils/displayTitle';
 import { movieHref, seriesHref } from '@/utils/appRoutes';
+import { variantBadge } from '@/utils/variantPreference';
 
 /**
  * Favoris : « Mes favoris » + onglets crees par l'utilisateur (chaines, films
@@ -85,6 +88,11 @@ export default function FavoritesPage() {
   }, []);
 
   const data = useFavoriteItems(selected);
+  // Versions (HD/FHD…) et categorie des chaines, comme dans la page Live.
+  const lineup = useLiveLineup();
+  const liveCategories = useCatalogStore((s) => s.sections.live.categories);
+  const categoryName = useMemo(() => new Map(liveCategories.map((c) => [c.id, c.name] as const)), [liveCategories]);
+  const groupByKey = useMemo(() => new Map((lineup.groups ?? []).map((g) => [g.key, g] as const)), [lineup.groups]);
   const tab = tabs.find((t) => t.id === selected) ?? null;
   const tabIndex = tab !== null ? tabs.indexOf(tab) : -1;
 
@@ -100,17 +108,25 @@ export default function FavoritesPage() {
 
   const channelRows: LiveRowData[] = useMemo(
     () =>
-      channels.map((c) => ({
-        id: c.id,
-        name: c.name,
-        logoUrl: c.logoUrl,
-        logoAlternates: c.logoAlternates,
-        isFrench: c.isFrench === 1,
-        lcn: c.lcn,
-        badges: c.qualityLabel !== null ? [c.qualityLabel] : [],
-        categoryId: c.categoryId,
-      })),
-    [channels],
+      channels.map((c) => {
+        const group = c.groupKey !== null ? groupByKey.get(c.groupKey) : undefined;
+        return {
+          id: c.id,
+          name: c.name,
+          logoUrl: c.logoUrl,
+          logoAlternates: c.logoAlternates,
+          isFrench: c.isFrench === 1,
+          lcn: c.lcn,
+          badges: c.qualityLabel !== null ? [c.qualityLabel] : [],
+          versions:
+            group !== undefined && group.versions.length > 1
+              ? group.versions.map((v) => ({ id: v.id, label: v.qualityLabel }))
+              : undefined,
+          categoryId: c.categoryId,
+          categoryName: categoryName.get(c.categoryId),
+        };
+      }),
+    [channels, groupByKey, categoryName],
   );
   const onPlayChannel = useCallback(() => {
     setZapContext({
@@ -126,20 +142,30 @@ export default function FavoritesPage() {
   };
   const remove = (key: string) => {
     const { type, itemId } = parseItemKey(key);
+    const rawTitle =
+      type === 'live'
+        ? data.channels.find((c) => c.id === itemId)?.name
+        : type === 'vod'
+          ? data.movies.find((m) => m.id === itemId)?.name
+          : data.series.find((s) => s.id === itemId)?.name;
+    const title = rawTitle !== undefined ? displayTitle(rawTitle) : '';
     if (selected === null) {
-      const title =
-        type === 'live'
-          ? data.channels.find((c) => c.id === itemId)?.name
-          : type === 'vod'
-            ? data.movies.find((m) => m.id === itemId)?.name
-            : data.series.find((s) => s.id === itemId)?.name;
-      void removeFavorite(type, itemId).then(() =>
-        showToast({ kind: 'removed', title: title !== undefined ? displayTitle(title) : '' }),
-      );
+      void removeFavorite(type, itemId).then(() => showToast({ kind: 'removed', title }));
       return;
     }
-    const others = [...(useFavoritesStore.getState().membership.get(key) ?? [])].filter((id) => id !== selected);
-    void setItemTabs(type, itemId, others);
+    const tabId = selected;
+    const before = [...(useFavoritesStore.getState().membership.get(key) ?? [])];
+    void setItemTabs(
+      type,
+      itemId,
+      before.filter((id) => id !== tabId),
+    ).then(() =>
+      showToast({
+        kind: 'info',
+        message: `« ${title} » retiré de « ${tab?.name ?? 'l’onglet'} »`,
+        undo: () => setItemTabs(type, itemId, before),
+      }),
+    );
   };
 
   const editChannels: EditableItem[] = channels.map((c) => ({
@@ -179,7 +205,7 @@ export default function FavoritesPage() {
               type="button"
               onClick={() => setKind(k.id)}
               className={cn(
-                'rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors',
+                'rounded-full px-3 py-2.5 text-xs font-medium transition-colors',
                 kind === k.id ? 'bg-ink-600 text-fg' : 'text-fg-muted hover:text-fg',
               )}
             >
@@ -193,10 +219,9 @@ export default function FavoritesPage() {
             <button
               type="button"
               onClick={() => setSort((s) => (s === 'mine' ? 'name' : 'mine'))}
-              aria-label={sort === 'mine' ? 'Trier de A à Z' : 'Revenir à mon ordre'}
-              className="rounded-full px-2.5 py-1.5 text-xs font-medium text-fg-muted hover:text-fg"
+              className="rounded-full px-3 py-3 text-xs font-medium text-fg-muted hover:text-fg"
             >
-              {sort === 'mine' ? 'Mon ordre' : 'A → Z'}
+              {sort === 'mine' ? 'Trier A → Z' : 'Mon ordre'}
             </button>
           )}
           {(total > 0 || tab !== null) && (
@@ -204,7 +229,7 @@ export default function FavoritesPage() {
               type="button"
               onClick={() => setEditing((e) => !e)}
               className={cn(
-                'rounded-full px-4 py-1.5 text-xs font-semibold transition-colors',
+                'rounded-full px-4 py-2.5 text-xs font-semibold transition-colors',
                 editing ? 'bg-accent text-white' : 'bg-ink-800 text-fg hover:bg-ink-700',
               )}
             >
@@ -228,9 +253,32 @@ export default function FavoritesPage() {
           }}
           onDelete={() => {
             const name = tab.name;
+            const position = tabIndex;
+            // Contenu de l'onglet (dans son ordre) pour pouvoir le recreer a l'identique.
+            const keys = [
+              ...data.channels.map((c) => itemKey('live', c.id)),
+              ...data.movies.map((m) => itemKey('vod', m.id)),
+              ...data.series.map((x) => itemKey('series', x.id)),
+            ];
             setEditing(false);
             void deleteTab(tab.id).then(() =>
-              showToast({ kind: 'info', message: `Onglet « ${name} » supprimé — tes favoris sont conservés` }),
+              showToast({
+                kind: 'info',
+                message: `Onglet « ${name} » supprimé — tes favoris sont conservés`,
+                undo: async () => {
+                  const restored = await createTab(name);
+                  for (const k of keys) {
+                    const { type, itemId } = parseItemKey(k);
+                    const current = [...(useFavoritesStore.getState().membership.get(k) ?? [])];
+                    await setItemTabs(type, itemId, [...current, restored.id]);
+                  }
+                  await reorderTab(restored.id, keys);
+                  const ids = useFavoritesStore.getState().tabs.map((t) => t.id).filter((id) => id !== restored.id);
+                  ids.splice(position, 0, restored.id);
+                  await reorderTabs(ids);
+                  select(restored.id);
+                },
+              }),
             );
           }}
         />
@@ -297,6 +345,8 @@ export default function FavoritesPage() {
                       title={displayTitle(m.name)}
                       posterUrl={m.posterUrl}
                       subtitle={displayYear(m.name, m.year)?.toString() ?? null}
+                      rating={m.ratingSort > 0 ? m.ratingSort : null}
+                      tag={variantBadge(m.variant, m.variantSource)}
                       favorite={{ type: 'vod', itemId: m.id }}
                     />
                   ))}
@@ -314,6 +364,8 @@ export default function FavoritesPage() {
                       title={displayTitle(s.name)}
                       posterUrl={s.posterUrl}
                       subtitle={s.releaseDate?.slice(0, 4) ?? null}
+                      rating={s.ratingSort > 0 ? s.ratingSort : null}
+                      tag={variantBadge(s.variant, s.variantSource)}
                       favorite={{ type: 'series', itemId: s.id }}
                     />
                   ))}

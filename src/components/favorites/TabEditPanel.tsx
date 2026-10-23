@@ -34,7 +34,7 @@ export function TabEditPanel({
     return () => clearTimeout(timer);
   }, [confirming]);
 
-  const action = 'flex h-9 items-center gap-1.5 rounded-xl px-2.5 text-xs font-medium transition-colors disabled:opacity-30';
+  const action = 'flex h-11 items-center gap-1.5 rounded-xl px-2.5 text-xs font-medium transition-colors disabled:opacity-30';
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-ink-700/70 bg-ink-900/70 p-2">

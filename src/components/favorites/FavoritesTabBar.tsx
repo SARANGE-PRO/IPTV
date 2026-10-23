@@ -50,7 +50,7 @@ export function FavoritesTabBar({
       <button
         type="button"
         onClick={onCreate}
-        className="flex h-9 shrink-0 items-center gap-1 rounded-full border border-dashed border-ink-500 px-3 text-[13px] font-medium text-fg-muted hover:border-fg-faint hover:text-fg"
+        className="flex h-10 shrink-0 items-center gap-1 rounded-full border border-dashed border-ink-500 px-3 text-[13px] font-medium text-fg-muted hover:border-fg-faint hover:text-fg"
       >
         <IconPlus className="h-4 w-4" />
         Onglet

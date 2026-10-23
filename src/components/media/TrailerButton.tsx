@@ -45,7 +45,7 @@ export function TrailerButton({ videoId, size = 'lg' }: { videoId: string; size?
                 type="button"
                 aria-label="Fermer la bande-annonce"
                 onClick={() => setOpen(false)}
-                className="absolute -top-12 right-0 rounded-full bg-white/10 p-2.5 text-white hover:bg-white/20"
+                className="fixed right-[max(1rem,env(safe-area-inset-right))] top-[calc(env(safe-area-inset-top)+0.75rem)] z-[71] grid h-11 w-11 place-items-center rounded-full bg-white/15 text-white hover:bg-white/25"
               >
                 <IconX className="h-5 w-5" />
               </button>

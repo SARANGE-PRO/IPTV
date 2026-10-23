@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { PosterImage } from '@/components/shared/PosterImage';
-import { Button } from '@/components/ui/Button';
 import { IconPlay } from '@/components/ui/icons';
 import { getMovieTop10, getSeriesTop10 } from '@/services/ranking/smartRankingService';
 import type { Section } from '@/types/models';
@@ -78,19 +77,28 @@ export function CatalogHero({ section }: { section: Extract<Section, 'vod' | 'se
     };
   }, [section]);
 
+  // Rotation suspendue des que le doigt se pose : le titre ne change pas sous le tap.
+  const [held, setHeld] = useState(false);
   useEffect(() => {
-    if (items.length <= 1) return;
+    if (items.length <= 1 || held) return;
     const id = setInterval(() => setIndex((i) => (i + 1) % items.length), ROTATE_MS);
     return () => clearInterval(id);
-  }, [items.length]);
+  }, [items.length, held]);
 
   const item = items[index] ?? null;
   if (item === null) return null;
   // Lien RELATIF (?vod= / ?series=) : modal par-dessus la page, export statique OK.
   const href = section === 'vod' ? movieHref(item.id) : seriesHref(item.id);
+  // « Regarder » lance VRAIMENT la lecture ; le reste de la banniere ouvre la fiche.
+  const playHref =
+    section === 'vod' ? movieHref(item.id, '', { play: true }) : seriesHref(item.id, '', { play: true });
 
   return (
-    <section className="relative mt-4 h-44 overflow-hidden rounded-2xl bg-ink-800 sm:h-56 md:h-64">
+    <section
+      onPointerDown={() => setHeld(true)}
+      className="relative mt-4 h-44 overflow-hidden rounded-2xl bg-ink-800 sm:h-56 md:h-64"
+    >
+      <Link href={href} aria-label={`Voir la fiche de ${item.title}`} className="absolute inset-0 z-[1]" />
       <PosterImage
         key={item.id}
         src={item.image}
@@ -109,7 +117,7 @@ export function CatalogHero({ section }: { section: Extract<Section, 'vod' | 'se
           ))}
         </div>
       )}
-      <div className="absolute inset-x-0 bottom-0 p-5">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[2] p-5">
         <div className="flex items-center gap-2">
           <span className="rounded bg-accent/90 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white">
             À la une
@@ -122,12 +130,13 @@ export function CatalogHero({ section }: { section: Extract<Section, 'vod' | 'se
         </div>
         <h2 className="mt-2 line-clamp-1 text-xl font-semibold text-fg drop-shadow sm:text-2xl">{item.title}</h2>
         {item.subtitle !== null && <p className="text-xs text-fg-muted">{item.subtitle}</p>}
-        <div className="mt-3">
-          <Link href={href}>
-            <Button size="sm">
-              <IconPlay className="mr-2 h-4 w-4" />
-              Regarder
-            </Button>
+        <div className="pointer-events-auto mt-3 inline-block">
+          <Link
+            href={playHref}
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-accent px-5 text-sm font-medium text-white transition-colors hover:bg-accent-hover"
+          >
+            <IconPlay className="h-4 w-4" />
+            Regarder
           </Link>
         </div>
       </div>

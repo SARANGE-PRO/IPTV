@@ -16,6 +16,7 @@ import {
   IconTv,
 } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
+import { HOME_HREF, LIVE_HREF, SEARCH_HREF, SETTINGS_HREF } from '@/utils/appRoutes';
 import { useReminderScheduler } from '@/hooks/useReminderScheduler';
 import { requestPersistentStorage } from '@/lib/persistStorage';
 import { useCatalogStore } from '@/stores/catalogStore';
@@ -24,13 +25,15 @@ import { useFilterStore } from '@/stores/filterStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 
+// Reglages (usage rare) : engrenage de l'accueil sur mobile, bas de la barre
+// laterale ailleurs. La recherche complete (titres, acteurs, genres) a un onglet.
 const NAV = [
-  { href: '/', label: 'Accueil', icon: IconHome },
-  { href: '/live', label: 'Live', icon: IconTv },
+  { href: HOME_HREF, label: 'Accueil', icon: IconHome },
+  { href: LIVE_HREF, label: 'Live', icon: IconTv },
   { href: '/movies', label: 'Films', icon: IconFilm },
   { href: '/series', label: 'Séries', icon: IconSeries },
   { href: '/favorites', label: 'Favoris', icon: IconHeart },
-  { href: '/settings', label: 'Réglages', icon: IconSettings },
+  { href: SEARCH_HREF, label: 'Recherche', icon: IconSearch },
 ] as const;
 
 /** Shell : sidebar desktop / bottom-nav mobile + bootstrap des stores. */
@@ -66,32 +69,32 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, [hydrateCatalog, startBackfill, hydrateFavorites, hydrateRails, hydrateHidden, hydrateDefaults, hydrateUiSettings]);
 
   const isActive = (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href));
+  // Retoucher l'onglet de la page courante = revenir en haut (habitude iOS).
+  const scrollTopIfCurrent = (href: string) => {
+    if (pathname === href) window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   return (
     <div className="min-h-dvh md:pl-60">
       <aside className="glass fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-white/5 px-4 py-8 md:flex">
         <BrandLogo className="mb-6 px-2" markClassName="h-8 w-8" textClassName="text-lg" />
-        <button
-          type="button"
-          onClick={() => window.dispatchEvent(new Event('zib:command'))}
-          className="mb-4 flex items-center gap-2.5 rounded-xl border border-ink-600 bg-ink-800/70 px-3 py-2 text-sm text-fg-faint transition-colors hover:border-ink-500 hover:text-fg-muted"
-        >
-          <IconSearch className="h-4 w-4" />
-          <span className="flex-1 text-left">Rechercher</span>
-          <kbd className="rounded bg-ink-700 px-1.5 py-0.5 text-[10px] font-medium text-fg-muted">⌘K</kbd>
-        </button>
-        <nav className="flex flex-col gap-1">
-          {NAV.map(({ href, label, icon: Icon }) => (
+        <nav className="flex flex-1 flex-col gap-1">
+          {[...NAV, { href: SETTINGS_HREF, label: 'Réglages', icon: IconSettings }].map(({ href, label, icon: Icon }) => (
             <Link
               key={href}
               href={href}
+              onClick={() => scrollTopIfCurrent(href)}
               className={cn(
                 'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors',
+                href === SETTINGS_HREF && 'mt-auto',
                 isActive(href) ? 'bg-ink-700 font-medium text-fg' : 'text-fg-muted hover:bg-ink-800 hover:text-fg',
               )}
             >
               <Icon className="h-5 w-5" />
               {label}
+              {href === SEARCH_HREF && (
+                <kbd className="ml-auto rounded bg-ink-700 px-1.5 py-0.5 text-[10px] font-medium text-fg-muted">⌘K</kbd>
+              )}
             </Link>
           ))}
         </nav>
@@ -120,8 +123,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                 key={href}
                 href={href}
                 aria-current={active ? 'page' : undefined}
+                onClick={() => scrollTopIfCurrent(href)}
                 className={cn(
-                  'flex min-w-0 flex-1 flex-col items-center gap-1 py-2 text-[10px] transition-colors',
+                  'flex min-w-0 flex-1 flex-col items-center gap-1 py-2 text-[11px] transition-colors',
                   active ? 'text-accent' : 'text-fg-muted active:text-fg',
                 )}
               >

@@ -7,7 +7,7 @@ import { EmptyState } from '@/components/shared/EmptyState';
 import { ArrangeButton } from '@/components/favorites/ArrangeButton';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { NowPlaying } from '@/components/live/NowPlaying';
-import { ExternalPlayer } from '@/components/player/ExternalPlayer';
+import { ExternalPlayer, launchVlc } from '@/components/player/ExternalPlayer';
 import { PlayerSlot } from '@/components/player/host/PlayerSlot';
 import { IconArrowLeft } from '@/components/ui/icons';
 import { useLandscapeFullscreen } from '@/hooks/useLandscapeFullscreen';
@@ -20,12 +20,15 @@ import { getChannelVersions, getZapNeighbors } from '@/services/live/liveZapping
 import { isGatewayConfigured } from '@/services/player/mediaGatewayService';
 import { buildLiveStreamUrl } from '@/services/xtream/xtreamUrls';
 import { useAuthStore } from '@/stores/authStore';
+import { useFavoritesStore } from '@/stores/favoritesStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
+import { cleanChannelDisplay } from '@/services/live/channelNormalizer';
 import { usePlayerStore } from '@/stores/playerStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { ChannelVersion } from '@/types/liveGrouping';
 import type { LiveChannel } from '@/types/models';
-import { liveHref } from '@/utils/appRoutes';
+import { LIVE_HREF, liveHref } from '@/utils/appRoutes';
+import { canGoBack } from '@/utils/navigation';
 import { displayChannelName } from '@/utils/displayTitle';
 import { supportsNativeHls } from '@/utils/playerSupport';
 
@@ -43,6 +46,7 @@ function LiveWatch() {
   const streamId = useSearchParams().get('id') ?? '';
   const credentials = useAuthStore((s) => s.credentials);
   const recordLiveWatch = usePlaybackStore((s) => s.recordLiveWatch);
+  const recentChannels = usePlaybackStore((s) => s.recentChannels);
   const showVlcButton = useUiSettingsStore((s) => s.showVlcButton);
   const router = useRouter();
   const [channel, setChannel] = useState<LiveChannel | null | undefined>(undefined);
@@ -200,9 +204,25 @@ function LiveWatch() {
 
   // Noms de la grille FR (« CNews » plutot que « FR| CNEWS ») : titre, ecran
   // verrouille, boutons de zapping.
+  // Chaine regardee juste avant (touche « rappel » des telecommandes) : la plus
+  // recente des recents qui n'est pas une version de la chaine en cours.
+  const currentIds = new Set([streamId, ...versions.map((v) => v.channel.id)]);
+  const recall = recentChannels.find((e) => !currentIds.has(e.itemId)) ?? null;
+
   const lineupNames = useLineupNames(
-    [streamId, neighbors.previous?.id, neighbors.next?.id].filter((id): id is string => id != null && id !== ''),
+    [streamId, neighbors.previous?.id, neighbors.next?.id, recall?.itemId].filter(
+      (id): id is string => id != null && id !== '',
+    ),
   );
+  const recallName =
+    recall !== null ? (lineupNames.get(recall.itemId) ?? (cleanChannelDisplay(recall.label ?? '') || 'Chaîne')) : null;
+
+  // Favori au niveau de la CHAINE (comme la liste) : apres une bascule HD -> FHD,
+  // le coeur reste plein et ne cree pas un 2e favori « TF1 ».
+  const favoriteId = useFavoritesStore(
+    (s) => [streamId, ...versions.map((v) => v.channel.id)].find((id) => s.ids.live.has(id)) ?? null,
+  );
+  const ownerId = favoriteId ?? streamId;
   const nameOf = (c: LiveChannel) => lineupNames.get(c.id) ?? displayChannelName(c.name);
   const channelTitle = channel != null ? nameOf(channel) : 'Chaîne';
   // Visuel ecran verrouille / mini-lecteur : meilleur logo parmi les versions.
@@ -224,21 +244,24 @@ function LiveWatch() {
   const src = credentials !== null && streamId !== '' ? buildLiveStreamUrl(credentials, streamId, liveExt) : null;
   const vlcSrc = credentials !== null && streamId !== '' ? buildLiveStreamUrl(credentials, streamId, 'ts') : null;
 
+  // Ouverte directement (PWA rouverte sur la chaine) : pas d'historique.
+  const goBack = () => (canGoBack() ? router.back() : router.replace(LIVE_HREF));
+
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8">
       <div className="mb-4 flex items-center gap-3 phone-land:hidden">
         <button
-          onClick={() => router.back()}
+          onClick={goBack}
           aria-label="Retour"
-          className="rounded-full bg-ink-800 p-2 text-fg-muted hover:text-fg"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-ink-800 text-fg-muted hover:text-fg"
         >
           <IconArrowLeft className="h-5 w-5" />
         </button>
         <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg">
           {channelTitle}
         </h1>
-        {streamId !== '' && <ArrangeButton type="live" itemId={streamId} title={channelTitle} />}
-        {streamId !== '' && <FavoriteButton type="live" itemId={streamId} title={channelTitle} />}
+        {streamId !== '' && <ArrangeButton type="live" itemId={ownerId} title={channelTitle} />}
+        {streamId !== '' && <FavoriteButton type="live" itemId={ownerId} title={channelTitle} />}
       </div>
 
       {channel === null ? (
@@ -266,6 +289,12 @@ function LiveWatch() {
                 contentType="live"
                 container={liveExt}
                 onError={handlePlaybackFailure}
+                errorActions={[
+                  ...(nextId !== null ? [{ label: 'Chaîne suivante', onSelect: () => zapTo(nextId) }] : []),
+                  ...(showVlcButton && vlcSrc !== null
+                    ? [{ label: 'Ouvrir dans VLC', onSelect: () => launchVlc(vlcSrc) }]
+                    : []),
+                ]}
                 layout="live"
                 className="phone-land:h-full"
                 media={{
@@ -276,7 +305,9 @@ function LiveWatch() {
                   subtitle: 'En direct',
                   artwork,
                 }}
-                onMinimize={() => router.back()}
+                onMinimize={goBack}
+                onSwipeNext={nextId !== null ? () => zapTo(nextId) : null}
+                onSwipePrevious={previousId !== null ? () => zapTo(previousId) : null}
               >
                 {/* Titre en surimpression (verre depoli) — s'estompe apres 4 s pour
                     liberer le bouton plein ecran natif. pointer-events-none : les
@@ -326,7 +357,7 @@ function LiveWatch() {
                         href={liveHref(version.channel.id)}
                         replace
                         className={cn(
-                          'rounded-lg px-3 py-1.5 text-xs font-medium transition-colors',
+                          'rounded-lg px-3.5 py-2.5 text-[13px] font-medium transition-colors',
                           version.channel.id === streamId
                             ? 'bg-accent text-white'
                             : 'bg-ink-800 text-fg-muted hover:text-fg',
@@ -338,9 +369,9 @@ function LiveWatch() {
                   </div>
                 </div>
               )}
-              {zapLabel !== null && (
-                <p className="-mb-2 px-1 text-[11px] text-fg-faint">Zapping · {zapLabel}</p>
-              )}
+              <p className="-mb-2 px-1 text-[11px] text-fg-faint">
+                {zapLabel !== null ? `Zapping · ${zapLabel} · ` : ''}glisse la vidéo ← → pour changer
+              </p>
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
@@ -369,6 +400,18 @@ function LiveWatch() {
                   </span>
                 </button>
               </div>
+              {recall !== null && recallName !== null && (
+                <button
+                  type="button"
+                  onClick={() => zapTo(recall.itemId)}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl bg-ink-800 px-4 py-3 text-xs text-fg-muted transition-colors hover:bg-ink-700 hover:text-fg"
+                >
+                  <span aria-hidden>↺</span>
+                  <span className="truncate">
+                    Chaîne précédente · <span className="text-fg">{recallName}</span>
+                  </span>
+                </button>
+              )}
               {/* VLC : dernier recours, seulement si active dans les Reglages. */}
               {showVlcButton && vlcSrc !== null && (
                 <ExternalPlayer

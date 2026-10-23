@@ -18,12 +18,13 @@ export interface FavoriteTarget {
 export type FavoriteToast =
   | { id: number; kind: 'added'; target: FavoriteTarget }
   | { id: number; kind: 'removed'; title: string }
-  | { id: number; kind: 'info'; message: string };
+  | { id: number; kind: 'info'; message: string; undo?: () => Promise<void> | void };
 
 type ToastInput =
   | { kind: 'added'; target: FavoriteTarget }
   | { kind: 'removed'; title: string }
-  | { kind: 'info'; message: string };
+  /** `undo` : bouton « Annuler » (retrait d'un onglet, onglet supprime…). */
+  | { kind: 'info'; message: string; undo?: () => Promise<void> | void };
 
 interface FavoritesUiState {
   sheet: FavoriteTarget | null;

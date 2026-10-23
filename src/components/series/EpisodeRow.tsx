@@ -48,7 +48,7 @@ export function EpisodeRow({
           alt=""
           className="aspect-video w-full transition-transform duration-500 group-hover:scale-105"
         />
-        <span className="absolute inset-0 m-auto grid h-9 w-9 place-items-center rounded-full bg-black/55 ring-1 ring-white/30 opacity-90 backdrop-blur-sm transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+        <span className="absolute inset-0 m-auto grid h-9 w-9 place-items-center rounded-full bg-black/55 ring-1 ring-white/30 opacity-90 backdrop-blur-sm">
           <IconPlay className="ml-0.5 h-4 w-4 text-white" />
         </span>
         {ratio !== null && ratio > 0 && (
@@ -74,7 +74,7 @@ export function EpisodeRow({
             aria-label={watched ? 'Marquer comme non vu' : 'Marquer comme vu'}
             title={watched ? 'Vu — marquer comme non vu' : 'Marquer comme vu'}
             className={cn(
-              'shrink-0 rounded-full border p-1.5 transition-colors',
+              'relative hit-44 grid h-9 w-9 shrink-0 place-items-center rounded-full border transition-colors',
               watched
                 ? 'border-emerald-400/60 bg-emerald-400/15 text-emerald-300'
                 : 'border-ink-600 text-fg-faint hover:border-ink-500 hover:text-fg',

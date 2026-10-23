@@ -16,7 +16,8 @@ const variants: Record<Variant, string> = {
 };
 
 const sizes: Record<Size, string> = {
-  sm: 'h-9 px-3 text-sm',
+  // Visuel compact, zone de tap 44 px (hit-44).
+  sm: 'relative hit-44 h-10 px-3.5 text-sm',
   md: 'h-11 px-5 text-[15px]',
   lg: 'h-14 px-7 text-base', // grande cible tactile (iPhone)
 };

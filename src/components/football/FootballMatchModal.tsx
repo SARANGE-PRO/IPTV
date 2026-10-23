@@ -140,7 +140,7 @@ export function FootballMatchModal({ match, onClose }: { match: FootballMatch; o
           type="button"
           onClick={onClose}
           aria-label="Fermer"
-          className="absolute right-3 top-3 rounded-full bg-black/40 p-2 text-white/80 transition-colors hover:bg-black/60 hover:text-white"
+          className="absolute right-3 top-3 grid h-11 w-11 place-items-center rounded-full bg-black/40 text-white/80 transition-colors hover:bg-black/60 hover:text-white"
         >
           <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
             <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />

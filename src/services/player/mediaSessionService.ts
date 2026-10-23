@@ -1,3 +1,4 @@
+import { pauseByUser } from '@/services/player/playbackIntent';
 import { secureImageSrc } from '@/utils/secureUrl';
 
 /**
@@ -54,6 +55,21 @@ export function applyNowPlaying(meta: NowPlayingMeta, actions: NowPlayingActions
   }
   setHandler('nexttrack', actions.onNext);
   setHandler('previoustrack', actions.onPrevious);
+}
+
+/**
+ * Lecture / pause depuis l'ecran verrouille, le Centre de controle ou les
+ * AirPods : la pause est marquee VOULUE (le lecteur ne la relance jamais comme
+ * une pause subie sur tampon vide). Retourne le nettoyage.
+ */
+export function bindPlayPause(video: HTMLVideoElement): () => void {
+  if (!supported()) return () => undefined;
+  setHandler('pause', () => pauseByUser(video));
+  setHandler('play', () => void video.play().catch(() => undefined));
+  return () => {
+    setHandler('pause', null);
+    setHandler('play', null);
+  };
 }
 
 export function clearNowPlaying(): void {

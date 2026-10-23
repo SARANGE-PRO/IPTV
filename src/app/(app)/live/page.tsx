@@ -8,7 +8,7 @@ import { RecentChannelsStrip } from '@/components/live/RecentChannelsStrip';
 import { BrandMark } from '@/components/shared/BrandMark';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { IconChevronRight } from '@/components/ui/actionIcons';
-import { IconSearch } from '@/components/ui/icons';
+import { IconSearch, IconX } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useDebounce } from '@/hooks/useDebounce';
@@ -35,6 +35,7 @@ import { setZapContext } from '@/services/live/liveZappingService';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import { useFilterStore } from '@/stores/filterStore';
+import { useLiveUiStore } from '@/stores/liveUiStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import type { LineupGroup } from '@/types/liveLineup';
 import type { LiveChannel } from '@/types/models';
@@ -73,8 +74,17 @@ function groupRow(group: LineupGroup, categoryName: Map<string, string>): LiveRo
   };
 }
 
-function favoriteRow(channel: FavoriteChannel, categoryName: Map<string, string>): LiveRowData {
+function favoriteRow(
+  channel: FavoriteChannel,
+  categoryName: Map<string, string>,
+  group: LineupGroup | undefined,
+): LiveRowData {
   return {
+    // Versions de la chaine (si elle est dans la grille FR), comme dans la grille.
+    versions:
+      group !== undefined && group.versions.length > 1
+        ? group.versions.map((v) => ({ id: v.id, label: v.qualityLabel }))
+        : undefined,
     id: channel.id,
     name: channel.name,
     logoUrl: channel.logoUrl,
@@ -108,15 +118,19 @@ export default function LivePage() {
   const createTab = useFavoritesStore((s) => s.createTab);
   const recentChannels = usePlaybackStore((s) => s.recentChannels);
 
-  const [view, setView] = useState<LiveViewId>('france');
-  const [query, setQuery] = useState('');
+  // Retour d'une chaine : meme vue, meme recherche, meme position (store de
+  // session) ; premier affichage : vue memorisee dans les reglages.
+  const [initialUi] = useState(() => useLiveUiStore.getState());
+  const [view, setView] = useState<LiveViewId>(initialUi.view ?? 'france');
+  const [query, setQuery] = useState(initialUi.query);
   const [creatingTab, setCreatingTab] = useState(false);
-  const [visible, setVisible] = useState(STEP);
+  const [visible, setVisible] = useState(Math.max(STEP, initialUi.visible));
   const debouncedQuery = useDebounce(query.trim(), 300);
   const search = useLiveSearch(debouncedQuery, hidden);
+  const searchRef = useRef<HTMLInputElement | null>(null);
 
   // Vue memorisee : restauree une fois les onglets connus.
-  const restoredRef = useRef(false);
+  const restoredRef = useRef(initialUi.view !== null);
   useEffect(() => {
     if (!favoritesHydrated || restoredRef.current) return;
     restoredRef.current = true;
@@ -133,11 +147,44 @@ export default function LivePage() {
     if (currentTabId !== null && favoritesHydrated && !tabs.some((t) => t.id === currentTabId)) setView('favorites');
   }, [currentTabId, tabs, favoritesHydrated]);
 
-  useEffect(() => setVisible(STEP), [view, debouncedQuery]);
+  // Nouvelle vue / recherche : on repart du debut (pas au tout 1er rendu, qui
+  // peut restaurer une liste deja deroulee).
+  const firstRenderRef = useRef(true);
+  useEffect(() => {
+    if (firstRenderRef.current) {
+      firstRenderRef.current = false;
+      return;
+    }
+    setVisible(STEP);
+  }, [view, debouncedQuery]);
+
+  // Etat conserve pour le retour. La position est suivie AU FIL du defilement :
+  // au demontage, la navigation a deja remis la fenetre en haut.
+  const uiRef = useRef({ view, query, visible });
+  uiRef.current = { view, query, visible };
+  const scrollYRef = useRef(initialUi.scrollY);
+  useEffect(() => {
+    let frame: number | null = null;
+    const onScroll = () => {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        scrollYRef.current = window.scrollY;
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (frame !== null) cancelAnimationFrame(frame);
+      useLiveUiStore.getState().save({ ...uiRef.current, scrollY: scrollYRef.current });
+    };
+  }, []);
 
   const selectView = useCallback((next: LiveViewId) => {
     setView(next);
     setQuery('');
+    // La nouvelle liste repart du haut (sinon on atterrit en bas d'une liste courte).
+    window.scrollTo({ top: 0 });
     void settingsRepository.setSetting(SETTING_KEY, next).catch(() => undefined);
   }, []);
 
@@ -167,9 +214,32 @@ export default function LivePage() {
   const catalog = useLiveCatalogPage(catalogFilter, hidden);
 
   // --- Liste affichee -------------------------------------------------------------
+  // Flux -> chaine de la grille (versions regroupees dans la recherche et les favoris).
+  const groupById = useMemo(() => {
+    const map = new Map<string, LineupGroup>();
+    for (const group of visibleGroups ?? []) for (const v of group.versions) map.set(v.id, group);
+    return map;
+  }, [visibleGroups]);
+  const groupByKey = useMemo(() => new Map((visibleGroups ?? []).map((g) => [g.key, g] as const)), [visibleGroups]);
+
   const items: ListItem[] = useMemo(() => {
-    if (search.active) return search.results.map((c) => ({ kind: 'row', row: channelRow(c, categoryName) }));
-    if (favoritesView) return favorites.channels.map((c) => ({ kind: 'row', row: favoriteRow(c, categoryName) }));
+    if (search.active) {
+      // Une ligne par CHAINE (« TF1 » et ses versions), pas une par flux.
+      const seen = new Set<string>();
+      return search.results.flatMap((c): ListItem[] => {
+        const group = groupById.get(c.id);
+        if (group === undefined) return [{ kind: 'row', row: channelRow(c, categoryName) }];
+        if (seen.has(group.key)) return [];
+        seen.add(group.key);
+        return [{ kind: 'row', row: groupRow(group, categoryName) }];
+      });
+    }
+    if (favoritesView) {
+      return favorites.channels.map((c) => ({
+        kind: 'row',
+        row: favoriteRow(c, categoryName, c.groupKey !== null ? groupByKey.get(c.groupKey) : undefined),
+      }));
+    }
     if (catalogFilter !== null) return catalog.channels.map((c) => ({ kind: 'row', row: channelRow(c, categoryName) }));
     if (view === 'france') {
       return buildOverview(viewGroups).map((item) =>
@@ -181,7 +251,18 @@ export default function LivePage() {
     return viewGroups.map((g) => ({ kind: 'row', row: groupRow(g, categoryName) }));
     // catalogFilter : derive de view/search (deja en deps).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search.active, search.results, favoritesView, favorites.channels, catalog.channels, view, viewGroups, categoryName]);
+  }, [
+    search.active,
+    search.results,
+    groupById,
+    groupByKey,
+    favoritesView,
+    favorites.channels,
+    catalog.channels,
+    view,
+    viewGroups,
+    categoryName,
+  ]);
 
   // Contexte de zapping (⏮ ⏭ du lecteur) = la vue d'ou la chaine est lancee.
   const zapEntries = useMemo(() => {
@@ -191,7 +272,7 @@ export default function LivePage() {
   }, [favoritesView, favorites.channels, lineupView, viewGroups, items]);
   const tabName = tabs.find((t) => t.id === currentTabId)?.name;
   const onPlay = useCallback(() => {
-    setZapContext(search.active ? null : { label: viewLabel(view, tabName), entries: zapEntries });
+    setZapContext({ label: search.active ? 'Résultats de recherche' : viewLabel(view, tabName), entries: zapEntries });
   }, [search.active, view, tabName, zapEntries]);
   const onPlayRecent = useCallback(() => {
     setZapContext({
@@ -219,6 +300,14 @@ export default function LivePage() {
         : lineupPending;
   const rowCount = items.filter((i) => i.kind === 'row').length;
 
+  // Position retrouvee au retour, une fois la liste a nouveau affichee.
+  const scrollRestoredRef = useRef(initialUi.scrollY <= 0);
+  useEffect(() => {
+    if (scrollRestoredRef.current || loading || rowCount === 0) return;
+    scrollRestoredRef.current = true;
+    requestAnimationFrame(() => window.scrollTo({ top: initialUi.scrollY }));
+  }, [loading, rowCount, initialUi.scrollY]);
+
   let summary: string | null = null;
   if (search.active) {
     summary = `${rowCount}${rowCount >= LIVE_SEARCH_LIMIT ? '+' : ''} résultat${rowCount > 1 ? 's' : ''}`;
@@ -241,15 +330,34 @@ export default function LivePage() {
       <div className="relative mt-4">
         <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-fg-faint" />
         <Input
-          className="pl-10"
+          ref={searchRef}
+          type="search"
+          enterKeyHint="search"
+          className="pl-10 pr-12"
           placeholder="Rechercher une chaîne…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
+          // Entree = fermer le clavier pour voir les resultats.
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur();
+          }}
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
-          inputMode="search"
         />
+        {query !== '' && (
+          <button
+            type="button"
+            aria-label="Effacer la recherche"
+            onClick={() => {
+              setQuery('');
+              searchRef.current?.focus();
+            }}
+            className="absolute right-1 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full text-fg-faint hover:text-fg"
+          >
+            <IconX className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {!search.active && <RecentChannelsStrip onPlay={onPlayRecent} />}
@@ -257,7 +365,6 @@ export default function LivePage() {
       <LiveViewBar
         view={view}
         tabs={tabs}
-        disabled={search.active}
         onSelect={selectView}
         onCreateTab={() => setCreatingTab(true)}
       />
@@ -355,9 +462,9 @@ function SectionHeader({
         <button
           type="button"
           onClick={() => onOpen(target)}
-          className="flex items-center gap-0.5 text-xs text-fg-faint hover:text-fg"
+          className="-my-2 -mr-2 flex items-center gap-0.5 px-2 py-3 text-xs text-fg-faint hover:text-fg"
         >
-          Isoler
+          Tout voir
           <IconChevronRight className="h-3.5 w-3.5" />
         </button>
       )}

@@ -32,7 +32,7 @@ export function ArrangeButton({
         openSheet({ type, itemId, title });
       }}
       className={cn(
-        'rounded-full bg-black/50 p-2 backdrop-blur transition-colors',
+        'relative hit-44 grid h-11 w-11 place-items-center rounded-full bg-black/50 backdrop-blur transition-colors',
         inTabs ? 'text-fg' : 'text-fg-muted hover:text-fg',
         className,
       )}

@@ -20,6 +20,8 @@ interface MediaCardProps {
   /** Ratio 0..1 — barre de progression rouge sous le poster. */
   progress?: number | null;
   favorite?: { type: MediaType; itemId: string };
+  /** Remplace l'entree d'historique (fiche -> fiche similaire : un seul retour). */
+  replace?: boolean;
   className?: string;
 }
 
@@ -34,11 +36,13 @@ export function MediaCard({
   tag,
   progress,
   favorite,
+  replace = false,
   className,
 }: MediaCardProps) {
   return (
     <Link
       href={href}
+      replace={replace}
       className={cn(
         'group block rounded-xl outline-none transition-transform duration-200 will-change-transform',
         'hover:-translate-y-1 active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950',
@@ -78,7 +82,7 @@ export function MediaCard({
 
         {favorite !== undefined && (
           <div className="absolute right-1.5 top-1.5">
-            <FavoriteButton type={favorite.type} itemId={favorite.itemId} title={title} />
+            <FavoriteButton type={favorite.type} itemId={favorite.itemId} title={title} className="h-8 w-8" />
           </div>
         )}
 

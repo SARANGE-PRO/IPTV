@@ -5,18 +5,20 @@ import { BrandMark } from '@/components/shared/BrandMark';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { HScroll } from '@/components/shared/HScroll';
 import { MediaCard } from '@/components/shared/MediaCard';
+import { Button } from '@/components/ui/Button';
+import { IconX } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { FIRST_PAGE } from '@/services/data/catalogService';
 import type { CatalogFilter, CatalogPage, FlatSort, LaneFilter, PageCursor } from '@/services/data/catalogService';
 import { useDebounce } from '@/hooks/useDebounce';
+import { cn } from '@/lib/cn';
 import { useLoadMore } from '@/hooks/useLoadMore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useFilterStore } from '@/stores/filterStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import { useVodFilterStore, type VodSection } from '@/stores/vodFilterStore';
 import type { MediaVariant, VariantSource } from '@/types/mediaLanguage';
-import type { MediaType } from '@/types/models';
 import { displayTitle } from '@/utils/displayTitle';
 import { mediaBadges } from '@/utils/mediaBadges';
 import { formatCount } from '@/utils/format';
@@ -35,7 +37,6 @@ export interface BrowserItem {
 
 interface MediaBrowserProps<T extends BrowserItem> {
   section: VodSection;
-  favoriteType: MediaType;
   title: string;
   itemNoun: string;
   hrefFor: (item: T) => string;
@@ -78,10 +79,10 @@ const SORT_OPTIONS: { id: FlatSort; label: string }[] = [
 
 /** Pills de langue : « Tout » = une carte par titre (VF d'abord selon la preference). */
 const LANES: { id: LaneFilter; label: string; hint: string }[] = [
-  { id: 'all', label: 'Tout', hint: 'Une carte par titre, version préférée en tête' },
-  { id: 'fr', label: 'VF', hint: 'Audio français (VF, MULTI)' },
-  { id: 'vost', label: 'VOSTFR', hint: 'Version originale sous-titrée' },
-  { id: 'vo', label: 'VO', hint: 'Version originale' },
+  { id: 'all', label: 'Tout', hint: 'Toutes les langues — une carte par titre, ta langue préférée en tête.' },
+  { id: 'fr', label: 'VF', hint: 'Audio français : VF et MULTI (VF + VO au choix).' },
+  { id: 'vost', label: 'VOSTFR', hint: 'Version originale sous-titrée en français.' },
+  { id: 'vo', label: 'VO', hint: 'Version originale, sans sous-titres français.' },
 ];
 
 const DECADES: { value: string; label: string; min: number | null; max: number | null }[] = [
@@ -115,7 +116,6 @@ function decadeValue(minYear: number | null, maxYear: number | null): string {
  */
 export function MediaBrowser<T extends BrowserItem>({
   section,
-  favoriteType,
   title,
   itemNoun,
   hrefFor,
@@ -152,6 +152,12 @@ export function MediaBrowser<T extends BrowserItem>({
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<T[] | null>(null);
   const [searching, setSearching] = useState(false);
+  // Echec de lecture locale (Dexie) : message + Reessayer au lieu de squelettes infinis.
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  // Annee / note repliees derriere « Filtres (n) » : moins de rangees avant la grille.
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const searchRef = useRef<HTMLInputElement | null>(null);
   const cursorRef = useRef<PageCursor | null>(FIRST_PAGE);
   const loadingRef = useRef(false);
   const debouncedQuery = useDebounce(query.trim(), 300);
@@ -192,18 +198,26 @@ export function MediaBrowser<T extends BrowserItem>({
     setItems([]);
     setEndReached(false);
     setLoading(true);
-    void fetchFlatPage(FIRST_PAGE, PAGE_SIZE, filters.sort, filters.lane, order, filter, hiddenArg).then((page) => {
-      if (!alive) return;
-      setItems(page.items);
-      cursorRef.current = page.next;
-      setEndReached(page.next === null);
-      setLoading(false);
-      enrichVisible?.(page.items);
-    });
+    setLoadError(false);
+    loadingRef.current = false;
+    fetchFlatPage(FIRST_PAGE, PAGE_SIZE, filters.sort, filters.lane, order, filter, hiddenArg)
+      .then((page) => {
+        if (!alive) return;
+        setItems(page.items);
+        cursorRef.current = page.next;
+        setEndReached(page.next === null);
+        setLoading(false);
+        enrichVisible?.(page.items);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setLoading(false);
+        setLoadError(true);
+      });
     return () => {
       alive = false;
     };
-  }, [hydrated, regrouping, fetchFlatPage, filters.sort, filters.lane, order, filter, hiddenArg, enrichVisible]);
+  }, [hydrated, regrouping, fetchFlatPage, filters.sort, filters.lane, order, filter, hiddenArg, enrichVisible, reloadKey]);
 
   // Compte total : seulement sans filtre actif (compte d'index rapide).
   useEffect(() => {
@@ -245,23 +259,28 @@ export function MediaBrowser<T extends BrowserItem>({
     if (loadingRef.current || endReached || results !== null || cursor === null) return;
     loadingRef.current = true;
     setLoading(true);
-    void fetchFlatPage(cursor, PAGE_SIZE, filters.sort, filters.lane, order, filter, hiddenArg).then((page) => {
-      cursorRef.current = page.next;
-      setItems((prev) => [...prev, ...page.items]);
-      if (page.next === null) setEndReached(true);
-      loadingRef.current = false;
-      setLoading(false);
-      enrichVisible?.(page.items);
-    });
+    fetchFlatPage(cursor, PAGE_SIZE, filters.sort, filters.lane, order, filter, hiddenArg)
+      .then((page) => {
+        cursorRef.current = page.next;
+        setItems((prev) => [...prev, ...page.items]);
+        if (page.next === null) setEndReached(true);
+        enrichVisible?.(page.items);
+      })
+      .catch(() => setLoadError(true))
+      .finally(() => {
+        loadingRef.current = false;
+        setLoading(false);
+      });
   };
 
   const shown = results ?? items;
-  const sentinelRef = useLoadMore(loadMore, results === null && !endReached && items.length > 0);
+  const sentinelRef = useLoadMore(loadMore, results === null && !endReached && items.length > 0 && !loadError, items.length);
 
   const catalogEmpty = catalogSlice.itemCount === 0 && catalogSlice.status !== 'loading';
   const selectClass =
     'h-10 rounded-xl border border-ink-600 bg-ink-800 px-3 text-xs text-fg outline-none';
   const decade = decadeValue(filters.minYear, filters.maxYear);
+  const extraFilters = (decade !== 'all' ? 1 : 0) + (filters.minRating !== null ? 1 : 0);
   const showSecondaryRow = filters.genreIds.length > 1 || active;
   const pill = (on: boolean): string =>
     `shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition-colors ${
@@ -279,16 +298,35 @@ export function MediaBrowser<T extends BrowserItem>({
 
       {/* Recherche + tri + année + note */}
       <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="flex-1">
+        <div className="relative flex-1">
           <Input
+            ref={searchRef}
+            type="search"
+            enterKeyHint="search"
+            className="pr-12"
             placeholder={`Rechercher des ${itemNoun}…`}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur();
+            }}
             autoCapitalize="none"
             autoCorrect="off"
             spellCheck={false}
-            inputMode="search"
           />
+          {query !== '' && (
+            <button
+              type="button"
+              aria-label="Effacer la recherche"
+              onClick={() => {
+                setQuery('');
+                searchRef.current?.focus();
+              }}
+              className="absolute right-1 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full text-fg-faint hover:text-fg"
+            >
+              <IconX className="h-4 w-4" />
+            </button>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <select
@@ -298,9 +336,25 @@ export function MediaBrowser<T extends BrowserItem>({
             className={selectClass}
           >
             {SORT_OPTIONS.map((o) => (
-              <option key={o.id} value={o.id}>{o.label}</option>
+              <option key={o.id} value={o.id}>Tri : {o.label}</option>
             ))}
           </select>
+          <button
+            type="button"
+            aria-expanded={filtersOpen}
+            onClick={() => setFiltersOpen((o) => !o)}
+            className={cn(
+              'h-10 rounded-xl border px-3 text-xs font-medium transition-colors',
+              extraFilters > 0 ? 'border-accent/60 bg-accent/15 text-fg' : 'border-ink-600 bg-ink-800 text-fg-muted',
+            )}
+          >
+            Filtres{extraFilters > 0 ? ` (${extraFilters})` : ''}
+          </button>
+        </div>
+      </div>
+
+      {filtersOpen && (
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl bg-ink-900/60 p-2">
           <select
             aria-label="Filtrer par année"
             value={decade}
@@ -328,7 +382,7 @@ export function MediaBrowser<T extends BrowserItem>({
             ))}
           </select>
         </div>
-      </div>
+      )}
 
       {/* Pills de langue (Tout / VF / VOSTFR / VO) */}
       <div className="mt-3 flex items-center gap-2" role="group" aria-label="Langue">
@@ -345,6 +399,7 @@ export function MediaBrowser<T extends BrowserItem>({
           </button>
         ))}
       </div>
+      <p className="mt-1.5 px-1 text-[11px] text-fg-faint">{LANES.find((l) => l.id === filters.lane)?.hint}</p>
 
       {/* Bascule genres ET/OU + réinitialiser (visibles au besoin) */}
       {showSecondaryRow && (
@@ -355,15 +410,15 @@ export function MediaBrowser<T extends BrowserItem>({
               aria-pressed={filters.genreMatch === 'all'}
               className={pill(filters.genreMatch === 'all')}
             >
-              {filters.genreMatch === 'all' ? 'Tous les genres (ET)' : 'Au moins un genre (OU)'}
+              {filters.genreMatch === 'all' ? 'Tous ces genres à la fois' : 'Au moins un de ces genres'}
             </button>
           )}
           {active && (
             <button
               onClick={() => resetFilters(section)}
-              className="rounded-full px-3 py-2 text-[13px] font-medium text-fg-faint underline-offset-2 hover:text-fg hover:underline"
+              className="rounded-full px-3 py-3 text-[13px] font-medium text-fg-faint underline-offset-2 hover:text-fg hover:underline"
             >
-              Réinitialiser
+              Tout réinitialiser
             </button>
           )}
         </div>
@@ -413,6 +468,18 @@ export function MediaBrowser<T extends BrowserItem>({
             hint="Lance une synchronisation depuis les réglages pour charger le catalogue."
           />
         </div>
+      ) : loadError && items.length === 0 ? (
+        <div className="mt-6">
+          <EmptyState
+            title="Impossible d'afficher le catalogue"
+            hint="Le stockage local n'a pas répondu."
+            action={
+              <Button variant="secondary" onClick={() => setReloadKey((k) => k + 1)}>
+                Réessayer
+              </Button>
+            }
+          />
+        </div>
       ) : (
         <>
           <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
@@ -426,7 +493,6 @@ export function MediaBrowser<T extends BrowserItem>({
                 quality={mediaBadges(item.name, null).find((b) => b.tone === 'quality')?.label ?? null}
                 rating={item.ratingSort > 0 ? item.ratingSort : null}
                 tag={variantBadge(item.variant, item.variantSource)}
-                favorite={{ type: favoriteType, itemId: item.id }}
               />
             ))}
             {(loading || searching || regrouping) &&

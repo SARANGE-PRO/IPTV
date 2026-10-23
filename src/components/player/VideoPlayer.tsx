@@ -26,6 +26,7 @@ import {
   type StreamKind,
 } from '@/services/player/playbackRecoveryPolicy';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
+import type { PlayerErrorAction } from '@/types/nowPlaying';
 import type { PlaybackErrorCode, PlaybackFailure } from '@/types/playbackDiagnostics';
 import type { MkvDirectEngine } from '@/services/player/mkvDirectEngine';
 import type { MkvDirectErrorCode } from '@/types/mkvDirect';
@@ -102,6 +103,8 @@ export interface VideoPlayerProps {
   onVideoElement?: (video: HTMLVideoElement | null) => void;
   /** Vignette (mini-lecteur) : ni commandes natives, ni panneau d'erreur. */
   compact?: boolean;
+  /** Alternatives de la page (chaine suivante, VLC…) sur l'ecran d'echec. */
+  getErrorActions?: () => PlayerErrorAction[];
 }
 
 /**
@@ -158,6 +161,14 @@ function unsupportedContainer(rawSrc: string): string | null {
   return ext !== undefined && UNSUPPORTED_CONTAINER.test(ext) ? ext.toUpperCase() : null;
 }
 
+/** Echecs qu'un nouvel essai ne changera pas : pas de bouton « Reessayer ». */
+const NOT_RETRYABLE: ReadonlySet<PlaybackErrorCode> = new Set<PlaybackErrorCode>([
+  'invalid_url',
+  'unsupported_container',
+  'hls_unsupported',
+  'mkv_direct_unsupported',
+]);
+
 /** Messages d'echec DEFINITIF (apres les relances automatiques). */
 const MESSAGES = {
   timeout: {
@@ -197,6 +208,7 @@ export function VideoPlayer({
   videoClassName,
   onVideoElement,
   compact = false,
+  getErrorActions,
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -939,9 +951,18 @@ export function VideoPlayer({
         {phase === 'error' && !compact && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-y-auto bg-black/85 px-6 py-6 text-center">
             <p className="text-sm leading-relaxed text-fg">{failure?.message}</p>
-            <Button size="sm" variant="secondary" onClick={() => setAttempt((a) => a + 1)}>
-              Réessayer
-            </Button>
+            <div className="flex flex-wrap justify-center gap-2">
+              {(failure === null || !NOT_RETRYABLE.has(failure.code)) && (
+                <Button size="sm" variant="secondary" onClick={() => setAttempt((a) => a + 1)}>
+                  Réessayer
+                </Button>
+              )}
+              {(getErrorActions?.() ?? []).map((action) => (
+                <Button key={action.label} size="sm" variant="secondary" onClick={action.onSelect}>
+                  {action.label}
+                </Button>
+              ))}
+            </div>
             {failure !== null && (
               <PlaybackErrorInfo
                 failure={failure}

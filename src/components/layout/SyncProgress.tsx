@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import { cn } from '@/lib/cn';
 import { useCatalogStore, type SyncSectionState } from '@/stores/catalogStore';
 import type { Section } from '@/types/models';
@@ -42,15 +43,41 @@ export function SyncProgress() {
   const progress = useCatalogStore((s) => s.syncProgress);
   const counts = useCatalogStore((s) => s.syncCounts);
 
+  // Repliable : la 1re synchro est longue, le panneau ne doit pas masquer l'app.
+  const [collapsed, setCollapsed] = useState(false);
+
   if (!syncing) return null;
   const settled = ORDER.filter((s) => progress[s] !== 'pending' && progress[s] !== 'loading').length;
+  const percent = Math.round((settled / ORDER.length) * 100);
+
+  if (collapsed) {
+    return (
+      <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom)+var(--zib-mini-offset,0px))] z-50 flex justify-center px-4 md:bottom-[calc(1rem+var(--zib-mini-offset,0px))] md:pl-60">
+        <button
+          type="button"
+          onClick={() => setCollapsed(false)}
+          className="flex h-11 items-center gap-2 rounded-full border border-ink-700 bg-ink-900/95 px-4 text-xs font-medium text-fg shadow-xl backdrop-blur"
+        >
+          <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-ink-500 border-t-accent" />
+          Synchronisation · {percent} %
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom)+var(--zib-mini-offset,0px))] z-50 px-4 md:bottom-[calc(1rem+var(--zib-mini-offset,0px))] md:pl-60">
       <div className="mx-auto max-w-md rounded-2xl border border-ink-700 bg-ink-900/95 p-4 shadow-xl backdrop-blur">
         <div className="flex items-center gap-2.5">
           <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-ink-500 border-t-accent" />
-          <p className="text-sm font-medium text-fg">Synchronisation du catalogue…</p>
+          <p className="flex-1 text-sm font-medium text-fg">Synchronisation du catalogue…</p>
+          <button
+            type="button"
+            onClick={() => setCollapsed(true)}
+            className="-my-2 -mr-2 px-3 py-3 text-xs font-medium text-fg-muted hover:text-fg"
+          >
+            Réduire
+          </button>
         </div>
         <p className="mt-1 text-[11px] leading-relaxed text-fg-faint">
           La première synchronisation peut être longue (gros catalogue). Tu peux continuer à naviguer.
