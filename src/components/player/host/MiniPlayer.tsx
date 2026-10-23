@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } f
 import { IconPauseFilled, IconPlayFilled } from '@/components/player/playerIcons';
 import { IconX } from '@/components/ui/icons';
 import { cn } from '@/lib/cn';
+import { pauseByUser } from '@/services/player/playbackIntent';
 import type { NowPlayingMedia } from '@/types/nowPlaying';
 import './miniPlayer.css';
 
@@ -158,7 +159,7 @@ export function MiniPlayer({
   const togglePlay = () => {
     if (video === null) return;
     if (video.paused) void video.play().catch(() => {});
-    else video.pause();
+    else pauseByUser(video);
   };
 
   const dragging = offset.x !== 0 || offset.y !== 0;

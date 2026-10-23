@@ -63,7 +63,7 @@ Gestionnaire de paquets : **npm**.
    État dans `stores/playerStore`. La MÊME `<video>` enchaîne les flux (pas de
    `key` par session : iOS n'autorise le son qu'après un geste sur l'élément).
    Échecs transitoires relancés par le lecteur selon
-   `services/player/playbackRecoveryPolicy.ts` (gel, coupure du direct,
+   `services/player/playbackRecoveryPolicy.ts` (gel, coupure du direct, pause subie tampon vide,
    hors-ligne, autoplay refusé) ; `onError` = échec DÉFINITIF seulement.
    VLC : dernier recours, affiché uniquement si activé dans les Réglages.
 

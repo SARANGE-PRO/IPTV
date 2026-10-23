@@ -28,3 +28,21 @@ export function isSeekable(video: HTMLVideoElement): boolean {
     return false;
   }
 }
+
+/**
+ * Secondes deja chargees devant la position de lecture (0 si la position est
+ * hors de toute plage tamponnee). Sert a distinguer une pause SUBIE (tampon
+ * vide) d'une pause voulue.
+ */
+export function bufferedAhead(video: HTMLVideoElement): number {
+  try {
+    const t = video.currentTime;
+    const ranges = video.buffered;
+    for (let i = 0; i < ranges.length; i += 1) {
+      if (ranges.start(i) <= t + 0.1 && t < ranges.end(i)) return ranges.end(i) - t;
+    }
+  } catch {
+    // plages illisibles (source retiree) : rien devant
+  }
+  return 0;
+}

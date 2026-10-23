@@ -84,6 +84,52 @@ export function stallTimeout(kind: StreamKind, seeking: boolean): number {
   return seeking ? 45_000 : 25_000;
 }
 
+// --- Pause SUBIE (reseau faible) ---------------------------------------------
+//
+// Safari iOS (HLS natif) met la <video> en PAUSE quand le tampon se vide, au
+// lieu d'attendre les donnees : sans reprise, l'utilisateur doit taper
+// lecture alors que le flux est deja revenu.
+
+/** HTMLMediaElement.readyState */
+const HAVE_FUTURE_DATA = 3;
+const HAVE_ENOUGH_DATA = 4;
+
+/** En dessous (s de tampon devant la position), le lecteur est a sec. */
+const STARVED_BUFFER_S = 0.5;
+
+/** Tampon (s) a reconstituer avant de relancer seul la lecture. */
+const RESUME_BUFFER_S: Record<StreamKind, number> = { live: 2, vod: 4 };
+
+/** Sans tampon suffisant, on retente quand meme `play()` a ce rythme (un
+ *  lecteur en pause ne charge pas toujours la suite). */
+export const AUTO_RESUME_POKE_MS = 3000;
+
+export interface PauseSnapshot {
+  /** Secondes deja chargees devant la position. */
+  bufferAhead: number;
+  readyState: number;
+  /** Un `waiting` (manque de donnees) est en cours, non resolu par `playing`. */
+  starving: boolean;
+}
+
+/** La pause survient-elle alors que le lecteur manquait de donnees ? */
+export function isStarvedPause(s: PauseSnapshot): boolean {
+  return s.starving || s.readyState < HAVE_FUTURE_DATA || s.bufferAhead < STARVED_BUFFER_S;
+}
+
+/** Assez de donnees pour relancer une lecture mise en pause par le systeme. */
+export function canAutoResume(kind: StreamKind, bufferAhead: number, readyState: number): boolean {
+  return readyState >= HAVE_ENOUGH_DATA || bufferAhead >= RESUME_BUFFER_S[kind];
+}
+
+/**
+ * Duree max d'une pause subie avant de traiter le flux comme gele (rechargement
+ * : le direct est rejoint, la VOD reprend a sa position).
+ */
+export function autoResumeTimeout(kind: StreamKind): number {
+  return kind === 'live' ? 15_000 : 30_000;
+}
+
 /**
  * Position a laquelle reprendre une VOD rechargee : la derniere position
  * connue si elle depasse sensiblement le point de depart, sinon le depart.

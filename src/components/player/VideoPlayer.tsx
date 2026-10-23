@@ -6,9 +6,14 @@ import { PlaybackErrorInfo } from '@/components/player/PlaybackErrorInfo';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/cn';
 import { nativeDurationSeconds } from '@/services/player/mediaDurationService';
-import { isSeekable } from '@/services/player/playbackCapabilityService';
+import { bufferedAhead, isSeekable } from '@/services/player/playbackCapabilityService';
+import { wasPausedByUser } from '@/services/player/playbackIntent';
 import {
+  AUTO_RESUME_POKE_MS,
+  autoResumeTimeout,
+  canAutoResume,
   HEALTHY_RESET_MS,
+  isStarvedPause,
   LIVE_REJOIN_AFTER_MS,
   recoveryBudget,
   resumePosition,
@@ -103,10 +108,11 @@ export interface VideoPlayerProps {
  * loading      : premier demarrage du flux (spinner).
  * ready        : lecture ou pause — rien par-dessus la video (lecteur natif).
  * reconnecting : relance automatique en cours (spinner + mention).
+ * buffering    : pause imposee par le systeme (tampon vide) — reprise seule.
  * offline      : reseau coupe — la lecture reprendra seule a son retour.
  * error        : echec definitif (Reessayer / diagnostic).
  */
-type PlayerPhase = 'loading' | 'ready' | 'reconnecting' | 'offline' | 'error';
+type PlayerPhase = 'loading' | 'ready' | 'reconnecting' | 'buffering' | 'offline' | 'error';
 
 /** Safari (iOS surtout) n'expose PAS `pictureInPictureEnabled` : il utilise
  * l'API webkit `webkitSetPresentationMode` (hors typings standard). */
@@ -262,6 +268,13 @@ export function VideoPlayer({
     let healthySince = Date.now();
     /** Direct mis en pause (ou suspendu en arriere-plan) depuis... */
     let pausedAt: number | null = null;
+    /** Manque de donnees signale (`waiting`) et pas encore resolu (`playing`). */
+    let starving = false;
+    /** En pause SUBIE (tampon vide) : le lecteur relancera seul. */
+    let autoPaused = false;
+    /** Debut de l'incident de pauses subies (survit aux relances de `play()`). */
+    let autoPausedAt: number | null = null;
+    let lastPokeAt = 0;
     /** Generation de chargement : un attachement async perime s'abandonne. */
     let generation = 0;
     let progressSink = onProgressRef.current;
@@ -530,6 +543,9 @@ export function VideoPlayer({
       resumed = false;
       awaitingGesture = false;
       pausedAt = null;
+      starving = false;
+      autoPaused = false;
+      autoPausedAt = null;
       lastTime = -1;
       lastProgressAt = Date.now();
       detachSource();
@@ -590,6 +606,9 @@ export function VideoPlayer({
       clearStartupTimer();
       awaitingGesture = false;
       started = true;
+      starving = false;
+      autoPaused = false;
+      autoPausedAt = null;
       healthySince = Date.now();
       lastProgressAt = healthySince;
       lastTime = video.currentTime;
@@ -623,10 +642,29 @@ export function VideoPlayer({
         return;
       }
       pausedAt = null;
+      autoPaused = false;
+    };
+    const handleWaiting = () => {
+      if (started) starving = true;
     };
     const handlePause = () => {
       sendProgress(true);
-      if (kind === 'live' && started && pausedAt === null) pausedAt = Date.now();
+      if (cancelled || failed || !started || video.ended || video.seeking) return;
+      // Pause SUBIE : Safari iOS suspend la lecture quand le tampon se vide sur
+      // un reseau faible. Ce n'est pas l'utilisateur -> on relancera seul.
+      const starved =
+        document.visibilityState === 'visible' &&
+        !wasPausedByUser(video) &&
+        isStarvedPause({ bufferAhead: bufferedAhead(video), readyState: video.readyState, starving });
+      if (starved) {
+        autoPaused = true;
+        if (autoPausedAt === null) autoPausedAt = Date.now();
+        lastPokeAt = Date.now();
+        setPhase((p) => (p === 'ready' ? 'buffering' : p));
+        return;
+      }
+      autoPausedAt = null;
+      if (kind === 'live' && pausedAt === null) pausedAt = Date.now();
     };
     const handleEnded = () => {
       // Un direct ne « finit » pas : le serveur a coupe -> on rouvre.
@@ -655,14 +693,50 @@ export function VideoPlayer({
     video.addEventListener('timeupdate', handleTimeUpdate);
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
+    video.addEventListener('waiting', handleWaiting);
     video.addEventListener('ended', handleEnded);
     video.addEventListener('error', handleError);
 
     // --- Chien de garde anti-gel -------------------------------------------
 
+    /** Pause subie : relance des que le tampon s'est reconstitue, sinon rechargement. */
+    const tickAutoResume = (now: number) => {
+      lastProgressAt = now;
+      if (!video.paused) {
+        autoPaused = false;
+        return;
+      }
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
+      if (offline || now - (autoPausedAt ?? now) >= autoResumeTimeout(kind)) {
+        autoPaused = false;
+        autoPausedAt = null;
+        // Rechargeable : le direct est rejoint, la VOD reprend a sa position ;
+        // sinon on rend la main (bouton lecture natif), comme avant.
+        if (autoRecover && !(kind === 'vod' && !isSeekable(video))) {
+          recover('stall', { code: 'stream_stalled', message: MESSAGES.stalled[kind] });
+        } else {
+          setPhase((p) => (p === 'buffering' ? 'ready' : p));
+        }
+        return;
+      }
+      if (!canAutoResume(kind, bufferedAhead(video), video.readyState) && now - lastPokeAt < AUTO_RESUME_POKE_MS) return;
+      lastPokeAt = now;
+      void video.play().catch((err: unknown) => {
+        // Lecture sans geste refusee : on rend la main au bouton natif.
+        if (cancelled || (err as { name?: string } | null)?.name !== 'NotAllowedError') return;
+        autoPaused = false;
+        autoPausedAt = null;
+        setPhase((p) => (p === 'buffering' ? 'ready' : p));
+      });
+    };
+
     const watchdog = setInterval(() => {
       const now = Date.now();
       const hiddenWithoutPip = document.visibilityState === 'hidden' && !isInPip(video);
+      if (autoPaused && !cancelled && !failed && !recoveryPending && !waitingForNetwork && !hiddenWithoutPip) {
+        tickAutoResume(now);
+        return;
+      }
       if (
         cancelled ||
         failed ||
@@ -734,6 +808,14 @@ export function VideoPlayer({
         // iOS suspend la video de la PWA en arriere-plan (sans PiP) : on date
         // la « pause » pour rejoindre le direct a la reprise.
         if (kind === 'live' && started && !video.paused && pausedAt === null) pausedAt = Date.now();
+        // Pause subie en cours : on n'insiste pas en arriere-plan ; elle devient
+        // une pause ordinaire (le direct sera rejoint a la reprise si besoin).
+        if (autoPaused) {
+          autoPaused = false;
+          if (kind === 'live' && pausedAt === null) pausedAt = autoPausedAt ?? Date.now();
+          autoPausedAt = null;
+          setPhase((p) => (p === 'buffering' ? 'ready' : p));
+        }
         return;
       }
       // Retour au premier plan : le JS etait gele, pas de faux gel.
@@ -760,6 +842,7 @@ export function VideoPlayer({
       video.removeEventListener('timeupdate', handleTimeUpdate);
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
+      video.removeEventListener('waiting', handleWaiting);
       video.removeEventListener('ended', handleEnded);
       video.removeEventListener('error', handleError);
       window.removeEventListener('online', handleOnline);
@@ -804,7 +887,7 @@ export function VideoPlayer({
     };
   }, []);
 
-  const busy = phase === 'loading' || phase === 'reconnecting';
+  const busy = phase === 'loading' || phase === 'reconnecting' || phase === 'buffering';
 
   return (
     <div className={rootClassName}>
@@ -828,6 +911,9 @@ export function VideoPlayer({
             />
             {phase === 'reconnecting' && !compact && (
               <span className="text-xs font-medium text-fg-muted">Reconnexion…</span>
+            )}
+            {phase === 'buffering' && !compact && (
+              <span className="text-xs font-medium text-fg-muted">Connexion lente, reprise automatique…</span>
             )}
           </div>
         )}
