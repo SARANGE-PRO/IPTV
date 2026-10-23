@@ -29,12 +29,3 @@ export type {
   SyncStatus,
   SearchIndexEntry,
 } from './models';
-
-export type {
-  SectionStats,
-  CategoryStat,
-  BlacklistReason,
-  BlacklistSuggestion,
-  TitleCleaningSample,
-  DiagnosticReport,
-} from './diagnostics';

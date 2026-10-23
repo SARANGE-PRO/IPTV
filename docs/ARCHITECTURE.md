@@ -34,12 +34,11 @@ src/
 │   ├── session/               # secureSessionService
 │   ├── sync/                  # catalogSyncService (fetch -> Dexie)
 │   ├── cache/                 # invalidation
-│   └── diagnostics/           # catalogDiagnosticService, anonymizeReport,
-│                              # blacklistSuggestions   ← mode diagnostic
+│   └── diagnostics/           # deepPlaylistDiagnosticService ← mode diagnostic
 ├── db/                        # Dexie : database.ts + repositories/
 ├── hooks/                     # useDebounce, useMediaQuery, useVirtualList…
 ├── lib/                       # cn(), registerServiceWorker…
-├── types/                     # models, xtream, tmdb, diagnostics
+├── types/                     # models, xtream, tmdb, deepDiagnostics
 ├── utils/                     # titleCleaner, frenchDetection, countryDetection,
 │                              # redaction, sensitiveDataGuards
 └── config/                    # constants, env
@@ -268,17 +267,18 @@ abstrait la détection de format et gère flux mort / timeout / format non suppo
 Analyse le catalogue Xtream **sans jamais exposer les accès**.
 
 **`services/diagnostics/`**
-- `catalogDiagnosticService.ts` — stats Live/VOD/Séries, détection catégories FR
-  vs étrangères, échantillons de nettoyage de titres pour TMDB.
-- `blacklistSuggestions.ts` — suggestions de blacklist initiale (réactivables).
-- `anonymizeReport.ts` — produit un `DiagnosticReport` JSON exportable.
+- `deepPlaylistDiagnosticService.ts` — rapport unique (Live FR, langues films/
+  séries, formats de lecture, EPG), exporté depuis Réglages › Avancé.
+  Les diagnostics rapide / avancé / pistes (ffprobe) et le listing FR ont été
+  retirés (oct. 2026) : outils de mise au point devenus inutiles.
 
 **`utils/`** — `redaction.ts`, `sensitiveDataGuards.ts` (vérifie l'absence de
 données sensibles avant export), `countryDetection.ts`.
 
 **Garanties** : rapport **généré à la demande, jamais persisté**. Ne contient
 JAMAIS username, password, URL complète, liens `.m3u8`/`.ts`/`.mp4`, ni tokens.
-Types : `src/types/diagnostics.ts`.
+Types : `src/types/deepDiagnostics.ts`. Export : `redactText` puis
+`assertReportSafe` (bloque l'export si une donnée sensible subsiste).
 
 ---
 
