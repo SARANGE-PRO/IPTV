@@ -84,6 +84,7 @@ describe('API PiP (Safari iOS)', () => {
       webkitPresentationMode: string;
     };
     video.webkitPresentationMode = 'inline';
+    Object.defineProperty(video, 'readyState', { value: 4 }); // video demarree
     video.webkitSupportsPresentationMode = (mode) => mode === 'picture-in-picture';
     video.webkitSetPresentationMode = (mode) => {
       video.webkitPresentationMode = mode;
@@ -98,12 +99,27 @@ describe('API PiP (Safari iOS)', () => {
     const changes: boolean[] = [];
     const stop = pip.onPipChange(video, (inPip) => changes.push(inPip));
     expect(pip.pipSupported(video)).toBe(true);
-    pip.togglePip(video);
-    expect(pip.isInPip(video)).toBe(true);
-    pip.togglePip(video);
+    vi.useFakeTimers();
+    const opening = pip.togglePip(video);
+    expect(pip.isInPip(video)).toBe(true); // ouvert DANS l'appel (geste iOS)
+    vi.advanceTimersByTime(1000);
+    await expect(opening).resolves.toBeNull();
+    await pip.togglePip(video);
     expect(pip.isInPip(video)).toBe(false);
     expect(changes).toEqual([true, false]);
+    vi.useRealTimers();
     stop();
+  });
+
+  it('refus silencieux d’iOS : un motif est rendu au lieu de rien', async () => {
+    const pip = await import('@/services/player/pictureInPicture');
+    const video = webkitVideo();
+    video.webkitSetPresentationMode = () => undefined; // iOS ignore la demande
+    vi.useFakeTimers();
+    const opening = pip.enterPip(video);
+    vi.advanceTimersByTime(1000);
+    await expect(opening).resolves.toMatch(/iOS/);
+    vi.useRealTimers();
   });
 
   it('navigateur sans PiP : bouton masque', async () => {

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { IconPip } from '@/components/ui/actionIcons';
 import { cn } from '@/lib/cn';
 import { isInPip, onPipChange, pipSupported, togglePip } from '@/services/player/pictureInPicture';
+import { useFavoritesUiStore } from '@/stores/favoritesUiStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 
 /**
@@ -39,7 +40,14 @@ export function PipButton({ video, className }: { video: HTMLVideoElement | null
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        togglePip(video);
+        // Appel synchrone dans le tap ; si iOS refuse, on dit pourquoi.
+        void togglePip(video).then((failure) => {
+          if (failure === null) return;
+          useFavoritesUiStore.getState().showToast({
+            kind: 'info',
+            message: `Image dans l’image refusée — ${failure}`,
+          });
+        });
       }}
       className={cn(
         'relative hit-44 grid h-11 w-11 shrink-0 place-items-center rounded-full bg-black/50 backdrop-blur transition-colors',

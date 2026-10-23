@@ -65,15 +65,15 @@ export function Switch({
       aria-label={label}
       onClick={() => onChange(!checked)}
       className={cn(
-        'relative h-7 w-12 shrink-0 rounded-full transition-colors',
+        'relative h-7 w-12 shrink-0 rounded-full p-0 transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60',
         checked ? 'bg-accent' : 'bg-ink-600',
       )}
     >
       <span
         className={cn(
-          'absolute top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform',
-          checked ? 'translate-x-[1.375rem]' : 'translate-x-0.5',
+          'absolute left-0.5 top-0.5 h-6 w-6 rounded-full bg-white shadow transition-transform',
+          checked ? 'translate-x-5' : 'translate-x-0',
         )}
       />
     </button>

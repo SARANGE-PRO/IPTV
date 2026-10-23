@@ -33,17 +33,39 @@ export function isInPip(video: HTMLVideoElement): boolean {
   return typeof document !== 'undefined' && document.pictureInPictureElement === video;
 }
 
-/** A appeler DANS le gestionnaire du tap (geste utilisateur exige par iOS). */
-export function enterPip(video: HTMLVideoElement): void {
+/** Delai apres lequel un PiP qui ne s'est pas ouvert est considere refuse. */
+const PIP_CHECK_MS = 900;
+
+function errorText(err: unknown): string {
+  if (err instanceof Error) return err.name !== 'Error' ? `${err.name} : ${err.message}` : err.message;
+  return String(err);
+}
+
+/**
+ * Ouvre le PiP. A appeler DANS le gestionnaire du tap (geste exige par iOS),
+ * de facon synchrone : API WebKit (voie native de l'iPhone) si elle existe,
+ * sinon API standard (qui, elle, donne un motif de refus). Resout `null` si
+ * le PiP s'est ouvert, sinon le motif — iOS refuse souvent sans message.
+ */
+export function enterPip(video: HTMLVideoElement): Promise<string | null> {
+  if (video.readyState < 1) return Promise.resolve('la vidéo n’a pas encore démarré');
+  let failure: string | null = null;
   try {
     if (webkitPip(video)) {
       (video as WebkitVideo).webkitSetPresentationMode?.('picture-in-picture');
-      return;
+    } else if (typeof document !== 'undefined' && document.pictureInPictureEnabled === true) {
+      video.requestPictureInPicture().catch((err: unknown) => {
+        failure = errorText(err);
+      });
+    } else {
+      return Promise.resolve('image dans l’image non disponible ici');
     }
-    void video.requestPictureInPicture?.().catch(() => undefined);
-  } catch {
-    // PiP refuse par le navigateur : la video reste dans la page.
+  } catch (err) {
+    failure = errorText(err);
   }
+  return new Promise((resolve) => {
+    setTimeout(() => resolve(isInPip(video) ? null : (failure ?? 'iOS n’a pas ouvert la fenêtre')), PIP_CHECK_MS);
+  });
 }
 
 /** Ferme le PiP de cette video (sans effet s'il n'est pas ouvert). */
@@ -62,9 +84,13 @@ export function exitPip(video: HTMLVideoElement): void {
   }
 }
 
-export function togglePip(video: HTMLVideoElement): void {
-  if (isInPip(video)) exitPip(video);
-  else enterPip(video);
+/** Ouvre ou ferme ; resout le motif d'echec d'une ouverture (null = OK). */
+export function togglePip(video: HTMLVideoElement): Promise<string | null> {
+  if (isInPip(video)) {
+    exitPip(video);
+    return Promise.resolve(null);
+  }
+  return enterPip(video);
 }
 
 /** Suit l'entree / la sortie de PiP de la video ; retourne le nettoyage. */
