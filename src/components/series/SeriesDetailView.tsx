@@ -10,6 +10,7 @@ import { LanguageVariantSwitcher } from '@/components/media/LanguageVariantSwitc
 import { TitleRail } from '@/components/media/TitleRail';
 import { TrailerButton } from '@/components/media/TrailerButton';
 import { PosterImage } from '@/components/shared/PosterImage';
+import { CastButton } from '@/components/player/CastButton';
 import { ExternalPlayer, launchVlc } from '@/components/player/ExternalPlayer';
 import { DirectMkvProbe } from '@/components/player/DirectMkvProbe';
 import { PlayerSlot } from '@/components/player/host/PlayerSlot';
@@ -265,6 +266,9 @@ export function SeriesDetailView({
 
   const seasonWatched = episodes.length > 0 && episodes.every((ep) => epProgress.get(ep.id)?.finished === 1);
 
+  // Diffuser sur la TV : l'episode en cours, sinon celui que « Reprendre » lancerait.
+  const castEpisode = playingEp ?? primary?.episode ?? null;
+
   const src =
     playingEp !== null && credentials !== null
       ? buildSeriesEpisodeUrl(credentials, playingEp.id, playingEp.containerExtension)
@@ -315,6 +319,18 @@ export function SeriesDetailView({
           <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg drop-shadow">
             {series != null ? displayTitle(series.name) : ''}
           </h1>
+          <CastButton
+            streamUrl={
+              castEpisode !== null && credentials !== null
+                ? buildSeriesEpisodeUrl(credentials, castEpisode.id, castEpisode.containerExtension)
+                : null
+            }
+            title={
+              castEpisode !== null
+                ? `${series != null ? displayTitle(series.name) : ''} · S${castEpisode.seasonNumber}E${castEpisode.episodeNumber}`
+                : ''
+            }
+          />
           <ArrangeButton type="series" itemId={seriesId} title={series != null ? displayTitle(series.name) : ''} />
           <FavoriteButton type="series" itemId={seriesId} title={series != null ? displayTitle(series.name) : ''} />
         </div>

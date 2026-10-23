@@ -10,6 +10,7 @@ import { TitleRail } from '@/components/media/TitleRail';
 import { TrailerButton } from '@/components/media/TrailerButton';
 import { ClampedText } from '@/components/shared/ClampedText';
 import { PosterImage } from '@/components/shared/PosterImage';
+import { CastButton } from '@/components/player/CastButton';
 import { ExternalPlayer, launchVlc } from '@/components/player/ExternalPlayer';
 import { DirectMkvProbe } from '@/components/player/DirectMkvProbe';
 import { PlayerSlot } from '@/components/player/host/PlayerSlot';
@@ -280,6 +281,7 @@ export function MovieDetailView({
           <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg drop-shadow">
             {movie != null ? displayTitle(movie.name) : ''}
           </h1>
+          <CastButton streamUrl={src} title={movie != null ? displayTitle(movie.name) : ''} />
           <ArrangeButton type="vod" itemId={vodId} title={movie != null ? displayTitle(movie.name) : ''} />
           <FavoriteButton type="vod" itemId={vodId} title={movie != null ? displayTitle(movie.name) : ''} />
         </div>

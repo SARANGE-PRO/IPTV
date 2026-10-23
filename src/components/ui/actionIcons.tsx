@@ -74,3 +74,13 @@ export const IconChevronRight = ({ className }: IconProps) => (
     <path d="m9 6 6 6-6 6" />
   </Svg>
 );
+
+/** Diffuser sur la TV (Cast) : ecran, ondes en bas a gauche. */
+export const IconCast = ({ className }: IconProps) => (
+  <Svg className={className}>
+    <path d="M3 8V6.5A1.5 1.5 0 0 1 4.5 5h15A1.5 1.5 0 0 1 21 6.5v11a1.5 1.5 0 0 1-1.5 1.5H14" />
+    <path d="M3 12.2a6.8 6.8 0 0 1 6.8 6.8" />
+    <path d="M3 15.6a3.4 3.4 0 0 1 3.4 3.4" />
+    <circle cx="3.6" cy="18.4" r="0.6" fill="currentColor" />
+  </Svg>
+);

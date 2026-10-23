@@ -26,6 +26,8 @@ export function PlaybackPrefsCard() {
   const setPreferredLanguage = useUiSettingsStore((s) => s.setPreferredLanguage);
   const regrouping = useUiSettingsStore((s) => s.regrouping);
   const showVlcButton = useUiSettingsStore((s) => s.showVlcButton);
+  const showCastButton = useUiSettingsStore((s) => s.showCastButton);
+  const setShowCastButton = useUiSettingsStore((s) => s.setShowCastButton);
   const setShowVlcButton = useUiSettingsStore((s) => s.setShowVlcButton);
   const country = useFilterStore((s) => s.country);
   const setDefaultCountry = useFilterStore((s) => s.setDefaultCountry);
@@ -70,6 +72,9 @@ export function PlaybackPrefsCard() {
             onChange={(c) => void setDefaultCountry(c)}
             className="w-full"
           />
+        </SettingsRow>
+        <SettingsRow label="Bouton « Diffuser sur la TV »" hint="Ouvre la vidéo dans VLC, qui la diffuse sur ta TV (Android TV, Chromecast).">
+          <Switch checked={showCastButton} onChange={(v) => void setShowCastButton(v)} label="Bouton Diffuser sur la TV" />
         </SettingsRow>
         <SettingsRow label="Bouton « Lire dans VLC »" hint="Recours si un flux ne se lit pas dans l’app.">
           <Switch checked={showVlcButton} onChange={(v) => void setShowVlcButton(v)} label="Bouton Lire dans VLC" />

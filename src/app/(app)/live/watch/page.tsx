@@ -8,6 +8,7 @@ import { ArrangeButton } from '@/components/favorites/ArrangeButton';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { ChannelSidebar } from '@/components/live/ChannelSidebar';
 import { NowPlaying } from '@/components/live/NowPlaying';
+import { CastButton } from '@/components/player/CastButton';
 import { ExternalPlayer, launchVlc } from '@/components/player/ExternalPlayer';
 import { PlayerSlot } from '@/components/player/host/PlayerSlot';
 import { IconArrowLeft } from '@/components/ui/icons';
@@ -308,6 +309,8 @@ function LiveWatch() {
         <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg">
           {channelTitle}
         </h1>
+        {/* Diffuser sur la TV : VLC (.ts direct) caste vers Android TV / Chromecast. */}
+        <CastButton streamUrl={vlcSrc} title={channelTitle} />
         {streamId !== '' && <ArrangeButton type="live" itemId={ownerId} title={channelTitle} />}
         {streamId !== '' && <FavoriteButton type="live" itemId={ownerId} title={channelTitle} />}
       </div>

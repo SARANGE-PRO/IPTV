@@ -9,6 +9,10 @@ export type { PreferredLanguage };
 
 interface UiSettingsState {
   showVlcButton: boolean;
+  /** Bouton « Diffuser sur la TV » (ouvre VLC, qui caste) — visible par defaut. */
+  showCastButton: boolean;
+  /** Guide « comment caster depuis VLC » deja vu : le bouton ouvre VLC directement. */
+  castHintSeen: boolean;
   /** Langue/variante audio preferee (VF par defaut). Voir types/mediaLanguage. */
   preferredLanguage: PreferredLanguage;
   /** Vrai pendant le re-classement des versions apres changement de langue preferee. */
@@ -16,22 +20,30 @@ interface UiSettingsState {
   hydrated: boolean;
   hydrate: () => Promise<void>;
   setShowVlcButton: (value: boolean) => Promise<void>;
+  setShowCastButton: (value: boolean) => Promise<void>;
+  markCastHintSeen: () => Promise<void>;
   setPreferredLanguage: (value: PreferredLanguage) => Promise<void>;
 }
 
 export const useUiSettingsStore = create<UiSettingsState>()((set) => ({
   showVlcButton: false,
+  showCastButton: true,
+  castHintSeen: false,
   preferredLanguage: 'VF',
   regrouping: false,
   hydrated: false,
 
   hydrate: async () => {
-    const [vlc, lang] = await Promise.all([
+    const [vlc, lang, cast, castHint] = await Promise.all([
       settingsRepository.getSetting<boolean>('showVlcButton'),
       settingsRepository.getSetting<PreferredLanguage>('preferredLanguage'),
+      settingsRepository.getSetting<boolean>('showCastButton'),
+      settingsRepository.getSetting<boolean>('castHintSeen'),
     ]);
     set({
       showVlcButton: vlc === true,
+      showCastButton: cast !== false,
+      castHintSeen: castHint === true,
       preferredLanguage: lang ?? 'VF',
       hydrated: true,
     });
@@ -40,6 +52,16 @@ export const useUiSettingsStore = create<UiSettingsState>()((set) => ({
   setShowVlcButton: async (value) => {
     await settingsRepository.setSetting('showVlcButton', value);
     set({ showVlcButton: value });
+  },
+
+  setShowCastButton: async (value) => {
+    await settingsRepository.setSetting('showCastButton', value);
+    set({ showCastButton: value });
+  },
+
+  markCastHintSeen: async () => {
+    set({ castHintSeen: true });
+    await settingsRepository.setSetting('castHintSeen', true);
   },
 
   /**

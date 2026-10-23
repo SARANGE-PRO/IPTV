@@ -66,6 +66,10 @@ Gestionnaire de paquets : **npm**.
    `services/player/playbackRecoveryPolicy.ts` (gel, coupure du direct, pause subie tampon vide,
    hors-ligne, autoplay refusé) ; `onError` = échec DÉFINITIF seulement.
    VLC : dernier recours, affiché uniquement si activé dans les Réglages.
+   Exception : bouton **« Diffuser sur la TV »** (`components/player/CastButton`,
+   icône Cast dans l'en-tête du lecteur / des fiches, visible par défaut,
+   désactivable) — une PWA ne peut pas caster (kit Google Cast natif) : il
+   ouvre le flux dans VLC, qui caste vers Android TV / Chromecast.
 
 ## Football (refonte oct. 2026)
 - Matchs/scores : API publique ESPN (`src/server/football/espn.ts`, sans clé,
