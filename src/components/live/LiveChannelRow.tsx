@@ -28,6 +28,10 @@ export interface LiveRowData {
   id: string;
   name: string;
   logoUrl: string | null;
+  /** Logos de repli (autres versions de la chaine), essayes si `logoUrl` echoue. */
+  logoAlternates?: string[];
+  /** Chaine FR : autorise les logos de repli externes connus. */
+  isFrench?: boolean;
   lcn?: number | null;
   /** Pastilles discretes (« HD », « BE »…). */
   badges?: string[];
@@ -61,7 +65,11 @@ function LiveChannelRowImpl({ row, onPlay }: { row: LiveRowData; onPlay?: (id: s
           <span className="w-6 shrink-0 text-right font-mono text-[11px] tabular-nums text-fg-faint">
             {row.lcn ?? ''}
           </span>
-          <ChannelLogo channel={{ name: row.name, logoUrl: row.logoUrl }} className="h-11 w-11 shrink-0" />
+          <ChannelLogo
+            channel={{ name: row.name, logoUrl: row.logoUrl, isFrench: row.isFrench === true ? 1 : 0 }}
+            alternates={row.logoAlternates}
+            className="h-11 w-11 shrink-0"
+          />
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm text-fg">{row.name}</span>
             {(playingId !== null || (row.badges?.length ?? 0) > 0) && (
