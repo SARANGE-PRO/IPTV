@@ -7,7 +7,6 @@ import { BrandLogo } from '@/components/shared/BrandLogo';
 import { CommandPalette } from '@/components/shared/CommandPalette';
 import { SyncProgress } from '@/components/layout/SyncProgress';
 import {
-  IconBall,
   IconFilm,
   IconHeart,
   IconHome,
@@ -28,7 +27,6 @@ import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 const NAV = [
   { href: '/', label: 'Accueil', icon: IconHome },
   { href: '/live', label: 'Live', icon: IconTv },
-  { href: '/football', label: 'Foot', icon: IconBall },
   { href: '/movies', label: 'Films', icon: IconFilm },
   { href: '/series', label: 'Séries', icon: IconSeries },
   { href: '/favorites', label: 'Favoris', icon: IconHeart },

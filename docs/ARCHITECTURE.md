@@ -290,7 +290,8 @@ techniques justifiés.
                                └─ broadcasts.ts    chaîne exacte / multiplex / probable
 client : useFootballFeed (polling 30 s live / 2 min) → services/football/*
          (channelIndex : chaîne TV → chaîne du bouquet ; EPG Xtream en complément)
-UI : bandeau d'accueil (FootballHeader), page /football, fiche FootballMatchModal
+UI : bandeau d'accueil (FootballHeader, lien « Tous les matchs »), page /football
+     (hors navigation), fiche FootballMatchModal
 ```
 
 - **Fiabilité des chaînes** : `confirmed` = le guide TV FR montre CE match sur
