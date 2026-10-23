@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { HScroll } from '@/components/shared/HScroll';
 import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { IconClock } from '@/components/ui/actionIcons';
+import { useLineupLogos } from '@/hooks/useLineupLogos';
 import { useLineupNames } from '@/hooks/useLineupNames';
 import { cn } from '@/lib/cn';
 import { cleanChannelDisplay } from '@/services/live/channelNormalizer';
@@ -18,7 +19,9 @@ export function RecentChannelsStrip({ onPlay }: { onPlay?: (id: string) => void 
   const recents = usePlaybackStore((s) => s.recentChannels);
   const playingId = usePlayerStore((s) => (s.session?.media.kind === 'live' ? s.session.media.ownerId : null));
   const list = recents.slice(0, MAX_RECENTS);
-  const lineupNames = useLineupNames(list.map((e) => e.itemId));
+  const ids = list.map((e) => e.itemId);
+  const lineupNames = useLineupNames(ids);
+  const lineupLogos = useLineupLogos(ids);
   if (list.length === 0) return null;
 
   return (
@@ -33,6 +36,11 @@ export function RecentChannelsStrip({ onPlay }: { onPlay?: (id: string) => void 
           const raw = entry.label ?? 'Chaîne';
           const name = lineupNames.get(entry.itemId) ?? (cleanChannelDisplay(raw) || raw);
           const playing = entry.itemId === playingId;
+          // Logos de toutes les versions de la chaine, puis celui memorise.
+          const [logoUrl = null, ...alternates] = [
+            ...(lineupLogos.get(entry.itemId) ?? []),
+            ...(entry.posterUrl ? [entry.posterUrl] : []),
+          ];
           return (
             <Link
               key={entry.itemId}
@@ -46,7 +54,11 @@ export function RecentChannelsStrip({ onPlay }: { onPlay?: (id: string) => void 
                   playing ? 'ring-accent' : 'ring-transparent group-hover:ring-ink-500',
                 )}
               >
-                <ChannelLogo channel={{ name, logoUrl: entry.posterUrl ?? null }} className="h-16 w-full rounded-xl" />
+                <ChannelLogo
+                  channel={{ name, logoUrl, isFrench: lineupNames.has(entry.itemId) ? 1 : 0 }}
+                  alternates={alternates}
+                  className="h-16 w-full rounded-xl"
+                />
                 {playing && (
                   <span className="absolute bottom-1.5 right-1.5 h-2 w-2 animate-pulse rounded-full bg-accent ring-2 ring-ink-950" />
                 )}

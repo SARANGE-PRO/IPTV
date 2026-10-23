@@ -104,6 +104,8 @@ export default function FavoritesPage() {
         id: c.id,
         name: c.name,
         logoUrl: c.logoUrl,
+        logoAlternates: c.logoAlternates,
+        isFrench: c.isFrench === 1,
         lcn: c.lcn,
         badges: c.qualityLabel !== null ? [c.qualityLabel] : [],
         categoryId: c.categoryId,

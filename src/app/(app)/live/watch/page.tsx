@@ -11,6 +11,7 @@ import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { PlayerSlot } from '@/components/player/host/PlayerSlot';
 import { IconArrowLeft } from '@/components/ui/icons';
 import { useLandscapeFullscreen } from '@/hooks/useLandscapeFullscreen';
+import { useLineupLogos } from '@/hooks/useLineupLogos';
 import { useLineupNames } from '@/hooks/useLineupNames';
 import { useMediaSession } from '@/hooks/useMediaSession';
 import { cn } from '@/lib/cn';
@@ -204,12 +205,15 @@ function LiveWatch() {
   );
   const nameOf = (c: LiveChannel) => lineupNames.get(c.id) ?? displayChannelName(c.name);
   const channelTitle = channel != null ? nameOf(channel) : 'Chaîne';
+  // Visuel ecran verrouille / mini-lecteur : meilleur logo parmi les versions.
+  const lineupLogos = useLineupLogos(streamId !== '' ? [streamId] : []);
+  const artwork = lineupLogos.get(streamId)?.[0] ?? channel?.logoUrl ?? null;
   const nextId = neighbors.next?.id ?? null;
   const previousId = neighbors.previous?.id ?? null;
   // Ecran verrouille / Centre de controle / AirPods : ⏮ ⏭ = chaine precedente /
   // suivante (au lieu de ±15 s, sans objet en direct).
   useMediaSession(
-    video !== null && channel != null ? { title: channelTitle, subtitle: 'En direct', artwork: channel.logoUrl } : null,
+    video !== null && channel != null ? { title: channelTitle, subtitle: 'En direct', artwork } : null,
     {
       onNext: nextId !== null ? () => zapTo(nextId) : null,
       onPrevious: previousId !== null ? () => zapTo(previousId) : null,
@@ -270,7 +274,7 @@ function LiveWatch() {
                   itemId: streamId,
                   title: channelTitle,
                   subtitle: 'En direct',
-                  artwork: channel?.logoUrl ?? null,
+                  artwork,
                 }}
                 onMinimize={() => router.back()}
               >

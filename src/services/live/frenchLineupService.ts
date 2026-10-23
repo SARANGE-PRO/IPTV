@@ -4,6 +4,7 @@ import * as settingsRepository from '@/db/repositories/settingsRepository';
 import * as syncMetadataRepository from '@/db/repositories/syncMetadataRepository';
 import { buildLineupEntries, type LineupSourceRow } from '@/services/live/frenchLineupClassifier';
 import type { LineupGroup, LiveLineupEntry, LiveLineupMeta } from '@/types/liveLineup';
+import { rankVersionLogos } from '@/utils/channelLogos';
 
 /**
  * Grille des chaines FR : construite UNE fois (apres une synchro Live, ou quand
@@ -24,6 +25,7 @@ export type EnsureResult = 'fresh' | 'rebuilt';
 
 let inflight: Promise<EnsureResult> | null = null;
 let snapshot: { revision: number; groups: Promise<LineupGroup[]> } | null = null;
+let logoSnapshot: { revision: number; logos: Promise<Map<string, string[]>> } | null = null;
 let revision = 0;
 
 async function currentSourceStamp(): Promise<string> {
@@ -125,6 +127,37 @@ export async function getLineupVersions(channelId: string): Promise<LiveLineupEn
   if (entry === undefined) return [];
   const versions = await liveLineupRepository.getLineupGroup(entry.groupKey);
   return versions.sort((a, b) => b.qualityScore - a.qualityScore);
+}
+
+/**
+ * Logos candidats de la chaine de chaque flux demande (toutes ses versions,
+ * le plus partage d'abord) : une version sans logo (ou au logo mort) affiche
+ * celui de ses jumelles. Flux hors grille = absent de la Map.
+ */
+export async function getLineupLogos(ids: string[]): Promise<Map<string, string[]>> {
+  if (logoSnapshot === null || logoSnapshot.revision !== revision) {
+    const logos = getLineupGroups().then((groups) => {
+      const byChannel = new Map<string, string[]>();
+      for (const group of groups) {
+        const ranked = rankVersionLogos(group.versions);
+        if (ranked.length === 0) continue;
+        for (const v of group.versions) byChannel.set(v.id, ranked);
+      }
+      return byChannel;
+    });
+    const entry = { revision, logos };
+    logoSnapshot = entry;
+    logos.catch(() => {
+      if (logoSnapshot === entry) logoSnapshot = null;
+    });
+  }
+  const all = await logoSnapshot.logos;
+  return new Map(
+    ids.flatMap((id) => {
+      const ranked = all.get(id);
+      return ranked !== undefined ? [[id, ranked] as const] : [];
+    }),
+  );
 }
 
 /** Entrees de grille de flux donnes (favoris, recents) — undefined hors grille. */

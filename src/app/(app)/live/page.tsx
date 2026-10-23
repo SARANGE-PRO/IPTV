@@ -38,6 +38,7 @@ import { useFilterStore } from '@/stores/filterStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import type { LineupGroup } from '@/types/liveLineup';
 import type { LiveChannel } from '@/types/models';
+import { rankVersionLogos } from '@/utils/channelLogos';
 import { displayChannelName } from '@/utils/displayTitle';
 import { formatCount } from '@/utils/format';
 
@@ -52,23 +53,9 @@ const STEP = 80;
 const LIVE_ONLY = ['live'] as const;
 const SETTING_KEY = 'lastLiveFilter';
 
-/**
- * Logos des versions d'une chaine, le plus partage d'abord (a egalite, la
- * meilleure version) : un logo isole est plus souvent mort ou generique.
- */
-function groupLogos(group: LineupGroup): string[] {
-  const counts = new Map<string, number>();
-  for (const v of group.versions) {
-    const url = v.logoUrl?.trim();
-    if (url) counts.set(url, (counts.get(url) ?? 0) + 1);
-  }
-  // Map garde l'ordre d'insertion (= meilleure version d'abord) ; tri stable.
-  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([url]) => url);
-}
-
 function groupRow(group: LineupGroup, categoryName: Map<string, string>): LiveRowData {
   const best = group.versions[0]!;
-  const [logoUrl = null, ...logoAlternates] = groupLogos(group);
+  const [logoUrl = null, ...logoAlternates] = rankVersionLogos(group.versions);
   const badges: string[] = [];
   if (best.quality !== 'STANDARD') badges.push(best.qualityLabel);
   if (group.country !== null) badges.push(group.country);
@@ -91,6 +78,8 @@ function favoriteRow(channel: FavoriteChannel, categoryName: Map<string, string>
     id: channel.id,
     name: channel.name,
     logoUrl: channel.logoUrl,
+    logoAlternates: channel.logoAlternates,
+    isFrench: channel.isFrench === 1,
     lcn: channel.lcn,
     badges: channel.qualityLabel !== null ? [channel.qualityLabel] : [],
     categoryId: channel.categoryId,
