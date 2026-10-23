@@ -117,8 +117,6 @@ type WebkitVideo = HTMLVideoElement & {
   webkitShowPlaybackTargetPicker?: () => void;
   /** Plein ecran video iOS (le seul fiable en PWA installee — hors typings standard). */
   webkitEnterFullscreen?: () => void;
-  /** Auto-PiP declaratif (Chrome 120+, Safari recent) — hors typings standard. */
-  autoPictureInPicture?: boolean;
 };
 
 function isInPip(video: HTMLVideoElement): boolean {
@@ -197,7 +195,6 @@ export function VideoPlayer({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const mkvEngineRef = useRef<MkvDirectEngine | null>(null);
-  const autoPip = useUiSettingsStore((s) => s.autoPip);
   const preferredLanguage = useUiSettingsStore((s) => s.preferredLanguage);
   const onDirectMkvFailedRef = useRef(onDirectMkvFailed);
   onDirectMkvFailedRef.current = onDirectMkvFailed;
@@ -790,37 +787,22 @@ export function VideoPlayer({
     };
   }, []);
 
-  // Incrustation AUTO (PiP) quand la PWA passe en arriere-plan pendant la lecture
-  // — comme YouTube. Declaratif (autoPictureInPicture) quand supporte + tentative
-  // programmatique en secours (silencieuse si un geste est requis par le nav).
+  // PiP desactive dans l'app : bouton natif masque (disablePictureInPicture,
+  // Chrome/Edge) et, la ou l'attribut est ignore (Safari iPhone), toute entree
+  // en PiP est aussitot annulee — la video reste dans ZiBTV.
   useEffect(() => {
-    const video = videoRef.current as WebkitVideo | null;
+    const video = videoRef.current;
     if (video === null) return;
-    try {
-      if ('autoPictureInPicture' in video) video.autoPictureInPicture = autoPip;
-    } catch {
-      // propriete non inscriptible sur ce navigateur
-    }
-    if (!autoPip) return;
-    const enterPip = () => {
-      if (document.visibilityState !== 'hidden' || video.paused || video.ended) return;
-      try {
-        if (typeof video.webkitSetPresentationMode === 'function' && document.pictureInPictureEnabled !== true) {
-          if (video.webkitPresentationMode !== 'picture-in-picture') {
-            video.webkitSetPresentationMode('picture-in-picture');
-          }
-          return;
-        }
-        if (document.pictureInPictureElement === null && typeof video.requestPictureInPicture === 'function') {
-          void video.requestPictureInPicture().catch(() => {});
-        }
-      } catch {
-        // PiP refuse (geste requis) : le mode declaratif prend le relais si dispo
-      }
+    const refusePip = () => {
+      if (isInPip(video)) exitPipFor(video);
     };
-    document.addEventListener('visibilitychange', enterPip);
-    return () => document.removeEventListener('visibilitychange', enterPip);
-  }, [autoPip]);
+    video.addEventListener('webkitpresentationmodechanged', refusePip);
+    video.addEventListener('enterpictureinpicture', refusePip);
+    return () => {
+      video.removeEventListener('webkitpresentationmodechanged', refusePip);
+      video.removeEventListener('enterpictureinpicture', refusePip);
+    };
+  }, []);
 
   const busy = phase === 'loading' || phase === 'reconnecting';
 
@@ -830,6 +812,7 @@ export function VideoPlayer({
         <video
           ref={videoRef}
           controls={!compact}
+          disablePictureInPicture
           playsInline
           autoPlay
           poster={posterUrl ?? undefined}

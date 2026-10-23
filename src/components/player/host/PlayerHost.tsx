@@ -1,9 +1,10 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { MiniPlayer } from '@/components/player/host/MiniPlayer';
+import { bindLiftLayer } from '@/components/player/host/playerGesture';
 import {
   getSurface,
   getSurfaceSnapshot,
@@ -47,8 +48,16 @@ export function PlayerHost() {
   const router = useRouter();
   const pathname = usePathname();
   const [mounted, setMounted] = useState(false);
+  const liftRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => setMounted(true), []);
+
+  // Calque flottant du geste « glisser pour reduire » (voir playerGesture).
+  useEffect(() => {
+    const el = liftRef.current;
+    if (el === null) return;
+    return bindLiftLayer(el);
+  }, []);
 
   const sessionKey = session?.key ?? null;
   useLayoutEffect(() => {
@@ -115,6 +124,7 @@ export function PlayerHost() {
           />,
           getSurface(),
         )}
+      <div ref={liftRef} className="zib-lift" aria-hidden="true" />
       <MiniPlayer
         mode={mode}
         media={session?.media ?? null}

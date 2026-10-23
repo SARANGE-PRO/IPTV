@@ -98,10 +98,13 @@ export function MiniPlayer({
   const drag = useRef<{ x0: number; y0: number; id: number; axis: 'x' | 'y' | null } | null>(null);
   const suppressClick = useRef(false);
 
+  const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (mode !== 'mini') {
       setOffset({ x: 0, y: 0 });
       setLeaving(null);
+      // Atterrissage d'un geste termine : la prochaine entree sera animee.
+      rootRef.current?.removeAttribute('data-enter');
     }
   }, [mode]);
 
@@ -178,6 +181,7 @@ export function MiniPlayer({
 
   return (
     <div
+      ref={rootRef}
       className={cn('zib-mini', mode === 'none' && 'hidden', mode === 'inline' && 'invisible')}
       data-mode={mode}
       aria-hidden={mode !== 'mini'}

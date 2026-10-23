@@ -1,9 +1,9 @@
 'use client';
 
-import { useLayoutEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { IconPlayFilled } from '@/components/player/playerIcons';
+import { bindSlotGestures } from '@/components/player/host/playerGesture';
 import { registerSlot, type SlotHandle, type SlotLayout } from '@/components/player/host/playerSurface';
-import { useSwipeToMinimize } from '@/hooks/useSwipeToMinimize';
 import { cn } from '@/lib/cn';
 import { playerSessionKey, usePlayerStore } from '@/stores/playerStore';
 import type { NowPlayingMedia, PlayerHandlers, PlayerSource } from '@/types/nowPlaying';
@@ -29,6 +29,12 @@ interface PlayerSlotProps extends PlayerSource, PlayerHandlers {
  *
  * Si une AUTRE lecture a pris la main entre-temps, l'emplacement affiche une
  * vignette « Lire ici » au lieu d'une zone noire.
+ *
+ * Reprise sans rechargement : un emplacement qui s'ouvre sur le titre DEJA en
+ * cours (meme element, meme URL) adopte la lecture telle qu'elle est, meme si
+ * la page recalcule un autre chemin de lecture (repli passerelle oublie, autre
+ * position de reprise). Un changement de flux PENDANT que la page est ouverte
+ * (zapping, episode, repli) relance normalement.
  */
 export function PlayerSlot({
   media,
@@ -46,7 +52,20 @@ export function PlayerSlot({
   const targetRef = useRef<HTMLDivElement | null>(null);
   const handleRef = useRef<SlotHandle | null>(null);
   const key = playerSessionKey(media, source);
-  const active = usePlayerStore((s) => s.session?.key === key);
+  const [mountKey] = useState(key);
+  const [adoptKey, setAdoptKey] = useState<string | null>(() => {
+    const current = usePlayerStore.getState().session;
+    if (current === null) return null;
+    const same =
+      current.media.kind === media.kind &&
+      current.media.ownerId === media.ownerId &&
+      current.media.itemId === media.itemId &&
+      current.source.src === source.src;
+    return same ? current.key : null;
+  });
+  // Cle de la lecture que cet emplacement accueille.
+  const sessionKey = adoptKey !== null && key === mountKey ? adoptKey : key;
+  const active = usePlayerStore((s) => s.session?.key === sessionKey);
 
   const handlers: PlayerHandlers = { onProgress, onEnded, onError, onDirectMkvFailed };
   const latest = useRef({ media, source, handlers });
@@ -54,7 +73,7 @@ export function PlayerSlot({
 
   // Rappels et affichage toujours a jour pour la session en cours.
   useLayoutEffect(() => {
-    usePlayerStore.getState().refresh(key, latest.current.media, latest.current.handlers);
+    usePlayerStore.getState().refresh(sessionKey, latest.current.media, latest.current.handlers);
   });
 
   // Enregistrement de l'emplacement (une fois). Sa liberation, synchrone avant
@@ -72,7 +91,15 @@ export function PlayerSlot({
 
   const start = () => {
     const { media: m, source: src, handlers: h } = latest.current;
-    usePlayerStore.getState().play({ key, media: m, source: src }, h);
+    const store = usePlayerStore.getState();
+    if (sessionKey !== key && store.session?.key === sessionKey) {
+      // Reprise : la lecture en cours vient simplement s'afficher ici.
+      store.refresh(sessionKey, m, h);
+      handleRef.current?.claim(sessionKey);
+      return;
+    }
+    if (adoptKey !== null) setAdoptKey(null);
+    store.play({ key, media: m, source: src }, h);
     handleRef.current?.claim(key);
   };
 
@@ -81,9 +108,18 @@ export function PlayerSlot({
   useLayoutEffect(() => {
     start();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [sessionKey]);
 
-  useSwipeToMinimize(wrapperRef, active && onMinimize !== undefined ? onMinimize : null);
+  // Geste « glisser vers le bas » (mobile) tant que la video est ici.
+  const minimizeRef = useRef(onMinimize);
+  minimizeRef.current = onMinimize;
+  const canMinimize = onMinimize !== undefined;
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    const target = targetRef.current;
+    if (!active || !canMinimize || wrapper === null || target === null) return;
+    return bindSlotGestures(wrapper, target, () => minimizeRef.current ?? null);
+  }, [active, canMinimize]);
 
   const poster = secureImageSrc(source.poster ?? media.artwork);
 

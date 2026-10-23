@@ -9,7 +9,12 @@
  *  - l'emplacement le plus recent dont la cle est la session en cours gagne ;
  *  - une fiche ouverte (modal) masque les emplacements de la page dessous :
  *    seul un emplacement DANS le modal reste eligible ;
- *  - sinon : mini-lecteur.
+ *  - sinon : mini-lecteur ;
+ *  - pendant le geste « glisser pour reduire », la video est SOULEVEE dans un
+ *    calque flottant (playerGesture) et y reste jusqu'au relachement.
+ *
+ * Mini-lecteur -> emplacement : la video « vole » de la vignette jusqu'a sa
+ * place (animation FLIP, compositeur uniquement).
  */
 
 export type SlotLayout = 'default' | 'live';
@@ -32,9 +37,18 @@ export interface SlotHandle {
   release: () => void;
 }
 
+const FLIP_DURATION_MS = 380;
+const FLIP_EASING = 'cubic-bezier(0.2, 0.8, 0.2, 1)';
+
 let surface: HTMLDivElement | null = null;
 let dock: HTMLElement | null = null;
 let activeKey: string | null = null;
+/** Cle de la session au moment ou elle est entree dans le mini-lecteur. */
+let dockKey: string | null = null;
+/** Calque flottant du geste : tant qu'il est defini, la video y reste. */
+let lifted: HTMLElement | null = null;
+/** Appele quand l'emplacement d'une video soulevee disparait (page fermee). */
+let liftedReleaseHook: (() => void) | null = null;
 let covers = 0;
 const slots: Slot[] = [];
 let snapshot: SurfaceSnapshot = { mode: 'mini', layout: 'default' };
@@ -56,6 +70,25 @@ function eligible(slot: Slot): boolean {
   return covers === 0 || slot.el.closest('[aria-modal="true"]') !== null;
 }
 
+function prefersReducedMotion(): boolean {
+  return typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+/** La video arrive du mini-lecteur : elle part de `from` et rejoint sa place. */
+function flyIn(el: HTMLElement, from: DOMRect): void {
+  if (prefersReducedMotion() || typeof el.animate !== 'function') return;
+  const to = el.getBoundingClientRect();
+  if (to.width <= 0 || from.width <= 0) return;
+  const scale = from.width / to.width;
+  el.animate(
+    [
+      { transform: `translate(${from.left - to.left}px, ${from.top - to.top}px) scale(${scale})`, transformOrigin: '0 0' },
+      { transform: 'none', transformOrigin: '0 0' },
+    ],
+    { duration: FLIP_DURATION_MS, easing: FLIP_EASING },
+  );
+}
+
 function place(): void {
   let slot: Slot | null = null;
   for (let i = slots.length - 1; i >= 0; i -= 1) {
@@ -65,9 +98,20 @@ function place(): void {
       break;
     }
   }
-  const target = slot?.el ?? dock;
   const node = getSurface();
-  if (target !== null && node.parentNode !== target) target.appendChild(node);
+  if (lifted !== null) {
+    if (node.parentNode !== lifted) lifted.appendChild(node);
+  } else {
+    const target = slot?.el ?? dock;
+    // Retour en grand de la MEME lecture : on part de la vignette.
+    const flyFrom =
+      slot !== null && dock !== null && node.parentNode === dock && slot.key === dockKey
+        ? dock.getBoundingClientRect()
+        : null;
+    if (target !== null && node.parentNode !== target) target.appendChild(node);
+    if (target === dock) dockKey = activeKey;
+    if (flyFrom !== null && slot !== null) flyIn(slot.el, flyFrom);
+  }
 
   const next: SurfaceSnapshot = slot !== null ? { mode: 'inline', layout: slot.layout } : { mode: 'mini', layout: 'default' };
   if (next.mode !== snapshot.mode || next.layout !== snapshot.layout) {
@@ -103,6 +147,13 @@ export function registerSlot(el: HTMLElement, layout: SlotLayout): SlotHandle {
       released = true;
       const index = slots.indexOf(slot);
       if (index >= 0) slots.splice(index, 1);
+      // Video soulevee par le geste : c'est lui qui termine (atterrissage).
+      if (lifted !== null && liftedReleaseHook !== null) {
+        const hook = liftedReleaseHook;
+        liftedReleaseHook = null;
+        hook();
+        return;
+      }
       // Synchrone, AVANT que React ne retire l'emplacement du DOM : la <video>
       // part dans le mini-lecteur sans jamais etre detachee du document.
       place();
@@ -130,4 +181,27 @@ export function subscribeSurface(listener: () => void): () => void {
 
 export function getSurfaceSnapshot(): SurfaceSnapshot {
   return snapshot;
+}
+
+/** Vignette du mini-lecteur (cible de l'atterrissage du geste). */
+export function getDockTarget(): HTMLElement | null {
+  return dock;
+}
+
+/** Geste en cours : la video quitte sa page pour le calque flottant. */
+export function liftSurface(layer: HTMLElement): void {
+  lifted = layer;
+  place();
+}
+
+/** Fin du geste : la video reprend sa place normale (page ou mini-lecteur). */
+export function dropSurface(): void {
+  lifted = null;
+  liftedReleaseHook = null;
+  place();
+}
+
+/** `hook` sera appele (une fois) quand la page de la video soulevee se fermera. */
+export function onLiftedSlotReleased(hook: (() => void) | null): void {
+  liftedReleaseHook = hook;
 }

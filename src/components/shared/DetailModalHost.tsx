@@ -35,9 +35,10 @@ export function DetailModalHost() {
   // le lecteur, sans recharger le flux. Lu UNE fois a l'ouverture.
   const resume = useMemo(() => {
     const media = usePlayerStore.getState().session?.media;
-    if (media === undefined) return { vod: false, episodeId: null as string | null };
+    if (media === undefined) return { vodItemId: null as string | null, episodeId: null as string | null };
     return {
-      vod: vodId !== null && media.kind === 'vod' && media.ownerId === vodId,
+      // Version de langue qui joue (peut differer de la preferee).
+      vodItemId: vodId !== null && media.kind === 'vod' && media.ownerId === vodId ? media.itemId : null,
       episodeId: seriesId !== null && media.kind === 'episode' && media.ownerId === seriesId ? media.itemId : null,
     };
   }, [vodId, seriesId]);
@@ -64,7 +65,13 @@ export function DetailModalHost() {
   if (vodId !== null) {
     return (
       <DetailModal onClose={close}>
-        <MovieDetailView key={vodId} vodId={vodId} onBack={close} autoPlay={autoPlay || resume.vod} />
+        <MovieDetailView
+          key={vodId}
+          vodId={vodId}
+          onBack={close}
+          autoPlay={autoPlay || resume.vodItemId !== null}
+          resumeVariantId={resume.vodItemId}
+        />
       </DetailModal>
     );
   }

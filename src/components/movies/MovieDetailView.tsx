@@ -51,11 +51,15 @@ export function MovieDetailView({
   vodId,
   onBack,
   autoPlay = false,
+  resumeVariantId = null,
 }: {
   vodId: string;
   onBack?: () => void;
   /** Lance la lecture des que la fiche est prete (reprise si progression). */
   autoPlay?: boolean;
+  /** Version de langue qui joue deja (mini-lecteur) : la fiche rouverte la
+   *  garde au lieu de basculer sur la langue preferee (pas de rechargement). */
+  resumeVariantId?: string | null;
 }) {
   const credentials = useAuthStore((s) => s.credentials);
   const saveProgress = usePlaybackStore((s) => s.saveProgress);
@@ -103,12 +107,13 @@ export function MovieDetailView({
     void findMovieVariants(movie, preferredLanguage).then((vs) => {
       if (!active) return;
       setVariants(vs);
-      setActiveId(pickPreferredVariant(vs, movie.id, preferredLanguage)?.id ?? movie.id);
+      const resumed = resumeVariantId !== null ? vs.find((v) => v.id === resumeVariantId) : undefined;
+      setActiveId(resumed?.id ?? pickPreferredVariant(vs, movie.id, preferredLanguage)?.id ?? movie.id);
     });
     return () => {
       active = false;
     };
-  }, [movie, preferredLanguage]);
+  }, [movie, preferredLanguage, resumeVariantId]);
 
   // Synopsis a la demande (non bloquant, jamais indispensable).
   useEffect(() => {

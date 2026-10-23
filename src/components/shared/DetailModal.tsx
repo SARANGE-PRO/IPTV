@@ -34,6 +34,7 @@ export function DetailModal({ children, onClose }: { children: ReactNode; onClos
     <div
       role="dialog"
       aria-modal="true"
+      data-zib-backdrop
       onClick={onClose}
       className="fixed inset-0 z-50 animate-fade-in overflow-y-auto overscroll-contain bg-black/70 backdrop-blur-sm"
     >
@@ -42,6 +43,7 @@ export function DetailModal({ children, onClose }: { children: ReactNode; onClos
       <div className="flex min-h-full items-start justify-center pb-[var(--zib-mini-modal-offset,0px)] pt-safe sm:py-8">
         <div
           onClick={(e) => e.stopPropagation()}
+          data-zib-sheet
           className="relative w-full max-w-4xl animate-modal-rise overflow-hidden bg-ink-950 shadow-2xl shadow-black/60 sm:rounded-3xl sm:border sm:border-ink-700/60"
         >
           {children}

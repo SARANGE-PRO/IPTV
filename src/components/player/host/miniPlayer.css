@@ -31,8 +31,24 @@ body:has([aria-modal='true']) .zib-mini {
   }
 }
 
-.zib-mini[data-mode='mini'] {
+/* Entree animee, sauf atterrissage d'un geste (la video est deja en place). */
+.zib-mini[data-mode='mini']:not([data-enter='instant']) {
   animation: zibMiniIn 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Calque flottant du geste « glisser pour reduire » : la video y vole de sa
+   page jusqu'a la vignette. Affiche et positionne par playerGesture. */
+.zib-lift {
+  display: none;
+  position: fixed;
+  z-index: 57;
+  overflow: hidden;
+  border-radius: 1rem;
+  background: #000;
+  transform-origin: 0 0;
+  will-change: transform;
+  pointer-events: none;
+  box-shadow: 0 20px 50px -12px rgba(0, 0, 0, 0.7);
 }
 
 @keyframes zibMiniIn {

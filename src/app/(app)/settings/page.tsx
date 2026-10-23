@@ -91,8 +91,6 @@ export default function SettingsPage() {
   const backfill = useCatalogStore((s) => s.backfill);
   const startBackfill = useCatalogStore((s) => s.startBackfill);
   const refreshBackfillCounts = useCatalogStore((s) => s.refreshBackfillCounts);
-  const autoPip = useUiSettingsStore((s) => s.autoPip);
-  const setAutoPip = useUiSettingsStore((s) => s.setAutoPip);
   const router = useRouter();
 
   const [hiddenList, setHiddenList] = useState<HiddenCategoryEntry[]>([]);
@@ -387,21 +385,6 @@ export default function SettingsPage() {
                 ? 'Réorganisation des versions en cours…'
                 : 'Met cette version en tête partout (navigation, recherche, accueil) et la choisit par défaut quand un film/série existe en plusieurs langues.'}
             </span>
-          </label>
-          <label className="flex items-center justify-between gap-3 pt-1">
-            <span className="text-xs font-medium text-fg-muted">
-              Incrustation automatique (PiP)
-              <span className="mt-0.5 block text-[11px] font-normal text-fg-faint">
-                Garde la vidéo en petit par-dessus les autres apps quand tu quittes ZiBTV pendant la
-                lecture (comme YouTube). Sur iPhone, active « Démarrer PiP automatiquement » dans Réglages iOS.
-              </span>
-            </span>
-            <input
-              type="checkbox"
-              checked={autoPip}
-              onChange={(e) => void setAutoPip(e.target.checked)}
-              className="h-5 w-5 shrink-0 rounded accent-accent"
-            />
           </label>
           <label className="flex items-center justify-between gap-3 pt-1">
             <span className="text-xs font-medium text-fg-muted">

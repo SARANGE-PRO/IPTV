@@ -98,8 +98,13 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       {/* --zib-mini-offset : place reservee sous le contenu quand le
-          mini-lecteur est visible (voir player/host/miniPlayer.css). */}
-      <div className="pb-[calc(6rem+var(--zib-mini-offset,0px))] pt-safe md:pb-[calc(2rem+var(--zib-mini-offset,0px))]">
+          mini-lecteur est visible (voir player/host/miniPlayer.css).
+          data-zib-sheet : la page glisse et s'efface avec le geste « glisser
+          la video vers le bas » (voir player/host/playerGesture). */}
+      <div
+        data-zib-sheet
+        className="pb-[calc(6rem+var(--zib-mini-offset,0px))] pt-safe md:pb-[calc(2rem+var(--zib-mini-offset,0px))]"
+      >
         {children}
       </div>
 
