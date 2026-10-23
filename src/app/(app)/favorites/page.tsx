@@ -1,74 +1,164 @@
 'use client';
 
-import Link from 'next/link';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FavoriteEditList, type EditableItem } from '@/components/favorites/FavoriteEditList';
+import { FavoritesTabBar, type FavoritesSelection } from '@/components/favorites/FavoritesTabBar';
+import { TabEditPanel } from '@/components/favorites/TabEditPanel';
+import { TabNameDialog } from '@/components/favorites/TabNameDialog';
+import { LiveChannelRow, type LiveRowData } from '@/components/live/LiveChannelRow';
 import { BrandMark } from '@/components/shared/BrandMark';
-import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { MediaCard } from '@/components/shared/MediaCard';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { useFavoriteItems } from '@/hooks/useFavoriteItems';
 import { cn } from '@/lib/cn';
-import * as catalogRepository from '@/services/data/catalogService';
-import * as favoritesRepository from '@/services/data/favoritesDataService';
+import * as settingsRepository from '@/services/data/settingsDataService';
+import { itemKey, parseItemKey } from '@/services/favorites/favoriteTabsService';
+import { setZapContext } from '@/services/live/liveZappingService';
 import { useFavoritesStore } from '@/stores/favoritesStore';
-import type { LiveChannel, Movie, Series } from '@/types/models';
-import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
-import { liveHref, movieHref, seriesHref } from '@/utils/appRoutes';
+import { useFavoritesUiStore } from '@/stores/favoritesUiStore';
+import type { MediaType } from '@/types/models';
+import { displayTitle, displayYear } from '@/utils/displayTitle';
+import { movieHref, seriesHref } from '@/utils/appRoutes';
 
-type Tab = 'live' | 'vod' | 'series';
+/**
+ * Favoris : « Mes favoris » + onglets crees par l'utilisateur (chaines, films
+ * et series melanges). Mode Modifier : glisser pour reordonner, retirer,
+ * renommer / deplacer / supprimer l'onglet.
+ */
 
-const TABS: { type: Tab; label: string }[] = [
-  { type: 'live', label: 'Live' },
-  { type: 'vod', label: 'Films' },
-  { type: 'series', label: 'Séries' },
+type Kind = 'all' | 'live' | 'vod' | 'series';
+type Sort = 'mine' | 'name';
+
+const KINDS: { id: Kind; label: string }[] = [
+  { id: 'all', label: 'Tout' },
+  { id: 'live', label: 'Chaînes' },
+  { id: 'vod', label: 'Films' },
+  { id: 'series', label: 'Séries' },
 ];
 
-type Sort = 'recent' | 'name';
+const SETTING_KEY = 'lastFavoritesTab';
 
-const byName = <T extends { name: string }>(items: T[]) =>
-  [...items].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+const byName = <T,>(items: T[], name: (item: T) => string): T[] =>
+  [...items].sort((a, b) => name(a).localeCompare(name(b), 'fr'));
 
 export default function FavoritesPage() {
-  const [tab, setTab] = useState<Tab>('live');
-  const [sort, setSort] = useState<Sort>('recent');
-  const ids = useFavoritesStore((s) => s.ids[tab]);
-  const liveCount = useFavoritesStore((s) => s.ids.live.size);
-  const vodCount = useFavoritesStore((s) => s.ids.vod.size);
-  const seriesCount = useFavoritesStore((s) => s.ids.series.size);
-  const counts: Record<Tab, number> = { live: liveCount, vod: vodCount, series: seriesCount };
-  const [liveItems, setLiveItems] = useState<LiveChannel[]>([]);
-  const [movieItems, setMovieItems] = useState<Movie[]>([]);
-  const [seriesItems, setSeriesItems] = useState<Series[]>([]);
+  const tabs = useFavoritesStore((s) => s.tabs);
+  const hydrated = useFavoritesStore((s) => s.hydrated);
+  const createTab = useFavoritesStore((s) => s.createTab);
+  const renameTab = useFavoritesStore((s) => s.renameTab);
+  const deleteTab = useFavoritesStore((s) => s.deleteTab);
+  const reorderTabs = useFavoritesStore((s) => s.reorderTabs);
+  const reorderTab = useFavoritesStore((s) => s.reorderTab);
+  const reorderFavorites = useFavoritesStore((s) => s.reorderFavorites);
+  const removeFavorite = useFavoritesStore((s) => s.remove);
+  const setItemTabs = useFavoritesStore((s) => s.setItemTabs);
+  const showToast = useFavoritesUiStore((s) => s.showToast);
 
+  const [selected, setSelected] = useState<FavoritesSelection>(null);
+  const [kind, setKind] = useState<Kind>('all');
+  const [sort, setSort] = useState<Sort>('mine');
+  const [editing, setEditing] = useState(false);
+  const [dialog, setDialog] = useState<'create' | 'rename' | null>(null);
+
+  const restoredRef = useRef(false);
   useEffect(() => {
-    let active = true;
-    // Entrees triees par date d'ajout (recent -> ancien) : source de l'ordre
-    // "Récent". getXByIds ne garantit pas l'ordre, on le reimpose via rank.
-    void favoritesRepository.getFavoritesByType(tab).then(async (entries) => {
-      const orderedIds = entries.map((e) => e.itemId);
-      const rank = new Map(orderedIds.map((id, i) => [id, i] as const));
-      const recent = <T extends { id: string }>(items: T[]): T[] =>
-        [...items].sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
-      if (tab === 'live') {
-        const r = await catalogRepository.getLiveChannelsByIds(orderedIds);
-        if (active) setLiveItems(recent(r));
-      } else if (tab === 'vod') {
-        const r = await catalogRepository.getMoviesByIds(orderedIds);
-        if (active) setMovieItems(recent(r));
-      } else {
-        const r = await catalogRepository.getSeriesByIds(orderedIds);
-        if (active) setSeriesItems(recent(r));
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, [tab, ids]);
+    if (!hydrated || restoredRef.current) return;
+    restoredRef.current = true;
+    void settingsRepository
+      .getSetting<string>(SETTING_KEY)
+      .then((saved) => {
+        if (saved !== undefined && useFavoritesStore.getState().tabs.some((t) => t.id === saved)) setSelected(saved);
+      })
+      .catch(() => undefined);
+  }, [hydrated]);
 
-  // Vide = aucun favori de ce type (source de verite : le Set du store),
-  // pas "items pas encore chargés" — evite le flash d'ecran vide au switch d'onglet.
-  const isEmpty = counts[tab] === 0;
-  const ordered = <T extends { name: string }>(items: T[]): T[] => (sort === 'name' ? byName(items) : items);
+  // Onglet supprime : retour a « Mes favoris ».
+  useEffect(() => {
+    if (selected !== null && hydrated && !tabs.some((t) => t.id === selected)) setSelected(null);
+  }, [selected, tabs, hydrated]);
+
+  const select = useCallback((tabId: FavoritesSelection) => {
+    setSelected(tabId);
+    setEditing(false);
+    void settingsRepository.setSetting(SETTING_KEY, tabId ?? '').catch(() => undefined);
+  }, []);
+
+  const data = useFavoriteItems(selected);
+  const tab = tabs.find((t) => t.id === selected) ?? null;
+  const tabIndex = tab !== null ? tabs.indexOf(tab) : -1;
+
+  const sorted = sort === 'name' && !editing;
+  const channels = useMemo(() => (sorted ? byName(data.channels, (c) => c.name) : data.channels), [sorted, data.channels]);
+  const movies = useMemo(() => (sorted ? byName(data.movies, (m) => displayTitle(m.name)) : data.movies), [sorted, data.movies]);
+  const series = useMemo(() => (sorted ? byName(data.series, (s) => displayTitle(s.name)) : data.series), [sorted, data.series]);
+
+  const show = (k: Exclude<Kind, 'all'>) => kind === 'all' || kind === k;
+  const total = data.channels.length + data.movies.length + data.series.length;
+  const visibleCount =
+    (show('live') ? data.channels.length : 0) + (show('vod') ? data.movies.length : 0) + (show('series') ? data.series.length : 0);
+
+  const channelRows: LiveRowData[] = useMemo(
+    () =>
+      channels.map((c) => ({
+        id: c.id,
+        name: c.name,
+        logoUrl: c.logoUrl,
+        lcn: c.lcn,
+        badges: c.qualityLabel !== null ? [c.qualityLabel] : [],
+        categoryId: c.categoryId,
+      })),
+    [channels],
+  );
+  const onPlayChannel = useCallback(() => {
+    setZapContext({
+      label: tab?.name ?? 'Favoris',
+      entries: channels.map((c) => ({ id: c.id, groupKey: c.groupKey })),
+    });
+  }, [tab, channels]);
+
+  // --- Edition ----------------------------------------------------------------
+  const reorder = (type: Exclude<MediaType, 'episode'>) => (keys: string[]) => {
+    if (selected === null) void reorderFavorites(type, keys.map((k) => parseItemKey(k).itemId));
+    else void reorderTab(selected, keys);
+  };
+  const remove = (key: string) => {
+    const { type, itemId } = parseItemKey(key);
+    if (selected === null) {
+      const title =
+        type === 'live'
+          ? data.channels.find((c) => c.id === itemId)?.name
+          : type === 'vod'
+            ? data.movies.find((m) => m.id === itemId)?.name
+            : data.series.find((s) => s.id === itemId)?.name;
+      void removeFavorite(type, itemId).then(() =>
+        showToast({ kind: 'removed', title: title !== undefined ? displayTitle(title) : '' }),
+      );
+      return;
+    }
+    const others = [...(useFavoritesStore.getState().membership.get(key) ?? [])].filter((id) => id !== selected);
+    void setItemTabs(type, itemId, others);
+  };
+
+  const editChannels: EditableItem[] = channels.map((c) => ({
+    key: itemKey('live', c.id),
+    title: c.name,
+    subtitle: c.qualityLabel,
+    image: { kind: 'logo', logoUrl: c.logoUrl },
+  }));
+  const editMovies: EditableItem[] = movies.map((m) => ({
+    key: itemKey('vod', m.id),
+    title: displayTitle(m.name),
+    subtitle: displayYear(m.name, m.year)?.toString() ?? null,
+    image: { kind: 'poster', posterUrl: m.posterUrl },
+  }));
+  const editSeries: EditableItem[] = series.map((s) => ({
+    key: itemKey('series', s.id),
+    title: displayTitle(s.name),
+    subtitle: s.releaseDate?.slice(0, 4) ?? null,
+    image: { kind: 'poster', posterUrl: s.posterUrl },
+  }));
+  const removeLabel = selected === null ? 'Retirer des favoris' : 'Retirer de l’onglet';
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8">
@@ -77,90 +167,195 @@ export default function FavoritesPage() {
         <BrandMark />
       </div>
 
-      <div className="mt-4 flex gap-2">
-        {TABS.map(({ type, label }) => (
-          <button
-            key={type}
-            onClick={() => setTab(type)}
-            className={cn(
-              'rounded-full px-4 py-1.5 text-xs font-medium transition-colors',
-              tab === type ? 'bg-accent text-white' : 'bg-ink-800 text-fg-muted hover:text-fg',
-            )}
-          >
-            {label} ({counts[type]})
-          </button>
-        ))}
-      </div>
+      <FavoritesTabBar selected={selected} onSelect={select} onCreate={() => setDialog('create')} />
 
-      {!isEmpty && (
-        <div className="mt-4 flex items-center gap-2 text-xs">
-          <span className="text-fg-faint">Trier :</span>
-          {(
-            [
-              { key: 'recent', label: 'Récent' },
-              { key: 'name', label: 'A→Z' },
-            ] as const
-          ).map(({ key, label }) => (
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="flex rounded-full bg-ink-800 p-0.5">
+          {KINDS.map((k) => (
             <button
-              key={key}
-              onClick={() => setSort(key)}
+              key={k.id}
+              type="button"
+              onClick={() => setKind(k.id)}
               className={cn(
-                'rounded-full px-3 py-1 font-medium transition-colors',
-                sort === key ? 'bg-ink-700 text-fg' : 'text-fg-muted hover:text-fg',
+                'rounded-full px-2.5 py-1.5 text-xs font-medium transition-colors',
+                kind === k.id ? 'bg-ink-600 text-fg' : 'text-fg-muted hover:text-fg',
               )}
             >
-              {label}
+              {k.label}
             </button>
           ))}
         </div>
+        {/* Tri + Modifier : un bloc (passe a la ligne d'un seul tenant). */}
+        <div className="ml-auto flex items-center gap-1">
+          {!editing && total > 1 && (
+            <button
+              type="button"
+              onClick={() => setSort((s) => (s === 'mine' ? 'name' : 'mine'))}
+              aria-label={sort === 'mine' ? 'Trier de A à Z' : 'Revenir à mon ordre'}
+              className="rounded-full px-2.5 py-1.5 text-xs font-medium text-fg-muted hover:text-fg"
+            >
+              {sort === 'mine' ? 'Mon ordre' : 'A → Z'}
+            </button>
+          )}
+          {(total > 0 || tab !== null) && (
+            <button
+              type="button"
+              onClick={() => setEditing((e) => !e)}
+              className={cn(
+                'rounded-full px-4 py-1.5 text-xs font-semibold transition-colors',
+                editing ? 'bg-accent text-white' : 'bg-ink-800 text-fg hover:bg-ink-700',
+              )}
+            >
+              {editing ? 'Terminé' : 'Modifier'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {editing && tab !== null && (
+        <TabEditPanel
+          tab={tab}
+          index={tabIndex}
+          count={tabs.length}
+          onRename={() => setDialog('rename')}
+          onMove={(direction) => {
+            const ids = tabs.map((t) => t.id);
+            const to = tabIndex + direction;
+            [ids[tabIndex], ids[to]] = [ids[to]!, ids[tabIndex]!];
+            void reorderTabs(ids);
+          }}
+          onDelete={() => {
+            const name = tab.name;
+            setEditing(false);
+            void deleteTab(tab.id).then(() =>
+              showToast({ kind: 'info', message: `Onglet « ${name} » supprimé — tes favoris sont conservés` }),
+            );
+          }}
+        />
       )}
 
-      <div className="mt-6">
-        {isEmpty ? (
-          <EmptyState
-            title="Aucun favori ici"
-            hint="Ajoute des favoris avec le cœur sur les chaînes, films et séries."
-          />
-        ) : tab === 'live' ? (
-          <div className="flex flex-col">
-            {ordered(liveItems).map((c) => (
-              <Link
-                key={c.id}
-                href={liveHref(c.id)}
-                className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-colors hover:bg-ink-800"
-              >
-                <ChannelLogo channel={c} className="h-10 w-10 shrink-0" />
-                <span className="min-w-0 flex-1 truncate text-sm text-fg">{displayChannelName(c.name)}</span>
-                <FavoriteButton type="live" itemId={c.id} />
-              </Link>
+      <div className="mt-2">
+        {data.loading && total === 0 ? (
+          <div className="mt-4 flex flex-col gap-2">
+            {Array.from({ length: 6 }, (_, i) => (
+              <Skeleton key={i} className="h-14 rounded-xl" />
             ))}
           </div>
-        ) : (
-          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
-            {tab === 'vod'
-              ? ordered(movieItems).map((m) => (
-                  <MediaCard
-                    key={m.id}
-                    href={movieHref(m.id)}
-                    title={displayTitle(m.name)}
-                    posterUrl={m.posterUrl}
-                    subtitle={displayYear(m.name, m.year)?.toString() ?? null}
-                    favorite={{ type: 'vod', itemId: m.id }}
-                  />
-                ))
-              : ordered(seriesItems).map((s) => (
-                  <MediaCard
-                    key={s.id}
-                    href={seriesHref(s.id)}
-                    title={displayTitle(s.name)}
-                    posterUrl={s.posterUrl}
-                    subtitle={s.releaseDate?.slice(0, 4) ?? null}
-                    favorite={{ type: 'series', itemId: s.id }}
-                  />
-                ))}
+        ) : total === 0 ? (
+          <div className="mt-6">
+            {tab !== null ? (
+              <EmptyState
+                title={`« ${tab.name} » est vide`}
+                hint="Chaînes : touche ⋯ puis coche cet onglet. Films et séries : touche le cœur, puis « Ranger »."
+              />
+            ) : (
+              <EmptyState
+                title="Aucun favori pour l'instant"
+                hint="Touche le cœur sur une chaîne, un film ou une série. Range-les ensuite dans tes propres onglets."
+              />
+            )}
           </div>
+        ) : visibleCount === 0 ? (
+          <div className="mt-6">
+            <EmptyState title={`Aucun élément de ce type${tab !== null ? ` dans « ${tab.name} »` : ''}`} />
+          </div>
+        ) : editing ? (
+          <>
+            <p className="mt-4 px-1 text-xs text-fg-faint">Glisse la poignée pour changer l’ordre.</p>
+            {show('live') && (
+              <FavoriteEditList label="Chaînes" items={editChannels} removeLabel={removeLabel} onReorder={reorder('live')} onRemove={remove} />
+            )}
+            {show('vod') && (
+              <FavoriteEditList label="Films" items={editMovies} removeLabel={removeLabel} onReorder={reorder('vod')} onRemove={remove} />
+            )}
+            {show('series') && (
+              <FavoriteEditList label="Séries" items={editSeries} removeLabel={removeLabel} onReorder={reorder('series')} onRemove={remove} />
+            )}
+          </>
+        ) : (
+          <>
+            {show('live') && channelRows.length > 0 && (
+              <section className="mt-5">
+                <SectionTitle label="Chaînes" count={channelRows.length} />
+                <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4">
+                  {channelRows.map((row) => (
+                    <LiveChannelRow key={row.id} row={row} onPlay={onPlayChannel} />
+                  ))}
+                </div>
+              </section>
+            )}
+            {show('vod') && movies.length > 0 && (
+              <section className="mt-7">
+                <SectionTitle label="Films" count={movies.length} />
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+                  {movies.map((m) => (
+                    <MediaCard
+                      key={m.id}
+                      href={movieHref(m.id)}
+                      title={displayTitle(m.name)}
+                      posterUrl={m.posterUrl}
+                      subtitle={displayYear(m.name, m.year)?.toString() ?? null}
+                      favorite={{ type: 'vod', itemId: m.id }}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+            {show('series') && series.length > 0 && (
+              <section className="mt-7">
+                <SectionTitle label="Séries" count={series.length} />
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+                  {series.map((s) => (
+                    <MediaCard
+                      key={s.id}
+                      href={seriesHref(s.id)}
+                      title={displayTitle(s.name)}
+                      posterUrl={s.posterUrl}
+                      subtitle={s.releaseDate?.slice(0, 4) ?? null}
+                      favorite={{ type: 'series', itemId: s.id }}
+                    />
+                  ))}
+                </div>
+              </section>
+            )}
+          </>
+        )}
+        {data.missing > 0 && (
+          <p className="mt-6 px-1 text-xs text-fg-faint">
+            {data.missing} élément{data.missing > 1 ? 's' : ''} introuvable{data.missing > 1 ? 's' : ''} depuis la
+            dernière synchronisation (masqué{data.missing > 1 ? 's' : ''}).
+          </p>
         )}
       </div>
+
+      {dialog === 'create' && (
+        <TabNameDialog
+          title="Nouvel onglet"
+          confirmLabel="Créer"
+          onClose={() => setDialog(null)}
+          onSubmit={async (name) => {
+            const created = await createTab(name);
+            select(created.id);
+          }}
+        />
+      )}
+      {dialog === 'rename' && tab !== null && (
+        <TabNameDialog
+          title="Renommer l'onglet"
+          initial={tab.name}
+          confirmLabel="Renommer"
+          onClose={() => setDialog(null)}
+          onSubmit={(name) => renameTab(tab.id, name)}
+        />
+      )}
     </main>
+  );
+}
+
+function SectionTitle({ label, count }: { label: string; count: number }) {
+  return (
+    <h2 className="mb-2 px-1 text-sm font-semibold text-fg">
+      {label} <span className="font-normal text-fg-faint">· {count}</span>
+    </h2>
   );
 }

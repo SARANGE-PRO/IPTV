@@ -15,6 +15,8 @@ export type {
   Episode,
   SeriesDetails,
   FavoriteEntry,
+  FavoriteTab,
+  FavoriteTabItem,
   PlaybackEntry,
   SessionRecord,
   SessionStatus,

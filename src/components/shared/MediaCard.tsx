@@ -78,7 +78,7 @@ export function MediaCard({
 
         {favorite !== undefined && (
           <div className="absolute right-1.5 top-1.5">
-            <FavoriteButton type={favorite.type} itemId={favorite.itemId} />
+            <FavoriteButton type={favorite.type} itemId={favorite.itemId} title={title} />
           </div>
         )}
 

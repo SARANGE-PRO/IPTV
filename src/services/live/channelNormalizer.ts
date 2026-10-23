@@ -58,14 +58,28 @@ const STRIP_WORDS =
 // "FHD| ", "4K| "... Un `[A-Za-z0-9]{2,5}` generique amputait de vraies marques
 // ("beIN - Sports" -> "Sports", "M6 - Music" -> "Music") et collait des cles de
 // regroupement distinctes -> chaines fusionnees a tort.
-const PREFIX =
-  /^\s*\|?\s*(?:fr|be|ch|ca|lu|qc|uk|us|usa|en|es|it|de|at|pt|br|nl|pl|ar|ara|ma|tn|dz|eg|sa|qa|ae|tr|ru|af|afr|eu|int|multi|vf|vo|vost|hd|fhd|uhd|4k|sd|hevc|h265|raw|vip)\s*[|:\-–]\s*/i;
+// Plusieurs codes possibles avant le separateur (« FR FHD| », « FR| UHD| » est
+// traite par la boucle) ; separateurs usuels des listes, puces comprises.
+const PREFIX_CODE =
+  '(?:fr|be|ch|ca|lu|qc|uk|us|usa|en|es|it|de|at|pt|br|nl|pl|ar|ara|ma|tn|dz|eg|sa|qa|ae|tr|ru|af|afr|eu|int|multi|vf|vo|vost|hd|fhd|uhd|4k|sd|hevc|h265|raw|vip)';
+const PREFIX = new RegExp(`^\\s*[|•·»▎►]?\\s*${PREFIX_CODE}(?:\\s+${PREFIX_CODE})*\\s*[|:\\-–—•·»▎►]\\s*`, 'i');
+
+/** Retire les prefixes pays/qualite empiles (« FR| UHD| TF1 » -> « TF1 »). */
+function stripPrefixes(name: string): string {
+  let work = name;
+  for (let i = 0; i < 3; i++) {
+    const next = work.replace(PREFIX, '');
+    if (next === work) break;
+    work = next;
+  }
+  return work;
+}
 
 /** Nom d'affichage propre d'une chaine (garde la casse, retire tags/prefixe). */
 export function cleanChannelDisplay(rawName: string): string {
   let work = stripDecorative(rawName);
   work = work.replace(/\[[^\]]*\]/g, ' ').replace(/\([^)]*\)/g, ' ');
-  work = work.replace(PREFIX, '');
+  work = stripPrefixes(work);
   work = work.replace(STRIP_WORDS, ' ');
   work = work.replace(/[|]+/g, ' ').replace(/\s{2,}/g, ' ').replace(/\s*[-–]\s*$/, '').trim();
   return work !== '' ? work : stripDecorative(rawName).trim() || rawName.trim();
@@ -106,7 +120,25 @@ export function isSeparatorOrEvent(name: string): boolean {
 
 /** Cle canonique stable pour regrouper les doublons (TF1 HD / TF1 4K -> "tf1"). */
 export function canonicalChannelKey(rawName: string): string {
-  return harmonize(normalizeText(cleanChannelDisplay(rawName)));
+  // Suffixe pays redondant (« BEIN SPORTS 1 FR ») : meme chaine que sans.
+  return harmonize(normalizeText(cleanChannelDisplay(rawName))).replace(/\s+fr$/, '');
+}
+
+/**
+ * Cle COMPACTE pour le referentiel des chaines FR (utils/frenchChannelReference) :
+ * cle canonique, « sports » -> « sport », « C+ » -> « Canal+ », puis
+ * alphanumerique pur (« canal plus sport 360 » -> « canalplussport360 »).
+ */
+export function referenceKey(rawName: string): string {
+  return compactCanonicalKey(canonicalChannelKey(rawName));
+}
+
+/** Meme cle compacte, depuis une cle canonique deja calculee. */
+export function compactCanonicalKey(canonical: string): string {
+  return canonical
+    .replace(/\bsports\b/g, 'sport')
+    .replace(/[^a-z0-9]+/g, '')
+    .replace(/^cplus/, 'canalplus');
 }
 
 // Alias compacts pour divergences guide XMLTV <-> Xtream irreductibles a la

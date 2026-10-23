@@ -207,6 +207,25 @@ export interface FavoriteEntry {
   type: MediaType;
   itemId: string;
   addedAt: number;
+  /** Ordre personnalise (glisser-deposer) ; absent = jamais reordonne. Non indexe. */
+  position?: number;
+}
+
+/** Onglet de favoris cree par l'utilisateur (« Sport », « Soirée ciné »…). */
+export interface FavoriteTab {
+  id: string;
+  name: string;
+  position: number;
+  createdAt: number;
+}
+
+/** Element range dans un onglet (toujours aussi present dans `favorites`). */
+export interface FavoriteTabItem {
+  tabId: string;
+  type: MediaType;
+  itemId: string;
+  position: number;
+  addedAt: number;
 }
 
 export interface PlaybackEntry {

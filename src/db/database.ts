@@ -1,8 +1,11 @@
 import Dexie, { type Table } from 'dexie';
 import type { EpgEntry } from '@/types/epg';
+import type { LiveLineupEntry } from '@/types/liveLineup';
 import type {
   Category,
   FavoriteEntry,
+  FavoriteTab,
+  FavoriteTabItem,
   HiddenCategoryEntry,
   LiveChannel,
   MediaType,
@@ -55,6 +58,9 @@ export class IptvDatabase extends Dexie {
   search_index!: Table<SearchIndexEntry, string>;
   epg_cache!: Table<EpgEntry, string>;
   reminders!: Table<Reminder, string>;
+  live_lineup!: Table<LiveLineupEntry, string>;
+  favorite_tabs!: Table<FavoriteTab, string>;
+  favorite_tab_items!: Table<FavoriteTabItem, [string, MediaType, string]>;
 
   constructor() {
     super('iptv-pwa');
@@ -220,6 +226,20 @@ export class IptvDatabase extends Dexie {
           tx.table('sync_metadata').bulkDelete(['vod', 'series']),
         ]);
       });
+
+    // v11 : TABLES ADDITIVES uniquement (aucun index ajoute aux tables pleines,
+    // donc aucune reconstruction lente au demarrage, aucune resync) :
+    //  - live_lineup : grille des chaines FR rangee (services/live/frenchLineupService),
+    //    reconstruite depuis xtream_live_streams apres chaque synchro Live ou
+    //    montee de version du referentiel. `sortKey` = ordre d'affichage,
+    //    `groupKey` = versions d'une meme chaine.
+    //  - favorite_tabs / favorite_tab_items : onglets de favoris crees par
+    //    l'utilisateur (chaines, films, series melanges), ordre personnalise.
+    this.version(11).stores({
+      live_lineup: 'id, sortKey, groupKey',
+      favorite_tabs: 'id, position',
+      favorite_tab_items: '[tabId+type+itemId], tabId, [type+itemId]',
+    });
   }
 }
 

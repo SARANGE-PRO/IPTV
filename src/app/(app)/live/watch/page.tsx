@@ -4,12 +4,14 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { ArrangeButton } from '@/components/favorites/ArrangeButton';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { NowPlaying } from '@/components/live/NowPlaying';
 import { ExternalPlayer } from '@/components/player/ExternalPlayer';
 import { PlayerSlot } from '@/components/player/host/PlayerSlot';
 import { IconArrowLeft } from '@/components/ui/icons';
 import { useLandscapeFullscreen } from '@/hooks/useLandscapeFullscreen';
+import { useLineupNames } from '@/hooks/useLineupNames';
 import { useMediaSession } from '@/hooks/useMediaSession';
 import { cn } from '@/lib/cn';
 import * as catalogRepository from '@/services/data/catalogService';
@@ -48,6 +50,8 @@ function LiveWatch() {
     next: null,
   });
   const [versions, setVersions] = useState<ChannelVersion[]>([]);
+  // Liste parcourue par Precedente / Suivante (« TNT », onglet…), null = categorie.
+  const [zapLabel, setZapLabel] = useState<string | null>(null);
   // <video> du lecteur unique, SEULEMENT si c'est cette chaine qui joue
   // (sinon le plein ecran paysage piloterait un film en mini-lecteur).
   const video = usePlayerStore((s) =>
@@ -155,7 +159,9 @@ function LiveWatch() {
     let active = true;
     void getZapNeighbors(channel)
       .then((result) => {
-        if (active) setNeighbors(result);
+        if (!active) return;
+        setNeighbors(result);
+        setZapLabel(result.label);
       })
       .catch(() => {
         if (active) setNeighbors({ previous: null, next: null });
@@ -191,7 +197,13 @@ function LiveWatch() {
     };
   }, [channel]);
 
-  const channelTitle = channel != null ? displayChannelName(channel.name) : 'Chaîne';
+  // Noms de la grille FR (« CNews » plutot que « FR| CNEWS ») : titre, ecran
+  // verrouille, boutons de zapping.
+  const lineupNames = useLineupNames(
+    [streamId, neighbors.previous?.id, neighbors.next?.id].filter((id): id is string => id != null && id !== ''),
+  );
+  const nameOf = (c: LiveChannel) => lineupNames.get(c.id) ?? displayChannelName(c.name);
+  const channelTitle = channel != null ? nameOf(channel) : 'Chaîne';
   const nextId = neighbors.next?.id ?? null;
   const previousId = neighbors.previous?.id ?? null;
   // Ecran verrouille / Centre de controle / AirPods : ⏮ ⏭ = chaine precedente /
@@ -219,9 +231,10 @@ function LiveWatch() {
           <IconArrowLeft className="h-5 w-5" />
         </button>
         <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg">
-          {channel != null ? displayChannelName(channel.name) : 'Chaîne'}
+          {channelTitle}
         </h1>
-        {streamId !== '' && <FavoriteButton type="live" itemId={streamId} />}
+        {streamId !== '' && <ArrangeButton type="live" itemId={streamId} title={channelTitle} />}
+        {streamId !== '' && <FavoriteButton type="live" itemId={streamId} title={channelTitle} />}
       </div>
 
       {channel === null ? (
@@ -272,7 +285,7 @@ function LiveWatch() {
                   )}
                 >
                   <span className="glass inline-block max-w-[70%] truncate rounded-lg px-2.5 py-1 text-xs font-medium text-fg">
-                    {channel != null ? displayChannelName(channel.name) : 'Chaîne'}
+                    {channelTitle}
                   </span>
                 </div>
                 <div
@@ -321,6 +334,9 @@ function LiveWatch() {
                   </div>
                 </div>
               )}
+              {zapLabel !== null && (
+                <p className="-mb-2 px-1 text-[11px] text-fg-faint">Zapping · {zapLabel}</p>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <button
                   type="button"
@@ -332,7 +348,7 @@ function LiveWatch() {
                 >
                   <span className="block text-[10px] uppercase tracking-wider text-fg-faint">Précédente</span>
                   <span className="mt-1 block truncate">
-                    {neighbors.previous != null ? displayChannelName(neighbors.previous.name) : 'Indisponible'}
+                    {neighbors.previous != null ? nameOf(neighbors.previous) : 'Indisponible'}
                   </span>
                 </button>
                 <button
@@ -345,7 +361,7 @@ function LiveWatch() {
                 >
                   <span className="block text-[10px] uppercase tracking-wider text-fg-faint">Suivante</span>
                   <span className="mt-1 block truncate">
-                    {neighbors.next != null ? displayChannelName(neighbors.next.name) : 'Indisponible'}
+                    {neighbors.next != null ? nameOf(neighbors.next) : 'Indisponible'}
                   </span>
                 </button>
               </div>

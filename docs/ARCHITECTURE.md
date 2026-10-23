@@ -143,7 +143,10 @@ filtrées / préférences.
   milliers de flux/films en RAM) · hydrateFromDb, syncSection, invalidate.
 - **filterStore** — query/debouncedQuery, country (défaut FR), language,
   selectedCategories, blacklist (`Set`), hide/unhide, resetFilters.
-- **favoritesStore** — live/vod/series (`Set`), isFavorite O(1), toggle, hydrate.
+- **favoritesStore** — live/vod/series (`Set`), isFavorite O(1), toggle, hydrate,
+  onglets perso (`tabs`, `tabItems`, `membership`), ordre manuel, retrait annulable.
+  `favoritesUiStore` : feuille « Ranger dans un onglet » + toast (globaux, layout).
+- **liveLineupStore** — statut/révision de la grille Live FR (jamais les chaînes).
 - **playbackStore** — continueWatching, recentChannels, get/saveProgress
   (throttlé → Dexie), markFinished, clearHistory.
 - **settingsStore** — pays/langue par défaut, prefs lecteur/UI/blacklist.
@@ -167,7 +170,10 @@ xtream_series_categories id, name, isFrench
 xtream_series            idem (lastModifiedAt a la place d'addedAt)
 xtream_series_details    seriesId
 tmdb_cache               key, type, fetchedAt
-favorites                [type+itemId], type, addedAt
+favorites                [type+itemId], type, addedAt   (position non indexée = ordre manuel)
+favorite_tabs            id, position                    (v11, onglets perso)
+favorite_tab_items       [tabId+type+itemId], tabId, [type+itemId]
+live_lineup              id, sortKey, groupKey           (v11, grille Live FR rangée)
 playback_history         [type+itemId], type, updatedAt, finished
 hidden_categories        [section+categoryId], section
 settings                 key
@@ -190,6 +196,26 @@ Au moment de la normalisation, chaque catégorie/flux reçoit un flag `isFrench`
 (voir `FRENCH_KEYWORDS`). **Tri par pertinence, pas suppression** : le FR remonte,
 les autres pays restent accessibles via `filterStore.country`. La **blacklist**
 (`hidden_categories`) est un masquage durable et réactivable, distinct du sélecteur.
+
+### 6 ter. Grille Live FR (page Live, zapping)
+
+- **Construite une fois** (`services/live/frenchLineupService.ensureFrenchLineup`)
+  depuis les flux `isFrench = 1` déjà en base : après chaque synchro Live
+  (empreinte `lastFetchAt` + nombre de flux) ou si `LINEUP_VERSION` change.
+  Aucune resynchronisation nécessaire. ~200 ms pour 12 000 flux (Mac).
+- **Classeur pur** `frenchLineupClassifier` : exclut séparateurs, événements
+  PPV vides et adultes ; regroupe les versions (HD/FHD/4K…) par clé canonique ;
+  pays francophone étranger (BE/CH/CA/LU/Afrique) = entrée distincte en
+  « Francophonie » ; sinon référentiel > catégorie régionale > 24/7 > thème.
+- **Référentiel** `utils/frenchChannelReference` (motifs sur une clé compacte) :
+  TNT dans l'ordre Arcom 2025 (France 4 en 4, LCP 8, bloc info 13-16, T18,
+  Novo19…), toute la famille Canal+, beIN / RMC Sport / DAZN / Ligue 1+ /
+  Eurosport, Ciné+ / OCS, jeunesse, découverte, musique, régions, francophonie.
+- **Vues** (`services/live/liveViews`, pur) : France (sections), TNT, Canal+,
+  Sport, Foot, Info… ; Favoris et onglets perso ; International / Tous restent
+  en pagination Dexie. Catégories masquées retirées à la lecture.
+- **Zapping** (`liveZappingService`) : la vue d'où la chaîne a été lancée
+  (contexte), sinon l'ordre de la grille, sinon la catégorie fournisseur.
 
 ### 6 bis. Langue et versions des films / séries (fondation langue)
 

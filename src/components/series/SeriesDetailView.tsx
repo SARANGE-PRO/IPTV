@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { ArrangeButton } from '@/components/favorites/ArrangeButton';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { HScroll } from '@/components/shared/HScroll';
 import { LanguageVariantSwitcher } from '@/components/media/LanguageVariantSwitcher';
@@ -276,7 +277,8 @@ export function SeriesDetailView({
           <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg drop-shadow">
             {series != null ? displayTitle(series.name) : ''}
           </h1>
-          <FavoriteButton type="series" itemId={seriesId} />
+          <ArrangeButton type="series" itemId={seriesId} title={series != null ? displayTitle(series.name) : ''} />
+          <FavoriteButton type="series" itemId={seriesId} title={series != null ? displayTitle(series.name) : ''} />
         </div>
 
         {playingEp !== null && src !== null ? (

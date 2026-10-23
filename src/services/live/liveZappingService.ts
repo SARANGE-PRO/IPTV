@@ -1,6 +1,7 @@
 import * as catalogRepository from '@/db/repositories/catalogRepository';
 import { findChannelVersions } from '@/services/live/channelGroupingService';
 import { isSeparatorOrEvent } from '@/services/live/channelNormalizer';
+import { ensureFrenchLineup, getLineupEntries, getLineupGroups, getLineupVersions } from '@/services/live/frenchLineupService';
 import type { ChannelVersion } from '@/types/liveGrouping';
 import type { LiveChannel } from '@/types/models';
 
@@ -39,10 +40,92 @@ export function invalidateLivePool(): void {
   pool = null;
 }
 
-/** Versions de la chaine (FR uniquement : l'international reste « en vrac »). */
+/**
+ * Versions de la chaine (FR uniquement : l'international reste « en vrac »).
+ * Source : la grille FR (toutes les versions, sans plafond) ; repli sur le
+ * pool borne tant que la grille n'est pas construite.
+ */
 export async function getChannelVersions(channel: LiveChannel): Promise<ChannelVersion[]> {
   if (channel.isFrench !== 1) return [];
+  const lineup = await getLineupVersions(channel.id).catch(() => []);
+  if (lineup.length > 0) {
+    const rows = await catalogRepository.getLiveChannelsByIds(lineup.map((v) => v.id));
+    const byId = new Map(rows.map((c) => [c.id, c] as const));
+    return lineup.flatMap((v) => {
+      const row = byId.get(v.id);
+      return row !== undefined ? [{ channel: row, quality: v.quality, label: v.qualityLabel, score: v.qualityScore }] : [];
+    });
+  }
   return findChannelVersions(await getFrenchLivePool(), channel);
+}
+
+// --- Contexte de zapping ------------------------------------------------------
+
+/** Liste parcourue par ⏮ ⏭ : la vue Live d'ou la chaine a ete lancee. */
+export interface ZapContext {
+  /** « TNT », « Sport », nom d'onglet… (affiche sous le lecteur). */
+  label: string;
+  /** Chaines dans l'ordre de la vue ; `groupKey` = retrouver une autre version. */
+  entries: { id: string; groupKey: string | null }[];
+}
+
+let zapContext: ZapContext | null = null;
+
+/** Appele au tap sur une chaine de la page Live (null = pas de contexte). */
+export function setZapContext(context: ZapContext | null): void {
+  zapContext = context !== null && context.entries.length > 1 ? context : null;
+}
+
+export function getZapContextLabel(): string | null {
+  return zapContext?.label ?? null;
+}
+
+/** `label` : liste parcourue (« TNT », nom d'onglet…), null = categorie fournisseur. */
+type Neighbors = { previous: LiveChannel | null; next: LiveChannel | null; label: string | null };
+
+async function neighborsByIds(
+  previousId: string | null,
+  nextId: string | null,
+  label: string,
+): Promise<Neighbors | null> {
+  const ids = [previousId, nextId].filter((id): id is string => id !== null);
+  if (ids.length === 0) return null;
+  const byId = new Map((await catalogRepository.getLiveChannelsByIds(ids)).map((c) => [c.id, c] as const));
+  const previous = previousId !== null ? (byId.get(previousId) ?? null) : null;
+  const next = nextId !== null ? (byId.get(nextId) ?? null) : null;
+  return previous === null && next === null ? null : { previous, next, label };
+}
+
+/** Voisins dans le contexte de zapping (la version jouee peut differer). */
+async function contextNeighbors(channel: LiveChannel): Promise<Neighbors | null> {
+  const context = zapContext;
+  if (context === null) return null;
+  let index = context.entries.findIndex((e) => e.id === channel.id);
+  if (index === -1) {
+    const [entry] = await getLineupEntries([channel.id]);
+    if (entry === undefined) return null;
+    index = context.entries.findIndex((e) => e.groupKey === entry.groupKey);
+    if (index === -1) return null;
+  }
+  const n = context.entries.length;
+  return neighborsByIds(context.entries[(index - 1 + n) % n]!.id, context.entries[(index + 1) % n]!.id, context.label);
+}
+
+/** Voisins dans la grille FR : TF1 -> France 2 -> France 3… comme une telecommande. */
+async function lineupNeighbors(channel: LiveChannel): Promise<Neighbors | null> {
+  if (channel.isFrench !== 1) return null;
+  await ensureFrenchLineup();
+  const [entry] = await getLineupEntries([channel.id]);
+  if (entry === undefined) return null;
+  const groups = await getLineupGroups();
+  const index = groups.findIndex((g) => g.key === entry.groupKey);
+  if (index === -1 || groups.length < 2) return null;
+  const n = groups.length;
+  return neighborsByIds(
+    groups[(index - 1 + n) % n]!.versions[0]!.id,
+    groups[(index + 1) % n]!.versions[0]!.id,
+    'Chaînes françaises',
+  );
 }
 
 function playable(candidate: LiveChannel, currentId: string): boolean {
@@ -50,13 +133,20 @@ function playable(candidate: LiveChannel, currentId: string): boolean {
 }
 
 /**
- * Chaine precedente / suivante dans la categorie, en sautant les separateurs
- * (« ----- FRANCE ----- ») et les evenements vides qui n'ont pas de flux ; en
- * bout de categorie on reboucle, comme une telecommande.
+ * Chaine precedente / suivante : dans la vue Live d'ou l'on vient (contexte),
+ * sinon dans la grille FR, sinon dans la categorie fournisseur — en sautant
+ * les separateurs (« ----- FRANCE ----- ») et les evenements vides ; en bout
+ * de liste on reboucle, comme une telecommande.
  */
-export async function getZapNeighbors(
-  channel: LiveChannel,
-): Promise<{ previous: LiveChannel | null; next: LiveChannel | null }> {
+export async function getZapNeighbors(channel: LiveChannel): Promise<Neighbors> {
+  const fromContext = await contextNeighbors(channel).catch(() => null);
+  if (fromContext !== null) return fromContext;
+  const fromLineup = await lineupNeighbors(channel).catch(() => null);
+  if (fromLineup !== null) return fromLineup;
+  return categoryNeighbors(channel);
+}
+
+async function categoryNeighbors(channel: LiveChannel): Promise<Neighbors> {
   const { before, after } = await catalogRepository.getLiveChannelsAround(
     channel.categoryId,
     channel.sortOrder,
@@ -72,5 +162,5 @@ export async function getZapNeighbors(
     const head = await catalogRepository.getLiveCategoryEdge(channel.categoryId, 'start', NEIGHBOR_WINDOW);
     next = head.find((c) => playable(c, channel.id)) ?? null;
   }
-  return { previous, next };
+  return { previous, next, label: null };
 }

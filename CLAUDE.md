@@ -42,6 +42,11 @@ Gestionnaire de paquets : **npm**.
    persistée/indexée ; jamais recalculée à l'affichage. Une carte par titre :
    versions regroupées par `groupKey` (`groupRank`/`laneRank`, service
    `catalogGroupingService`), représentant choisi selon la préférence de langue.
+   **Live FR** : grille rangée UNE fois (après synchro / montée de
+   `LINEUP_VERSION`) dans `live_lineup` par `services/live/frenchLineupService`
+   (classeur pur `frenchLineupClassifier` + référentiel `utils/frenchChannelReference`,
+   numérotation TNT Arcom 2025) ; la page Live et le zapping la lisent telle
+   quelle. Toucher au référentiel ou aux sections = incrémenter `LINEUP_VERSION`.
 6. **Performance gros volumes** : les listes lourdes (chaînes/films) vivent dans
    **Dexie**, lues paginées/virtualisées — **jamais** en masse dans Zustand.
    Sélecteurs fins, `Set` pour favoris/blacklist, debounce sur la recherche.
@@ -100,4 +105,5 @@ suivant auto, épisodes riches, vu/non vu, bande-annonce, saga, similaires) ·
 P6 ✅ lecteur NATIF conservé + Media Session (écran verrouillé, épisode suivant) —
 jamais d'overlay maison · P7 ✅ recherche (titres, genres, acteurs TMDB, récentes)
 · P8 abandonné. Schéma Dexie v10 = purge
-films/séries + resync.
+films/séries + resync. v11 = tables additives (grille Live FR, onglets de
+favoris), sans resync. Live : grille FR + onglets de favoris + 10 récents ✅.

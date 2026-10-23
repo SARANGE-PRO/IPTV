@@ -83,17 +83,22 @@ export const usePlaybackStore = create<PlaybackState>()((set, get) => ({
   },
 
   recordLiveWatch: (channelId, name, logoUrl) => {
-    void playbackRepository.upsertProgress({
-      type: 'live',
-      itemId: channelId,
-      seriesId: null,
-      positionSec: 0,
-      durationSec: null,
-      finished: 0,
-      updatedAt: Date.now(),
-      label: name,
-      posterUrl: logoUrl,
-    });
+    void playbackRepository
+      .upsertProgress({
+        type: 'live',
+        itemId: channelId,
+        seriesId: null,
+        positionSec: 0,
+        durationSec: null,
+        finished: 0,
+        updatedAt: Date.now(),
+        label: name,
+        posterUrl: logoUrl,
+      })
+      // Bandeau « Récemment regardées » du Live : a jour des le retour.
+      .then(() => playbackRepository.getRecentLiveChannels(12))
+      .then((recentChannels) => set({ recentChannels }))
+      .catch(() => undefined);
   },
 
   markFinished: async (type, itemId) => {

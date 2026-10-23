@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { ArrangeButton } from '@/components/favorites/ArrangeButton';
 import { FavoriteButton } from '@/components/shared/FavoriteButton';
 import { LanguageVariantSwitcher } from '@/components/media/LanguageVariantSwitcher';
 import { TitleRail } from '@/components/media/TitleRail';
@@ -270,7 +271,8 @@ export function MovieDetailView({
           <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg drop-shadow">
             {movie != null ? displayTitle(movie.name) : ''}
           </h1>
-          <FavoriteButton type="vod" itemId={vodId} />
+          <ArrangeButton type="vod" itemId={vodId} title={movie != null ? displayTitle(movie.name) : ''} />
+          <FavoriteButton type="vod" itemId={vodId} title={movie != null ? displayTitle(movie.name) : ''} />
         </div>
 
         {playing && src !== null && movie !== undefined ? (

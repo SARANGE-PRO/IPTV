@@ -1,413 +1,229 @@
 'use client';
 
-import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { TabNameDialog } from '@/components/favorites/TabNameDialog';
+import { LiveChannelRow, type LiveRowData } from '@/components/live/LiveChannelRow';
+import { LiveViewBar } from '@/components/live/LiveViewBar';
+import { RecentChannelsStrip } from '@/components/live/RecentChannelsStrip';
 import { BrandMark } from '@/components/shared/BrandMark';
-import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { FavoriteButton } from '@/components/shared/FavoriteButton';
-import { HScroll } from '@/components/shared/HScroll';
-import { IconChevronDown, IconEyeOff, IconSearch } from '@/components/ui/icons';
+import { IconChevronRight } from '@/components/ui/actionIcons';
+import { IconSearch } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { cn } from '@/lib/cn';
-import * as catalogRepository from '@/services/data/catalogService';
-import type { LiveFilter } from '@/services/data/catalogService';
-import { groupChannels } from '@/services/live/channelGroupingService';
-import { isSeparatorOrEvent } from '@/services/live/channelNormalizer';
-import { FRENCH_POOL_CAP, getFrenchLivePool } from '@/services/live/liveZappingService';
-import type { ChannelGroup } from '@/types/liveGrouping';
-import * as settingsRepository from '@/services/data/settingsDataService';
 import { useDebounce } from '@/hooks/useDebounce';
+import { useFavoriteItems } from '@/hooks/useFavoriteItems';
+import { useLiveCatalogPage } from '@/hooks/useLiveCatalogPage';
+import { useLiveLineup } from '@/hooks/useLiveLineup';
+import { LIVE_SEARCH_LIMIT, useLiveSearch } from '@/hooks/useLiveSearch';
 import { useLoadMore } from '@/hooks/useLoadMore';
+import type { LiveFilter } from '@/services/data/catalogService';
+import * as settingsRepository from '@/services/data/settingsDataService';
+import type { FavoriteChannel } from '@/services/favorites/favoriteItemsService';
+import {
+  buildOverview,
+  filterLineup,
+  isLineupView,
+  restoreView,
+  tabIdOf,
+  viewLabel,
+  withoutHidden,
+  type LiveViewId,
+  type OverviewItem,
+} from '@/services/live/liveViews';
+import { setZapContext } from '@/services/live/liveZappingService';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { useFavoritesStore } from '@/stores/favoritesStore';
 import { useFilterStore } from '@/stores/filterStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
+import type { LineupGroup } from '@/types/liveLineup';
 import type { LiveChannel } from '@/types/models';
-import type { ChannelTheme } from '@/utils/channelTheme';
-import { compareLiveChannels, isFootballChannel, isMainFrenchChannel } from '@/utils/channelPriority';
 import { displayChannelName } from '@/utils/displayTitle';
 import { formatCount } from '@/utils/format';
-import { liveHref } from '@/utils/appRoutes';
 
 /**
- * Filtres rapides Live — l'entree principale (remplace la navigation rigide par
- * categorie fournisseur). France prioritaire par defaut ; les autres pays
- * restent accessibles via "International" sans polluer l'experience.
+ * Live TV. Vue France par defaut = grille FR rangee (TNT dans l'ordre des
+ * numeros, Canal+, Sport, Info… puis Francophonie), une ligne par chaine avec
+ * ses versions. Favoris et onglets perso a cote ; International / Tous en
+ * pagination Dexie. Les 10 dernieres chaines regardees restent a un tap.
  */
-type FilterId =
-  | 'france'
-  | 'main'
-  | 'favorites'
-  | 'recent'
-  | 'sport'
-  | 'foot'
-  | 'news'
-  | 'cinema'
-  | 'entertainment'
-  | 'kids'
-  | 'doc'
-  | 'music'
-  | 'uhd'
-  | 'international'
-  | 'all';
 
-const FILTERS: { id: FilterId; label: string }[] = [
-  { id: 'france', label: 'France' },
-  { id: 'main', label: 'Principales' },
-  { id: 'favorites', label: 'Favoris' },
-  { id: 'recent', label: 'Récents' },
-  { id: 'sport', label: 'Sport' },
-  { id: 'foot', label: 'Foot' },
-  { id: 'news', label: 'News' },
-  { id: 'cinema', label: 'Cinéma' },
-  { id: 'entertainment', label: 'Divertissement' },
-  { id: 'kids', label: 'Enfants' },
-  { id: 'doc', label: 'Doc' },
-  { id: 'music', label: 'Musique' },
-  { id: 'uhd', label: '4K/UHD' },
-  { id: 'international', label: 'International' },
-  { id: 'all', label: 'Tous' },
-];
+const STEP = 80;
+const LIVE_ONLY = ['live'] as const;
+const SETTING_KEY = 'lastLiveFilter';
 
-const STEP = 60;
-const PAGE = 200;
-const CAP = FRENCH_POOL_CAP; // filtres bornes : jamais les 55k en memoire
-
-/** Filtres servis par pagination Dexie (jamais tout le catalogue en RAM). */
-const PAGINATED: FilterId[] = ['all', 'international'];
-
-/**
- * Vues FR bornees ou l'on REGROUPE les doublons (TF1 HD/FHD/4K -> une entree
- * "TF1"). International/Tous restent "en vrac" (individuels), et la recherche
- * garde chaque resultat distinct.
- */
-const GROUPED_FILTERS: FilterId[] = [
-  'france', 'main', 'sport', 'foot', 'news', 'cinema', 'entertainment', 'kids', 'doc', 'music', 'uhd',
-];
-
-/** Sections editoriales du bouquet FR (vue par defaut "France"). */
-type SectionKey = 'main' | 'news' | 'sport' | 'cinema' | 'entertainment' | 'kids' | 'doc' | 'music' | 'other';
-
-const SECTION_META: { key: SectionKey; label: string; seeAll?: FilterId }[] = [
-  { key: 'main', label: 'Chaînes principales', seeAll: 'main' },
-  { key: 'news', label: 'Info', seeAll: 'news' },
-  { key: 'sport', label: 'Sport', seeAll: 'sport' },
-  { key: 'cinema', label: 'Cinéma & séries', seeAll: 'cinema' },
-  { key: 'entertainment', label: 'Divertissement', seeAll: 'entertainment' },
-  { key: 'kids', label: 'Enfants', seeAll: 'kids' },
-  { key: 'doc', label: 'Documentaires', seeAll: 'doc' },
-  { key: 'music', label: 'Musique', seeAll: 'music' },
-  { key: 'other', label: 'Autres chaînes FR' },
-];
-
-const SECTION_CAP = 12;
-
-function sectionOf(group: ChannelGroup): SectionKey {
-  if (isMainFrenchChannel(group.best)) return 'main';
-  const theme = group.best.theme;
-  if (
-    theme === 'news' ||
-    theme === 'sport' ||
-    theme === 'cinema' ||
-    theme === 'entertainment' ||
-    theme === 'kids' ||
-    theme === 'doc' ||
-    theme === 'music'
-  ) {
-    return theme;
-  }
-  return 'other';
+function groupRow(group: LineupGroup, categoryName: Map<string, string>): LiveRowData {
+  const best = group.versions[0]!;
+  const badges: string[] = [];
+  if (best.quality !== 'STANDARD') badges.push(best.qualityLabel);
+  if (group.country !== null) badges.push(group.country);
+  return {
+    id: best.id,
+    name: group.name,
+    logoUrl: group.versions.find((v) => v.logoUrl !== null && v.logoUrl !== '')?.logoUrl ?? null,
+    lcn: group.lcn,
+    badges,
+    versions: group.versions.map((v) => ({ id: v.id, label: v.qualityLabel })),
+    categoryId: best.categoryId,
+    categoryName: categoryName.get(best.categoryId),
+  };
 }
 
-function paginatedFilter(id: FilterId): LiveFilter {
-  return id === 'international' ? { kind: 'nonFrench' } : { kind: 'all' };
+function favoriteRow(channel: FavoriteChannel, categoryName: Map<string, string>): LiveRowData {
+  return {
+    id: channel.id,
+    name: channel.name,
+    logoUrl: channel.logoUrl,
+    lcn: channel.lcn,
+    badges: channel.qualityLabel !== null ? [channel.qualityLabel] : [],
+    categoryId: channel.categoryId,
+    categoryName: categoryName.get(channel.categoryId),
+  };
 }
 
-/** Filtre "borne" : on charge jusqu'a CAP puis on trie/affine cote client. */
-function boundedBaseFilter(id: FilterId): LiveFilter {
-  if (id === 'france' || id === 'main') return { kind: 'french' };
-  if (id === 'uhd') return { kind: 'uhd' };
-  if (id === 'foot') return { kind: 'frenchTheme', theme: 'sport' };
-  return { kind: 'frenchTheme', theme: id as ChannelTheme };
+function channelRow(channel: LiveChannel, categoryName: Map<string, string>): LiveRowData {
+  return {
+    id: channel.id,
+    name: displayChannelName(channel.name),
+    logoUrl: channel.logoUrl,
+    badges: channel.isFrench === 1 ? ['FR'] : [],
+    categoryId: channel.categoryId,
+    categoryName: categoryName.get(channel.categoryId),
+  };
 }
 
-function boundedPredicate(id: FilterId): (channel: LiveChannel) => boolean {
-  if (id === 'main') return isMainFrenchChannel;
-  if (id === 'foot') return isFootballChannel;
-  return () => true;
-}
-
-/** Tri intelligent : principales FR -> FR par theme -> reste -> ordre fournisseur. */
-const orderChannels = (list: LiveChannel[]): LiveChannel[] => [...list].sort(compareLiveChannels);
-
-/** Ligne groupee : une chaine logique + selecteur de versions (si doublons). */
-function ChannelGroupRow({ group, onHide }: { group: ChannelGroup; onHide: () => void }) {
-  const [open, setOpen] = useState(false);
-  const best = group.best;
-  const bestLabel = group.versions[0]?.label ?? 'Standard';
-  const multi = group.versions.length > 1;
-  return (
-    <div className="rounded-xl transition-colors hover:bg-ink-800">
-      <div className="group flex items-center gap-2 px-2 py-2">
-        <Link href={liveHref(best.id)} className="flex min-w-0 flex-1 items-center gap-3">
-          <ChannelLogo channel={best} className="h-11 w-11 shrink-0" />
-          <span className="min-w-0 flex-1 truncate text-sm text-fg">{displayChannelName(group.name)}</span>
-          {group.isFrench === 1 && (
-            <span className="rounded bg-accent/15 px-1 py-0.5 text-[10px] font-semibold text-accent">FR</span>
-          )}
-          {group.versions[0]?.quality !== 'STANDARD' && (
-            <span className="rounded bg-ink-600 px-1.5 py-0.5 text-[10px] font-semibold text-fg-muted">{bestLabel}</span>
-          )}
-        </Link>
-        {multi && (
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            aria-label={`${group.versions.length} versions disponibles`}
-            className="flex shrink-0 items-center gap-1 rounded-full bg-ink-700 px-2.5 py-1 text-[11px] font-medium text-fg-muted hover:text-fg"
-          >
-            {group.versions.length}
-            <IconChevronDown className={cn('h-3.5 w-3.5 transition-transform', open && 'rotate-180')} />
-          </button>
-        )}
-        <button
-          aria-label="Masquer la catégorie de cette chaîne"
-          title="Masquer la catégorie"
-          onClick={onHide}
-          className="shrink-0 rounded p-2 text-fg-faint transition-opacity hover:text-accent md:opacity-0 md:group-hover:opacity-100"
-        >
-          <IconEyeOff className="h-4 w-4" />
-        </button>
-        <FavoriteButton type="live" itemId={best.id} />
-      </div>
-      {open && multi && (
-        <div className="flex flex-wrap gap-2 px-3 pb-3 pt-0.5">
-          {group.versions.map((version) => (
-            <Link
-              key={version.channel.id}
-              href={liveHref(version.channel.id)}
-              className="rounded-lg bg-ink-700 px-3 py-1.5 text-xs font-medium text-fg-muted transition-colors hover:bg-ink-600 hover:text-fg"
-            >
-              {version.label}
-            </Link>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ChannelRow({ channel, onHide }: { channel: LiveChannel; onHide: () => void }) {
-  return (
-    <div className="group flex items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-ink-800">
-      <Link href={liveHref(channel.id)} className="flex min-w-0 flex-1 items-center gap-3">
-        <ChannelLogo channel={channel} className="h-11 w-11 shrink-0" />
-        <span className="min-w-0 flex-1 truncate text-sm text-fg">{displayChannelName(channel.name)}</span>
-        {channel.isFrench === 1 && (
-          <span className="rounded bg-accent/15 px-1 py-0.5 text-[10px] font-semibold text-accent">FR</span>
-        )}
-      </Link>
-      <button
-        aria-label="Masquer la catégorie de cette chaîne"
-        title="Masquer la catégorie"
-        onClick={onHide}
-        className="shrink-0 rounded p-2 text-fg-faint transition-opacity hover:text-accent md:opacity-0 md:group-hover:opacity-100"
-      >
-        <IconEyeOff className="h-4 w-4" />
-      </button>
-      <FavoriteButton type="live" itemId={channel.id} />
-    </div>
-  );
-}
+type ListItem = { kind: 'header'; header: Extract<OverviewItem, { kind: 'header' }> } | { kind: 'row'; row: LiveRowData };
 
 export default function LivePage() {
   const slice = useCatalogStore((s) => s.sections.live);
-  const categories = slice.categories;
   const hidden = useFilterStore((s) => s.hidden.live);
-  const hideCategory = useFilterStore((s) => s.hideCategory);
-  const favLiveIds = useFavoritesStore((s) => s.ids.live);
+  const tabs = useFavoritesStore((s) => s.tabs);
+  const favoritesHydrated = useFavoritesStore((s) => s.hydrated);
+  const createTab = useFavoritesStore((s) => s.createTab);
   const recentChannels = usePlaybackStore((s) => s.recentChannels);
 
-  const [filter, setFilter] = useState<FilterId>('france');
+  const [view, setView] = useState<LiveViewId>('france');
   const [query, setQuery] = useState('');
-  const debouncedQuery = useDebounce(query.trim(), 300);
-  const searching = debouncedQuery.length >= 2;
-
-  const [pool, setPool] = useState<LiveChannel[]>([]);
+  const [creatingTab, setCreatingTab] = useState(false);
   const [visible, setVisible] = useState(STEP);
-  const [loading, setLoading] = useState(false);
-  const [count, setCount] = useState<number | null>(null);
-  const [capped, setCapped] = useState(false);
-  const exhaustedRef = useRef(false);
-  const offsetRef = useRef(0);
-  const loadingRef = useRef(false);
+  const debouncedQuery = useDebounce(query.trim(), 300);
+  const search = useLiveSearch(debouncedQuery, hidden);
 
-  const categoryOf = useMemo(() => new Map(categories.map((c) => [c.id, c.name])), [categories]);
-  const notHidden = useCallback((c: LiveChannel) => !hidden.has(c.categoryId), [hidden]);
-  // Favoris / recents ne pilotent le chargement QUE des vues qui les listent :
-  // ailleurs, cocher une etoile rechargeait des milliers de chaines et
-  // ramenait la liste en haut.
-  const favoritesRef = useRef(favLiveIds);
-  favoritesRef.current = favLiveIds;
-  const recentRef = useRef(recentChannels);
-  recentRef.current = recentChannels;
-  const favoritesDep = filter === 'favorites' && !searching ? favLiveIds : null;
-  const recentDep = filter === 'recent' && !searching ? recentChannels : null;
-
+  // Vue memorisee : restauree une fois les onglets connus.
+  const restoredRef = useRef(false);
   useEffect(() => {
-    let active = true;
-    void settingsRepository.getSetting<string>('lastLiveFilter').then((saved) => {
-      if (active && saved !== undefined && FILTERS.some((item) => item.id === saved)) {
-        setFilter(saved as FilterId);
-      }
-    });
-    return () => {
-      active = false;
-    };
+    if (!favoritesHydrated || restoredRef.current) return;
+    restoredRef.current = true;
+    const tabIds = useFavoritesStore.getState().tabs.map((t) => t.id);
+    void settingsRepository
+      .getSetting<string>(SETTING_KEY)
+      .then((saved) => setView(restoreView(saved, tabIds)))
+      .catch(() => undefined);
+  }, [favoritesHydrated]);
+
+  // Onglet supprime pendant qu'il est affiche : retour aux favoris.
+  const currentTabId = tabIdOf(view);
+  useEffect(() => {
+    if (currentTabId !== null && favoritesHydrated && !tabs.some((t) => t.id === currentTabId)) setView('favorites');
+  }, [currentTabId, tabs, favoritesHydrated]);
+
+  useEffect(() => setVisible(STEP), [view, debouncedQuery]);
+
+  const selectView = useCallback((next: LiveViewId) => {
+    setView(next);
+    setQuery('');
+    void settingsRepository.setSetting(SETTING_KEY, next).catch(() => undefined);
   }, []);
 
-  // Chargement du pool selon filtre / recherche.
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setVisible(STEP);
-    setCapped(false);
-    setCount(null);
-    offsetRef.current = 0;
-    exhaustedRef.current = false;
+  const categoryName = useMemo(() => new Map(slice.categories.map((c) => [c.id, c.name] as const)), [slice.categories]);
 
-    const run = async () => {
-      // Recherche : index multiEntry, tous filtres confondus.
-      if (searching) {
-        // Exclusion des categories masquees AVANT la limite (cote repository).
-        const res = await catalogRepository.searchLiveChannels(debouncedQuery, 120, hidden);
-        if (active) {
-          setPool(res);
-          setCount(res.length);
-        }
-        return;
-      }
-      // Favoris : depuis le store (petit ensemble). PAS de filtre blacklist —
-      // un favori explicite prime sur le masquage de categorie (regle unifiee
-      // avec la page Favoris et les rails d'accueil qui ne filtrent pas non plus).
-      if (filter === 'favorites') {
-        const res = orderChannels(await catalogRepository.getLiveChannelsByIds([...favoritesRef.current]));
-        if (active) {
-          setPool(res);
-          setCount(res.length);
-        }
-        return;
-      }
-      // Recents : ordre de visionnage conserve (idem, pas de filtre blacklist).
-      if (filter === 'recent') {
-        const ids = recentRef.current.map((e) => e.itemId);
-        const byId = new Map((await catalogRepository.getLiveChannelsByIds(ids)).map((c) => [c.id, c]));
-        const res = ids.map((id) => byId.get(id)).filter((c): c is LiveChannel => c !== undefined);
-        if (active) {
-          setPool(res);
-          setCount(res.length);
-        }
-        return;
-      }
-      // Filtres pagines (Tous / International) : pagination Dexie, jamais tout en RAM.
-      if (PAGINATED.includes(filter)) {
-        const repoFilter = paginatedFilter(filter);
-        const first = (await catalogRepository.getLiveChannelsPage(repoFilter, 0, PAGE)).filter(notHidden);
-        offsetRef.current = PAGE;
-        exhaustedRef.current = first.length < PAGE;
-        void catalogRepository.countLiveChannels(repoFilter).then((n) => active && setCount(n));
-        if (active) setPool(orderChannels(first));
-        return;
-      }
-      // Filtres bornes (france / principales / theme / foot / uhd) : charge jusqu'a
-      // CAP, affine cote client puis tri intelligent.
-      const repoFilter = boundedBaseFilter(filter);
-      const predicate = boundedPredicate(filter);
-      // France / Principales : pool FR partage avec le lecteur (cache court).
-      const raw =
-        repoFilter.kind === 'french'
-          ? await getFrenchLivePool()
-          : await catalogRepository.getLiveChannelsPage(repoFilter, 0, CAP);
-      const loaded = raw.filter(notHidden).filter(predicate);
-      if (active) {
-        setPool(orderChannels(loaded));
-        setCount(loaded.length);
-        setCapped(raw.length >= CAP);
-      }
-    };
-
-    void run()
-      .catch(() => {
-        // Stockage indisponible : on garde l'affichage precedent plutot que planter.
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [filter, searching, debouncedQuery, favoritesDep, recentDep, notHidden, hidden]);
-
-  // Charge plus : fenetre (pool) + pagination Dexie pour les filtres pagines.
-  const loadMore = useCallback(() => {
-    if (loadingRef.current) return;
-    const paginated = !searching && PAGINATED.includes(filter);
-    const needMorePool = paginated && visible >= pool.length && !exhaustedRef.current;
-    if (needMorePool) {
-      loadingRef.current = true;
-      void catalogRepository
-        .getLiveChannelsPage(paginatedFilter(filter), offsetRef.current, PAGE)
-        .then((page) => {
-          const kept = page.filter(notHidden);
-          offsetRef.current += PAGE;
-          exhaustedRef.current = page.length < PAGE;
-          setPool((prev) => [...prev, ...kept]);
-          setVisible((v) => v + STEP);
-          loadingRef.current = false;
-        });
-      return;
-    }
-    if (visible < pool.length) setVisible((v) => v + STEP);
-  }, [searching, filter, visible, pool.length, notHidden]);
-
-  // Groupement des doublons sur les vues FR bornees (pool entierement charge).
-  const recentIdSet = useMemo(() => new Set(recentChannels.map((e) => e.itemId)), [recentChannels]);
-  const grouped = !searching && GROUPED_FILTERS.includes(filter);
-  const groups = useMemo(
-    () =>
-      grouped
-        ? groupChannels(pool.filter((c) => !isSeparatorOrEvent(c.name)), {
-            favoriteIds: favLiveIds,
-            recentIds: recentIdSet,
-          })
-        : [],
-    [grouped, pool, favLiveIds, recentIdSet],
+  // --- Sources ------------------------------------------------------------------
+  const lineup = useLiveLineup();
+  const lineupView = !search.active && isLineupView(view);
+  const visibleGroups = useMemo(
+    () => (lineup.groups !== null ? withoutHidden(lineup.groups, hidden) : null),
+    [lineup.groups, hidden],
   );
-  const total = grouped ? groups.length : pool.length;
+  const viewGroups = useMemo(
+    () => (lineupView && visibleGroups !== null && isLineupView(view) ? filterLineup(visibleGroups, view) : []),
+    [lineupView, visibleGroups, view],
+  );
 
-  // Bouquet editorial : la vue "France" par defaut s'organise en sections.
-  const bouquet = filter === 'france' && !searching;
-  const bySection = useMemo(() => {
-    if (!bouquet) return null;
-    const map = new Map<SectionKey, ChannelGroup[]>();
-    for (const group of groups) {
-      const key = sectionOf(group);
-      const arr = map.get(key);
-      if (arr !== undefined) arr.push(group);
-      else map.set(key, [group]);
+  const favoritesView = !search.active && (view === 'favorites' || currentTabId !== null);
+  const favorites = useFavoriteItems(currentTabId, LIVE_ONLY);
+
+  const catalogFilter: LiveFilter | null =
+    search.active || (view !== 'international' && view !== 'all')
+      ? null
+      : view === 'international'
+        ? { kind: 'nonFrench' }
+        : { kind: 'all' };
+  const catalog = useLiveCatalogPage(catalogFilter, hidden);
+
+  // --- Liste affichee -------------------------------------------------------------
+  const items: ListItem[] = useMemo(() => {
+    if (search.active) return search.results.map((c) => ({ kind: 'row', row: channelRow(c, categoryName) }));
+    if (favoritesView) return favorites.channels.map((c) => ({ kind: 'row', row: favoriteRow(c, categoryName) }));
+    if (catalogFilter !== null) return catalog.channels.map((c) => ({ kind: 'row', row: channelRow(c, categoryName) }));
+    if (view === 'france') {
+      return buildOverview(viewGroups).map((item) =>
+        item.kind === 'header'
+          ? { kind: 'header', header: item }
+          : { kind: 'row', row: groupRow(item.group, categoryName) },
+      );
     }
-    return map;
-  }, [bouquet, groups]);
+    return viewGroups.map((g) => ({ kind: 'row', row: groupRow(g, categoryName) }));
+    // catalogFilter : derive de view/search (deja en deps).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search.active, search.results, favoritesView, favorites.channels, catalog.channels, view, viewGroups, categoryName]);
 
-  const canLoadMore =
-    visible < total || (PAGINATED.includes(filter) && !searching && !exhaustedRef.current);
-  const sentinelRef = useLoadMore(loadMore, canLoadMore && !loading);
+  // Contexte de zapping (⏮ ⏭ du lecteur) = la vue d'ou la chaine est lancee.
+  const zapEntries = useMemo(() => {
+    if (favoritesView) return favorites.channels.map((c) => ({ id: c.id, groupKey: c.groupKey }));
+    if (lineupView) return viewGroups.map((g) => ({ id: g.versions[0]!.id, groupKey: g.key }));
+    return items.flatMap((i) => (i.kind === 'row' ? [{ id: i.row.id, groupKey: null }] : []));
+  }, [favoritesView, favorites.channels, lineupView, viewGroups, items]);
+  const tabName = tabs.find((t) => t.id === currentTabId)?.name;
+  const onPlay = useCallback(() => {
+    setZapContext(search.active ? null : { label: viewLabel(view, tabName), entries: zapEntries });
+  }, [search.active, view, tabName, zapEntries]);
+  const onPlayRecent = useCallback(() => {
+    setZapContext({
+      label: 'Récemment regardées',
+      entries: recentChannels.slice(0, 10).map((e) => ({ id: e.itemId, groupKey: null })),
+    });
+  }, [recentChannels]);
 
-  const shown = pool.slice(0, visible);
-  const shownGroups = groups.slice(0, visible);
-  const catalogEmpty = categories.length === 0 && slice.status !== 'loading';
+  const canPage = catalogFilter !== null && !catalog.exhausted;
+  const loadMore = useCallback(() => {
+    if (visible < items.length) setVisible((v) => v + STEP);
+    else if (canPage) catalog.loadMore();
+  }, [visible, items.length, canPage, catalog]);
+  const sentinelRef = useLoadMore(loadMore, visible < items.length || canPage, `${visible}:${items.length}`);
+
+  // --- Etats ----------------------------------------------------------------------
+  const catalogEmpty = slice.categories.length === 0 && slice.status !== 'loading';
+  const lineupPending = lineupView && (visibleGroups === null || lineup.status === 'building');
+  const loading = search.active
+    ? search.loading && search.results.length === 0
+    : favoritesView
+      ? favorites.loading && favorites.channels.length === 0
+      : catalogFilter !== null
+        ? catalog.loading
+        : lineupPending;
+  const rowCount = items.filter((i) => i.kind === 'row').length;
+
+  let summary: string | null = null;
+  if (search.active) {
+    summary = `${rowCount}${rowCount >= LIVE_SEARCH_LIMIT ? '+' : ''} résultat${rowCount > 1 ? 's' : ''}`;
+  } else if (lineupView && !lineupPending) {
+    const streams = viewGroups.reduce((n, g) => n + g.versions.length, 0);
+    summary = `${formatCount(viewGroups.length)} chaîne${viewGroups.length > 1 ? 's' : ''} · ${formatCount(streams)} flux`;
+  } else if (favoritesView && !favorites.loading) {
+    summary = `${rowCount} chaîne${rowCount > 1 ? 's' : ''}`;
+  } else if (catalogFilter !== null && catalog.count !== null) {
+    summary = `${formatCount(catalog.count)} chaîne${catalog.count > 1 ? 's' : ''}`;
+  }
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8">
@@ -416,54 +232,31 @@ export default function LivePage() {
         <BrandMark />
       </div>
 
-      <div className="mt-4">
-        <div className="relative">
-          <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-fg-faint" />
-          <Input
-            className="pl-10"
-            placeholder="Rechercher une chaîne…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-            inputMode="search"
-          />
-        </div>
+      <div className="relative mt-4">
+        <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-fg-faint" />
+        <Input
+          className="pl-10"
+          placeholder="Rechercher une chaîne…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          inputMode="search"
+        />
       </div>
 
-      {/* Filtres rapides — entree principale, faciles a toucher sur iPhone.
-          Colles en haut (sticky) en verre depoli au scroll. */}
-      <HScroll className="glass sticky top-safe z-30 -mx-4 mt-3 flex gap-2 px-4 py-2 [scrollbar-width:none] md:-mx-8 md:px-8">
-        {FILTERS.map((f) => (
-          <button
-            key={f.id}
-            onClick={() => {
-              setFilter(f.id);
-              setQuery('');
-              void settingsRepository.setSetting('lastLiveFilter', f.id);
-            }}
-            disabled={searching}
-            className={`shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition-colors ${
-              !searching && filter === f.id
-                ? 'bg-accent text-white'
-                : 'bg-ink-800 text-fg-muted hover:text-fg disabled:opacity-40'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </HScroll>
+      {!search.active && <RecentChannelsStrip onPlay={onPlayRecent} />}
 
-      {count !== null && (
-        <p className="mt-3 text-xs text-fg-faint">
-          {searching
-            ? `${pool.length}${pool.length >= 120 ? '+' : ''} résultat${pool.length > 1 ? 's' : ''}`
-            : grouped
-              ? `${formatCount(groups.length)} chaîne${groups.length > 1 ? 's' : ''} · ${formatCount(pool.length)} flux${capped ? ' · affine avec la recherche' : ''}`
-              : `${formatCount(count)} chaîne${count > 1 ? 's' : ''}${capped ? ' · affine avec la recherche' : ''}`}
-        </p>
-      )}
+      <LiveViewBar
+        view={view}
+        tabs={tabs}
+        disabled={search.active}
+        onSelect={selectView}
+        onCreateTab={() => setCreatingTab(true)}
+      />
+
+      {summary !== null && <p className="mt-3 px-1 text-xs text-fg-faint">{summary}</p>}
 
       {catalogEmpty ? (
         <div className="mt-6">
@@ -472,84 +265,120 @@ export default function LivePage() {
             hint="Lance une synchronisation depuis les réglages pour charger les chaînes."
           />
         </div>
-      ) : bouquet ? (
-        <div className="mt-4 space-y-8">
-          {loading && groups.length === 0
-            ? Array.from({ length: 10 }, (_, i) => <Skeleton key={i} className="h-14 rounded-xl" />)
-            : SECTION_META.map(({ key, label, seeAll }) => {
-                const sec = bySection?.get(key) ?? [];
-                if (sec.length === 0) return null;
-                return (
-                  <section key={key}>
-                    <div className="mb-2 flex items-center justify-between px-1">
-                      <h2 className="text-sm font-semibold text-fg">
-                        {label} <span className="text-fg-faint">· {sec.length}</span>
-                      </h2>
-                      {seeAll !== undefined && sec.length > SECTION_CAP && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setFilter(seeAll);
-                            setQuery('');
-                            void settingsRepository.setSetting('lastLiveFilter', seeAll);
-                          }}
-                          className="text-xs text-fg-faint hover:text-fg"
-                        >
-                          Voir tout
-                        </button>
-                      )}
-                    </div>
-                    <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4">
-                      {sec.slice(0, SECTION_CAP).map((g) => (
-                        <ChannelGroupRow
-                          key={g.key}
-                          group={g}
-                          onHide={() =>
-                            void hideCategory('live', g.best.categoryId, categoryOf.get(g.best.categoryId) ?? g.name)
-                          }
-                        />
-                      ))}
-                    </div>
-                  </section>
-                );
-              })}
-          {!loading && groups.length === 0 && <EmptyState title="Aucune chaîne française" />}
+      ) : lineupView && lineup.status === 'error' ? (
+        <div className="mt-6">
+          <EmptyState
+            title="Impossible de classer les chaînes"
+            hint="Le stockage local n'a pas répondu. Réessaie ; si ça persiste, relance une synchronisation."
+            action={
+              <button
+                type="button"
+                onClick={lineup.retry}
+                className="rounded-xl bg-ink-700 px-4 py-2 text-sm font-medium text-fg hover:bg-ink-600"
+              >
+                Réessayer
+              </button>
+            }
+          />
+        </div>
+      ) : loading ? (
+        <div className="mt-3">
+          {lineupPending && lineup.status === 'building' && (
+            <p className="mb-3 px-1 text-xs text-fg-muted">Classement des chaînes françaises…</p>
+          )}
+          <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:gap-x-4">
+            {Array.from({ length: 12 }, (_, i) => (
+              <Skeleton key={i} className="h-14 rounded-xl" />
+            ))}
+          </div>
+        </div>
+      ) : rowCount === 0 ? (
+        <div className="mt-6">
+          <LiveEmpty view={view} searching={search.active} tabName={tabName} />
         </div>
       ) : (
-        <div className="mt-3">
+        <div className="mt-2">
           <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4">
-            {loading && (grouped ? shownGroups.length : shown.length) === 0
-              ? Array.from({ length: 12 }, (_, i) => <Skeleton key={i} className="mb-2 h-14 rounded-xl" />)
-              : grouped
-                ? shownGroups.map((g) => (
-                    <ChannelGroupRow
-                      key={g.key}
-                      group={g}
-                      onHide={() =>
-                        void hideCategory('live', g.best.categoryId, categoryOf.get(g.best.categoryId) ?? g.name)
-                      }
-                    />
-                  ))
-                : shown.map((c) => (
-                    <ChannelRow
-                      key={c.id}
-                      channel={c}
-                      onHide={() => void hideCategory('live', c.categoryId, categoryOf.get(c.categoryId) ?? c.name)}
-                    />
-                  ))}
+            {items.slice(0, visible).map((item) =>
+              item.kind === 'header' ? (
+                <SectionHeader key={`h:${item.header.section}`} header={item.header} onOpen={selectView} />
+              ) : (
+                <LiveChannelRow key={item.row.id} row={item.row} onPlay={onPlay} />
+              ),
+            )}
           </div>
-
-          {!loading && (grouped ? shownGroups.length : shown.length) === 0 && (
-            <div className="mt-4">
-              <EmptyState
-                title={searching ? 'Aucune chaîne trouvée' : 'Aucune chaîne dans ce filtre'}
-                hint={filter === 'favorites' ? 'Ajoute des favoris avec le cœur.' : undefined}
-              />
-            </div>
+          {favoritesView && favorites.missing > 0 && (
+            <p className="mt-4 px-1 text-xs text-fg-faint">
+              {favorites.missing} chaîne{favorites.missing > 1 ? 's' : ''} introuvable
+              {favorites.missing > 1 ? 's' : ''} depuis la dernière synchronisation.
+            </p>
           )}
           <div ref={sentinelRef} className="h-10" />
         </div>
       )}
+
+      {creatingTab && (
+        <TabNameDialog
+          title="Nouvel onglet"
+          confirmLabel="Créer"
+          onClose={() => setCreatingTab(false)}
+          onSubmit={async (name) => {
+            const tab = await createTab(name);
+            selectView(`tab:${tab.id}`);
+          }}
+        />
+      )}
     </main>
   );
+}
+
+function SectionHeader({
+  header,
+  onOpen,
+}: {
+  header: Extract<OverviewItem, { kind: 'header' }>;
+  onOpen: (view: LiveViewId) => void;
+}) {
+  const target = header.view;
+  return (
+    <div className="mt-6 flex items-center justify-between px-1 pb-1.5 first:mt-2 sm:col-span-2">
+      <h2 className="text-sm font-semibold text-fg">
+        {header.label} <span className="font-normal text-fg-faint">· {header.count}</span>
+      </h2>
+      {target !== null && (
+        <button
+          type="button"
+          onClick={() => onOpen(target)}
+          className="flex items-center gap-0.5 text-xs text-fg-faint hover:text-fg"
+        >
+          Isoler
+          <IconChevronRight className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+function LiveEmpty({ view, searching, tabName }: { view: LiveViewId; searching: boolean; tabName?: string }) {
+  if (searching) return <EmptyState title="Aucune chaîne trouvée" hint="Essaie un autre nom ou une partie du nom." />;
+  if (view === 'favorites') {
+    return <EmptyState title="Aucune chaîne favorite" hint="Touche le cœur d'une chaîne pour la retrouver ici." />;
+  }
+  if (tabIdOf(view) !== null) {
+    return (
+      <EmptyState
+        title={`« ${tabName ?? 'Onglet'} » est vide`}
+        hint="Touche ⋯ sur une chaîne puis coche cet onglet."
+      />
+    );
+  }
+  if (view === 'france') {
+    return (
+      <EmptyState
+        title="Aucune chaîne française détectée"
+        hint="Les autres pays restent disponibles dans International et Tous."
+      />
+    );
+  }
+  return <EmptyState title="Aucune chaîne dans cette vue" />;
 }
