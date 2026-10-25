@@ -36,7 +36,7 @@ export function FavoritesToast() {
     <div
       role="status"
       aria-live="polite"
-      className="pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom)+var(--zib-mini-offset,0px))] z-[70] flex justify-center px-4 md:bottom-[calc(1.5rem+var(--zib-mini-offset,0px))] md:pl-60"
+      className="pointer-events-none fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom)+var(--zib-mini-offset,0px))] z-[70] flex justify-center px-4 md:bottom-[calc(1.5rem+var(--zib-mini-offset,0px))] md:pl-20 lg:pl-60"
     >
       <div
         key={toast.id}

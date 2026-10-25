@@ -57,7 +57,7 @@ export function SyncProgress() {
 
   if (collapsed) {
     return (
-      <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom)+var(--zib-mini-offset,0px))] z-50 flex justify-center px-4 md:bottom-[calc(1rem+var(--zib-mini-offset,0px))] md:pl-60">
+      <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom)+var(--zib-mini-offset,0px))] z-50 flex justify-center px-4 md:bottom-[calc(1rem+var(--zib-mini-offset,0px))] md:pl-20 lg:pl-60">
         <button
           type="button"
           onClick={() => setCollapsed(false)}
@@ -71,7 +71,7 @@ export function SyncProgress() {
   }
 
   return (
-    <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom)+var(--zib-mini-offset,0px))] z-50 px-4 md:bottom-[calc(1rem+var(--zib-mini-offset,0px))] md:pl-60">
+    <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom)+var(--zib-mini-offset,0px))] z-50 px-4 md:bottom-[calc(1rem+var(--zib-mini-offset,0px))] md:pl-20 lg:pl-60">
       <div className="mx-auto max-w-md rounded-2xl border border-ink-700 bg-ink-900/95 p-4 shadow-xl backdrop-blur">
         <div className="flex items-center gap-2.5">
           <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-ink-500 border-t-accent" />

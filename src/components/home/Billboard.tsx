@@ -24,8 +24,8 @@ import { useLowBandwidth } from '@/hooks/useLowBandwidth';
 export type BillboardSize = 'hero' | 'compact';
 
 const FRAME: Record<BillboardSize, string> = {
-  hero: 'h-[50vh] max-h-[520px] min-h-[340px] md:h-[460px]',
-  compact: 'h-[36vh] max-h-[340px] min-h-[260px] md:h-[320px]',
+  hero: 'h-[50vh] max-h-[520px] min-h-[340px] md:h-[460px] 2xl:h-[560px] 2xl:max-h-[560px] phone-land:h-[82vh] phone-land:min-h-0',
+  compact: 'h-[36vh] max-h-[340px] min-h-[260px] md:h-[320px] 2xl:h-[380px] 2xl:max-h-[380px] phone-land:h-[72vh] phone-land:min-h-0',
 };
 const FRAME_BASE = 'relative -mx-4 overflow-hidden bg-ink-900 md:mx-0 md:rounded-3xl';
 

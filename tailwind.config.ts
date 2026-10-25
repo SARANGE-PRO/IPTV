@@ -20,6 +20,8 @@ const config: Config = {
         // l'horizontale (large mais bas) garde le bandeau compact. DOIT rester
         // identique a la requete de player/host/miniPlayer.css.
         'mini-card': { raw: '(min-width: 768px) and (min-height: 501px)' },
+        // Ecrans larges / 21:9 (2560, 3440 px) : plus de colonnes, contenu plus large.
+        '3xl': '1920px',
       },
       colors: {
         ink: {

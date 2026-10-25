@@ -195,7 +195,7 @@ export default function FavoritesPage() {
   const removeLabel = selected === null ? 'Retirer des favoris' : 'Retirer de l’onglet';
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8">
+    <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8 xl:max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[2400px]">
       <h1 className="sr-only">Favoris</h1>
       <div className="flex justify-end md:hidden">
         <BrandMark />
@@ -337,7 +337,7 @@ export default function FavoritesPage() {
             {show('live') && channelRows.length > 0 && (
               <section className="mt-5">
                 <SectionTitle label="Chaînes" count={channelRows.length} />
-                <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4">
+                <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4 xl:grid-cols-3 3xl:grid-cols-4">
                   {channelRows.map((row) => (
                     <LiveChannelRow key={row.id} row={row} onPlay={onPlayChannel} />
                   ))}
@@ -347,7 +347,7 @@ export default function FavoritesPage() {
             {show('vod') && movies.length > 0 && (
               <section className="mt-7">
                 <SectionTitle label="Films" count={movies.length} />
-                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 3xl:grid-cols-10">
                   {movies.map((m) => (
                     <MediaCard
                       key={m.id}
@@ -366,7 +366,7 @@ export default function FavoritesPage() {
             {show('series') && series.length > 0 && (
               <section className="mt-7">
                 <SectionTitle label="Séries" count={series.length} />
-                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 3xl:grid-cols-10">
                   {series.map((s) => (
                     <MediaCard
                       key={s.id}

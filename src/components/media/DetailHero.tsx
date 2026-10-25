@@ -4,7 +4,7 @@ import { secureImageSrc } from '@/utils/secureUrl';
 export function DetailHero({ backdropUrl }: { backdropUrl: string | null }) {
   const src = secureImageSrc(backdropUrl);
   return (
-    <div className="relative h-48 w-full overflow-hidden sm:h-72 sm:rounded-t-3xl">
+    <div className="relative h-48 w-full overflow-hidden sm:h-72 sm:rounded-t-3xl phone-land:h-24">
       {src !== null ? (
         // eslint-disable-next-line @next/next/no-img-element -- image distante, export statique (pas d'optimiseur)
         <img src={src} alt="" aria-hidden className="h-full w-full animate-fade-in object-cover object-top" />

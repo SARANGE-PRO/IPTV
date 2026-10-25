@@ -185,7 +185,7 @@ export function MovieDetailView({
     <div className="mx-auto w-full max-w-4xl">
       {!playing && <DetailHero backdropUrl={backdropUrl} />}
 
-      <div className={cn('px-4 pb-8 md:px-8', playing ? 'pt-6' : 'relative -mt-16 sm:-mt-24')}>
+      <div className={cn('px-4 pb-8 md:px-8', playing ? 'pt-6' : 'relative -mt-16 sm:-mt-24 phone-land:-mt-8')}>
         <DetailHeader type="vod" itemId={vodId} title={title} onBack={close} video={video} castUrl={src} castTitle={title} />
 
         {playing && src !== null && movie !== undefined ? (

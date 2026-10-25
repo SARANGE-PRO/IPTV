@@ -400,7 +400,7 @@ export function MediaBrowser<T extends BrowserItem>({
     }`;
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
+    <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8 xl:max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[2400px]">
       <h1 className="sr-only">{title}</h1>
       <div className="flex justify-end md:hidden">
         <BrandMark />
@@ -596,7 +596,7 @@ export function MediaBrowser<T extends BrowserItem>({
         </div>
       ) : (
         <>
-          <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6">
+          <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 3xl:grid-cols-10">
             {shown.map((item) => (
               <MediaCard
                 key={item.id}

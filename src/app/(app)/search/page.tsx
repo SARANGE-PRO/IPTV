@@ -42,7 +42,7 @@ function initialQuery(): string {
   return new URLSearchParams(window.location.search).get('q') ?? '';
 }
 
-const GRID = 'grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6';
+const GRID = 'grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 3xl:grid-cols-10';
 
 function MovieTile({ movie }: { movie: Movie }) {
   const year = displayYear(movie.name, movie.tmdbYear ?? movie.year);
@@ -112,7 +112,7 @@ export default function SearchPage() {
   const channelsSection =
     titles.live.length > 0 ? (
       <Section title={`Chaînes (${titles.liveTotal})`}>
-        <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4">
+        <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4 xl:grid-cols-3 3xl:grid-cols-4">
           {titles.live.map((c) => (
             <div key={c.id} className="flex items-center gap-3 rounded-xl px-2 py-1.5 hover:bg-ink-800">
               <Link
@@ -154,7 +154,7 @@ export default function SearchPage() {
     ) : null;
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8">
+    <main className="mx-auto w-full max-w-6xl px-4 py-6 md:px-8 xl:max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[2400px]">
       <h1 className="sr-only">Recherche</h1>
       <div className="relative">
         <IconSearch className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-fg-faint" />

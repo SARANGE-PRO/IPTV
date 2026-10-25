@@ -134,7 +134,7 @@ export default function HomePage() {
   }, [recentChannels]);
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4 pb-6 pt-3 md:px-8 md:pt-6">
+    <main className="mx-auto w-full max-w-6xl px-4 pb-6 pt-3 md:px-8 md:pt-6 xl:max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[2400px]">
       <h1 className="sr-only">Accueil</h1>
       <div className="mb-3 flex items-center justify-between md:hidden">
         <ZibLogo className="h-9 w-auto" />

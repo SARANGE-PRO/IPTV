@@ -369,7 +369,7 @@ export default function LivePage() {
   }
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8">
+    <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8 xl:max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[2400px]">
       <h1 className="sr-only">Live TV</h1>
       <div className="flex justify-end md:hidden">
         <BrandMark />
@@ -441,7 +441,7 @@ export default function LivePage() {
           {lineupPending && lineup.status === 'building' && (
             <p className="mb-3 px-1 text-xs text-fg-muted">Classement des chaînes françaises…</p>
           )}
-          <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:gap-x-4">
+          <div className="flex flex-col gap-2 sm:grid sm:grid-cols-2 sm:gap-x-4 xl:grid-cols-3 3xl:grid-cols-4">
             {Array.from({ length: 12 }, (_, i) => (
               <Skeleton key={i} className="h-14 rounded-xl" />
             ))}
@@ -463,7 +463,7 @@ export default function LivePage() {
         />
       ) : (
         <div className="mt-2">
-          <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4">
+          <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4 xl:grid-cols-3 3xl:grid-cols-4">
             {items.slice(0, visible).map((item) =>
               item.kind === 'header' ? (
                 <SectionHeader key={`h:${item.header.section}`} header={item.header} onOpen={selectView} />

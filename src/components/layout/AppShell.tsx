@@ -90,9 +90,11 @@ export function AppShell({ children }: { children: ReactNode }) {
   };
 
   return (
-    <div className="min-h-dvh md:pl-60">
-      <aside className="glass fixed inset-y-0 left-0 z-40 hidden w-60 flex-col border-r border-white/5 px-4 py-8 md:flex">
-        <BrandLogo className="mb-6 px-2" markClassName="h-8 w-8" textClassName="text-lg" />
+    <div className="min-h-dvh md:pl-20 lg:pl-60">
+      {/* Tablette en portrait / telephone a l'horizontale (< 1024 px) : colonne
+          d'icones ; libelles a partir de 1024 px. */}
+      <aside className="glass fixed inset-y-0 left-0 z-40 hidden w-20 flex-col border-r border-white/5 px-3 py-8 md:flex lg:w-60 lg:px-4">
+        <BrandLogo className="mb-6 justify-center lg:justify-start lg:px-2" markClassName="h-8 w-8" textClassName="hidden text-lg lg:inline" />
         <nav className="flex flex-1 flex-col gap-1">
           {[...NAV, { href: SETTINGS_HREF, label: 'Réglages', icon: IconSettings }].map(({ href, label, icon: Icon }) => (
             <Link
@@ -100,15 +102,15 @@ export function AppShell({ children }: { children: ReactNode }) {
               href={href}
               onClick={() => scrollTopIfCurrent(href)}
               className={cn(
-                'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors',
+                'flex min-h-11 items-center justify-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors lg:justify-start',
                 href === SETTINGS_HREF && 'mt-auto',
                 isActive(href) ? 'bg-ink-700 font-medium text-fg' : 'text-fg-muted hover:bg-ink-800 hover:text-fg',
               )}
             >
-              <Icon className="h-5 w-5" />
-              {label}
+              <Icon className="h-5 w-5 shrink-0" />
+              <span className="sr-only lg:not-sr-only">{label}</span>
               {href === SEARCH_HREF && (
-                <kbd className="ml-auto rounded bg-ink-700 px-1.5 py-0.5 text-[10px] font-medium text-fg-muted">⌘K</kbd>
+                <kbd className="ml-auto hidden rounded lg:inline bg-ink-700 px-1.5 py-0.5 text-[10px] font-medium text-fg-muted">⌘K</kbd>
               )}
             </Link>
           ))}

@@ -286,7 +286,7 @@ function LiveWatch() {
   const goBack = () => (canGoBack() ? router.back() : router.replace(LIVE_HREF));
 
   return (
-    <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8 lg:max-w-7xl">
+    <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8 lg:max-w-7xl 2xl:max-w-[1720px] 3xl:max-w-[2400px]">
       <div className={cn(showSidebar && 'lg:grid lg:grid-cols-[19rem_minmax(0,1fr)] lg:items-start lg:gap-6')}>
       {showSidebar && zapList !== null && (
         <ChannelSidebar

@@ -251,7 +251,7 @@ export function SeriesDetailView({
     <div className="mx-auto w-full max-w-4xl">
       {!inPlayer && <DetailHero backdropUrl={heroBackdrop} />}
 
-      <div className={cn('px-4 pb-8 md:px-8', inPlayer ? 'pt-6' : 'relative -mt-16 sm:-mt-24')}>
+      <div className={cn('px-4 pb-8 md:px-8', inPlayer ? 'pt-6' : 'relative -mt-16 sm:-mt-24 phone-land:-mt-8')}>
         <DetailHeader
           type="series"
           itemId={seriesId}
