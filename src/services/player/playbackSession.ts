@@ -1,6 +1,6 @@
 import { noteStarvation } from '@/services/player/networkQualityService';
 import { bufferedAhead, isSeekable } from '@/services/player/playbackCapabilityService';
-import { wasPausedByUser } from '@/services/player/playbackIntent';
+import { trackUserGestures, wasPausedByUser } from '@/services/player/playbackIntent';
 import { PLAYBACK_MESSAGES as MESSAGES, unsupportedContainer } from '@/services/player/playbackMessages';
 import {
   AUTO_RESUME_POKE_MS,
@@ -386,6 +386,7 @@ export function startPlaybackSession(
     ['error', handleError],
   ];
   for (const [type, listener] of mediaListeners) video.addEventListener(type, listener);
+  const stopGestures = trackUserGestures(video);
 
   // --- Reseau ----------------------------------------------------------------
 
@@ -526,6 +527,7 @@ export function startPlaybackSession(
     clearInterval(watchdog);
     progress.send(true, true); // derniere position -> l'ancien titre
     for (const [type, listener] of mediaListeners) video.removeEventListener(type, listener);
+    stopGestures();
     window.removeEventListener('online', handleOnline);
     window.removeEventListener('pagehide', flushProgress);
     document.removeEventListener('visibilitychange', handleVisibility);

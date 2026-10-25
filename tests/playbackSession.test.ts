@@ -300,6 +300,39 @@ describe('pause subie / voulue', () => {
   });
 });
 
+describe('pause native pendant un chargement', () => {
+  it('geste sur la video puis pause tampon vide : pause VOULUE, jamais relancee', async () => {
+    const s = start({ live: true });
+    await tick(0);
+    s.video.start();
+    s.video.readyState = 2;
+    s.video.emit('waiting');
+    s.video.emit('pointerdown');
+    s.video.paused = true;
+    s.video.emit('pause');
+    expect(s.phase()).toBe('ready');
+    const plays = s.video.plays;
+    s.video.readyState = 4;
+    await tick(5000);
+    expect(s.video.plays).toBe(plays);
+    s.stop();
+  });
+
+  it('geste ancien (> 1 s) : la pause tampon vide reste subie et relancee', async () => {
+    const s = start({ live: true });
+    await tick(0);
+    s.video.start();
+    s.video.emit('pointerdown');
+    await tick(2000);
+    s.video.readyState = 2;
+    s.video.paused = true;
+    s.video.emit('waiting');
+    s.video.emit('pause');
+    expect(s.phase()).toBe('buffering');
+    s.stop();
+  });
+});
+
 describe('reseau', () => {
   it('hors-ligne : attend le reseau sans bruler les relances, reprend au retour', async () => {
     const s = start({ live: true });
