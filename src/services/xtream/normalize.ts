@@ -206,13 +206,17 @@ export function normalizeSeries(raw: XtreamSeries, category?: CategoryContext): 
 /** Detail serie : gere `episodes` en objet par saison OU tableau de tableaux. */
 export function normalizeSeriesDetails(seriesId: string, raw: XtreamSeriesInfo): SeriesDetails {
   const episodesRaw = raw.episodes;
-  let flat: XtreamEpisode[] = [];
-  if (Array.isArray(episodesRaw)) flat = episodesRaw.flat();
-  else if (episodesRaw !== undefined) flat = Object.values(episodesRaw).flat();
+  // Saison de repli = cle de l'objet (« "2": [...] ») : certains panels ne
+  // repetent pas `season` dans chaque episode (tout tombait en saison 1).
+  let flat: { e: XtreamEpisode; keySeason: number | null }[] = [];
+  if (Array.isArray(episodesRaw)) flat = episodesRaw.flat().map((e) => ({ e, keySeason: null }));
+  else if (episodesRaw !== undefined) {
+    flat = Object.entries(episodesRaw).flatMap(([key, list]) => list.map((e) => ({ e, keySeason: toNum(key) })));
+  }
 
-  const episodes: Episode[] = flat.map((e) => ({
+  const episodes: Episode[] = flat.map(({ e, keySeason }) => ({
     id: String(e.id),
-    seasonNumber: toNum(e.season ?? e.info?.season) ?? 1,
+    seasonNumber: toNum(e.season ?? e.info?.season) ?? keySeason ?? 1,
     episodeNumber: toNum(e.episode_num) ?? 0,
     title: strOrNull(e.title) ?? `Episode ${String(e.episode_num)}`,
     containerExtension: strOrNull(e.container_extension),

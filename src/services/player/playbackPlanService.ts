@@ -49,3 +49,28 @@ export async function resolvePlaybackMode(
   if (mode !== 'probe') return mode;
   return (await isGatewayHealthy()) ? 'gateway' : 'vlc-only';
 }
+
+/** Champs du lecteur qui dependent du plan de lecture (film, episode, enchainement). */
+export interface PlanSourceProps {
+  transcode: boolean;
+  directMkv: boolean;
+  preferHls: boolean;
+  startAt: number;
+  startOffset: number;
+}
+
+/**
+ * Traduit un plan en props de lecteur. Passerelle + HLS natif (Safari) : le
+ * flux transcode n'est pas seekable -> la reprise passe par un OFFSET serveur
+ * (`startOffset`) ; partout ailleurs, par un seek (`startAt`).
+ */
+export function planSourceProps(mode: ResolvedPlaybackMode, from: number, nativeHls: boolean): PlanSourceProps {
+  const gatewayHls = mode === 'gateway' && nativeHls;
+  return {
+    transcode: mode === 'gateway',
+    directMkv: mode === 'direct-mkv',
+    preferHls: gatewayHls,
+    startAt: gatewayHls ? 0 : from,
+    startOffset: gatewayHls ? from : 0,
+  };
+}

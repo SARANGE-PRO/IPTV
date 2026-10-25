@@ -1,5 +1,5 @@
 import { nextEpisode } from '@/services/media/episodeService';
-import { resolvePlaybackMode } from '@/services/player/playbackPlanService';
+import { planSourceProps, resolvePlaybackMode } from '@/services/player/playbackPlanService';
 import { buildSeriesEpisodeUrl } from '@/services/xtream/xtreamUrls';
 import type { Episode } from '@/types/models';
 import type { NowPlayingMedia, PlayerContinuation, PlayerHandlers, PlayerSession, PlayerSource } from '@/types/nowPlaying';
@@ -62,13 +62,9 @@ async function buildEpisodePlayback(
   };
   const source: PlayerSource = {
     src: buildSeriesEpisodeUrl(ctx.credentials, ep.id, ep.containerExtension),
-    transcode: mode === 'gateway',
-    directMkv: mode === 'direct-mkv',
-    preferHls: mode === 'gateway' && supportsNativeHls(),
+    ...planSourceProps(mode, 0, supportsNativeHls()),
     contentType: 'episode',
     container: ep.containerExtension,
-    startAt: 0,
-    startOffset: 0,
     duration: ep.durationSecs,
     poster: ep.imageUrl ?? ctx.posterUrl,
   };

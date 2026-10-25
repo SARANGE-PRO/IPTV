@@ -2,49 +2,43 @@
 
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { EmptyState } from '@/components/shared/EmptyState';
-import { ArrangeButton } from '@/components/favorites/ArrangeButton';
-import { FavoriteButton } from '@/components/shared/FavoriteButton';
-import { HScroll } from '@/components/shared/HScroll';
+import { DetailHeader } from '@/components/media/DetailHeader';
+import { DetailHero } from '@/components/media/DetailHero';
 import { LanguageVariantSwitcher } from '@/components/media/LanguageVariantSwitcher';
 import { TitleRail } from '@/components/media/TitleRail';
 import { TrailerButton } from '@/components/media/TrailerButton';
-import { PosterImage } from '@/components/shared/PosterImage';
-import { CastButton } from '@/components/player/CastButton';
-import { PipButton } from '@/components/player/PipButton';
-import { ExternalPlayer, launchVlc } from '@/components/player/ExternalPlayer';
-import { DirectMkvProbe } from '@/components/player/DirectMkvProbe';
+import { launchVlc } from '@/components/player/ExternalPlayer';
 import { PlayerSlot } from '@/components/player/host/PlayerSlot';
-import { ClampedText } from '@/components/shared/ClampedText';
 import { LandscapeStage } from '@/components/player/LandscapeStage';
-import { nextEpisodeContinuation } from '@/services/player/seriesAutoplayService';
-import { EpisodeRow } from '@/components/series/EpisodeRow';
+import { PlaybackPlanPanel } from '@/components/player/PlaybackPlanPanel';
+import { SeasonEpisodes } from '@/components/series/SeasonEpisodes';
 import { UpNextOverlay } from '@/components/series/UpNextOverlay';
+import { ClampedText } from '@/components/shared/ClampedText';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { ErrorState } from '@/components/shared/ErrorState';
+import { PosterImage } from '@/components/shared/PosterImage';
 import { Button } from '@/components/ui/Button';
-import { IconArrowLeft, IconCheck, IconPlay, IconSkipNext } from '@/components/ui/icons';
+import { IconPlay, IconSkipNext } from '@/components/ui/icons';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { cn } from '@/lib/cn';
-import * as catalogRepository from '@/services/data/catalogService';
-import * as playbackRepository from '@/services/data/playbackDataService';
-import { nextEpisode, primaryAction, resumePosition, watchedRatio } from '@/services/media/episodeService';
-import { isGatewayConfigured, resetGatewayHealthCache } from '@/services/player/mediaGatewayService';
-import { findSeriesVariants, type LanguageVariant } from '@/services/media/languageVariantService';
-import { getSeriesDetailsCached } from '@/services/xtream/seriesDetailsService';
-import { tmdbBackdrop, tmdbPoster } from '@/services/tmdb/tmdbImage';
-import { secureImageSrc } from '@/utils/secureUrl';
-import { buildSeriesEpisodeUrl } from '@/services/xtream/xtreamUrls';
-import { supportsNativeHls } from '@/utils/playerSupport';
-import { usePlaybackPlan } from '@/hooks/usePlaybackPlan';
-import { useTmdbMetadata } from '@/hooks/useTmdbMetadata';
-import { useSimilarSeries } from '@/hooks/useTitleExtras';
 import { useMediaSession } from '@/hooks/useMediaSession';
+import { useSeriesDetail } from '@/hooks/useSeriesDetail';
+import { useSimilarSeries } from '@/hooks/useTitleExtras';
+import { useTmdbMetadata } from '@/hooks/useTmdbMetadata';
+import { useVodPlayback } from '@/hooks/useVodPlayback';
+import { cn } from '@/lib/cn';
+import { nextEpisode, primaryAction, resumePosition } from '@/services/media/episodeService';
+import { planSourceProps } from '@/services/player/playbackPlanService';
+import { nextEpisodeContinuation } from '@/services/player/seriesAutoplayService';
+import { tmdbBackdrop, tmdbPoster } from '@/services/tmdb/tmdbImage';
+import { buildSeriesEpisodeUrl } from '@/services/xtream/xtreamUrls';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import { playerSessionKey, usePlayerStore } from '@/stores/playerStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
-import type { Episode, PlaybackEntry, Series, SeriesDetails } from '@/types/models';
-import { displayTitle } from '@/utils/displayTitle';
+import type { Episode } from '@/types/models';
 import { seriesHref } from '@/utils/appRoutes';
+import { displayTitle } from '@/utils/displayTitle';
+import { supportsNativeHls } from '@/utils/playerSupport';
 import { variantBadge } from '@/utils/variantPreference';
 
 /**
@@ -57,6 +51,7 @@ import { variantBadge } from '@/utils/variantPreference';
  *    « marquer la saison comme vue » ;
  *  - fin d'episode : compte a rebours « Episode suivant » puis lecture auto ;
  *  - titres similaires.
+ * Donnees : useSeriesDetail ; plan de lecture : useVodPlayback.
  */
 export function SeriesDetailView({
   seriesId,
@@ -80,71 +75,18 @@ export function SeriesDetailView({
   const video = usePlayerStore((s) =>
     s.session?.media.kind === 'episode' && s.session.media.ownerId === seriesId ? s.video : null,
   );
-  const preferredLanguage = useUiSettingsStore((s) => s.preferredLanguage);
   const router = useRouter();
+  const close = useCallback(() => (onBack !== undefined ? onBack() : router.back()), [onBack, router]);
 
-  const [series, setSeries] = useState<Series | null | undefined>(undefined);
-  const [variants, setVariants] = useState<LanguageVariant[]>([]);
-  const [details, setDetails] = useState<SeriesDetails | null | undefined>(undefined);
   const [season, setSeason] = useState<number | null>(null);
   const [playingEp, setPlayingEp] = useState<Episode | null>(null);
   const [startAt, setStartAt] = useState(0);
-  const [failed, setFailed] = useState(false);
-  // Incremente -> re-sonde la passerelle (echec de lecture ou reveil du PC).
-  const [planRetry, setPlanRetry] = useState(0);
-  const [epProgress, setEpProgress] = useState<Map<string, PlaybackEntry>>(new Map());
-  const [progressLoaded, setProgressLoaded] = useState(false);
   const [upNext, setUpNext] = useState<Episode | null>(null);
-  const [detailsRetry, setDetailsRetry] = useState(0);
-
-  useEffect(() => {
-    let active = true;
-    void catalogRepository.getSeriesById(seriesId).then((s) => {
-      if (active) setSeries(s ?? null);
-    });
-    return () => {
-      active = false;
-    };
-  }, [seriesId]);
-
-  // Variantes de langue (series soeurs VF/VOSTFR/MULTI/VO) : changer de version
-  // = recharger la serie soeur via sa route (fonctionne en modal comme en page).
-  useEffect(() => {
-    if (series === null || series === undefined) return;
-    let active = true;
-    void findSeriesVariants(series, preferredLanguage).then((vs) => {
-      if (active) setVariants(vs);
-    });
-    return () => {
-      active = false;
-    };
-  }, [series, preferredLanguage]);
-
-  // Saisons/episodes charges A LA DEMANDE (cache Dexie + TTL).
-  useEffect(() => {
-    if (credentials === null) return;
-    let active = true;
-    setDetails(undefined);
-    void getSeriesDetailsCached(credentials, seriesId, { force: detailsRetry > 0 })
-      .then((d) => {
-        if (active) setDetails(d);
-      })
-      .catch(() => {
-        if (active) setDetails(null);
-      });
-    return () => {
-      active = false;
-    };
-  }, [credentials, seriesId, detailsRetry]);
-
-  const refreshProgress = useCallback(async () => {
-    setEpProgress(await playbackRepository.getSeriesEpisodeProgress(seriesId));
-    setProgressLoaded(true);
-  }, [seriesId]);
-
-  useEffect(() => {
-    void refreshProgress();
-  }, [refreshProgress, playingEp]);
+  const { series, error, retry, variants, details, retryDetails, epProgress, progressLoaded, refreshProgress } =
+    useSeriesDetail(seriesId, playingEp?.id ?? null);
+  // Plan de lecture adaptatif selon le conteneur de l'episode courant.
+  const playback = useVodPlayback(playingEp?.containerExtension ?? null);
+  const { clearFailed } = playback;
 
   const allEpisodes = useMemo(() => details?.episodes ?? [], [details]);
   const primary = useMemo(() => primaryAction(allEpisodes, epProgress), [allEpisodes, epProgress]);
@@ -174,11 +116,11 @@ export function SeriesDetailView({
     (ep: Episode, from?: number) => {
       setUpNext(null);
       setStartAt(from ?? resumePosition(epProgress.get(ep.id)));
-      setFailed(false);
+      clearFailed();
       setSeason(ep.seasonNumber);
       setPlayingEp(ep);
     },
-    [epProgress],
+    [epProgress, clearFailed],
   );
 
   // Lecture directe (accueil) : episode demande, sinon action principale.
@@ -265,8 +207,6 @@ export function SeriesDetailView({
     await refreshProgress();
   };
 
-  const seasonWatched = episodes.length > 0 && episodes.every((ep) => epProgress.get(ep.id)?.finished === 1);
-
   // Diffuser sur la TV : l'episode en cours, sinon celui que « Reprendre » lancerait.
   const castEpisode = playingEp ?? primary?.episode ?? null;
 
@@ -275,11 +215,13 @@ export function SeriesDetailView({
       ? buildSeriesEpisodeUrl(credentials, playingEp.id, playingEp.containerExtension)
       : null;
 
-  // Plan de lecture adaptatif selon le conteneur de l'episode courant.
-  // Echec du remux MKV direct (codecs/CORS/MSE) : on retombe sur passerelle/VLC.
-  const [directMkvFailed, setDirectMkvFailed] = useState(false);
-  const plan = usePlaybackPlan(playingEp?.containerExtension ?? null, planRetry, { directMkvAllowed: !directMkvFailed });
-
+  if (error) {
+    return (
+      <div className="mx-auto w-full max-w-4xl px-4 py-6 md:px-8">
+        <ErrorState title="Impossible d’ouvrir cette série" onRetry={retry} />
+      </div>
+    );
+  }
   if (series === null) {
     return (
       <div className="mx-auto w-full max-w-4xl px-4 py-6 md:px-8">
@@ -288,100 +230,44 @@ export function SeriesDetailView({
     );
   }
 
-  const heroBackdrop = secureImageSrc(tmdbBackdrop(tmdb?.backdropPath ?? null) ?? series?.backdropUrl ?? null);
+  const heroBackdrop = tmdbBackdrop(tmdb?.backdropPath ?? null) ?? series?.backdropUrl ?? null;
   const inPlayer = playingEp !== null && src !== null;
   const badge = series != null ? variantBadge(series.variant, series.variantSource) : null;
   const year = series?.tmdbYear ?? series?.year ?? null;
+  const title = series != null ? displayTitle(series.name) : '';
 
   return (
     <div className="mx-auto w-full max-w-4xl">
-      {!inPlayer && (
-        <div className="relative h-48 w-full overflow-hidden sm:h-72 sm:rounded-t-3xl">
-          {heroBackdrop !== null ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={heroBackdrop} alt="" aria-hidden className="h-full w-full animate-fade-in object-cover object-top" />
-          ) : (
-            <div className="h-full w-full bg-gradient-to-br from-ink-800 to-ink-950" />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-t from-ink-950 via-ink-950/60 to-ink-950/10" />
-          <div className="absolute inset-0 bg-gradient-to-r from-ink-950/70 to-transparent" />
-        </div>
-      )}
+      {!inPlayer && <DetailHero backdropUrl={heroBackdrop} />}
 
       <div className={cn('px-4 pb-8 md:px-8', inPlayer ? 'pt-6' : 'relative -mt-16 sm:-mt-24')}>
-        <div className="sticky top-safe z-20 -mx-4 mb-2 flex items-center gap-2 bg-ink-950/75 px-4 py-2 backdrop-blur-md md:-mx-8 md:px-8">
-          <button
-            onClick={() => (onBack !== undefined ? onBack() : router.back())}
-            aria-label="Retour"
-            className="glass grid h-11 w-11 shrink-0 place-items-center rounded-full text-fg-muted transition-colors hover:text-fg"
-          >
-            <IconArrowLeft className="h-5 w-5" />
-          </button>
-          <h1 className="min-w-0 flex-1 truncate text-lg font-semibold text-fg drop-shadow">
-            {series != null ? displayTitle(series.name) : ''}
-          </h1>
-          {/* Actions du lecteur : groupe serre (le titre garde de la place sur iPhone). */}
-          <div className="flex shrink-0 items-center gap-0.5">
-            <PipButton video={video} className="h-10 w-10" />
-            <CastButton
-              className="h-10 w-10"
-              streamUrl={
-                castEpisode !== null && credentials !== null
-                  ? buildSeriesEpisodeUrl(credentials, castEpisode.id, castEpisode.containerExtension)
-                  : null
-              }
-              title={
-                castEpisode !== null
-                  ? `${series != null ? displayTitle(series.name) : ''} · S${castEpisode.seasonNumber}E${castEpisode.episodeNumber}`
-                  : ''
-              }
-            />
-            <ArrangeButton className="h-10 w-10" type="series" itemId={seriesId} title={series != null ? displayTitle(series.name) : ''} />
-            <FavoriteButton className="h-10 w-10" type="series" itemId={seriesId} title={series != null ? displayTitle(series.name) : ''} />
-          </div>
-        </div>
+        <DetailHeader
+          type="series"
+          itemId={seriesId}
+          title={title}
+          onBack={close}
+          video={video}
+          castUrl={
+            castEpisode !== null && credentials !== null
+              ? buildSeriesEpisodeUrl(credentials, castEpisode.id, castEpisode.containerExtension)
+              : null
+          }
+          castTitle={castEpisode !== null ? `${title} · S${castEpisode.seasonNumber}E${castEpisode.episodeNumber}` : ''}
+        />
 
         {playingEp !== null && src !== null ? (
           <div className="mb-6 space-y-3">
-            {plan === 'vlc-only' ? (
-              <div className="rounded-2xl bg-ink-800 p-6 text-center">
-                <p className="text-sm text-fg">
-                  Cet épisode est en {playingEp.containerExtension?.toUpperCase() ?? 'un format non lisible'} — un
-                  iPhone ou iPad ne le décode pas dans le navigateur.
-                </p>
-                {(isGatewayConfigured() || showVlcButton) && (
-                  <>
-                    <p className="mt-1.5 text-xs text-fg-muted">
-                      {isGatewayConfigured() && showVlcButton
-                        ? 'Allume la passerelle pour le lire ici, ou ouvre-le dans VLC (lecture native).'
-                        : isGatewayConfigured()
-                          ? 'Allume la passerelle pour le lire ici.'
-                          : 'Tu peux l’ouvrir dans VLC (lecture native).'}
-                    </p>
-                    <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
-                      {isGatewayConfigured() && (
-                        <Button size="sm" variant="secondary" onClick={() => setPlanRetry((n) => n + 1)}>
-                          Réessayer la passerelle
-                        </Button>
-                      )}
-                      {/* VLC : dernier recours, seulement si active dans les Reglages. */}
-                      {showVlcButton && (
-                        <ExternalPlayer
-                          streamUrl={src}
-                          label={`Ouvrir S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`}
-                        />
-                      )}
-                    </div>
-                  </>
-                )}
-                <DirectMkvProbe streamUrl={src} />
-              </div>
-            ) : plan === 'checking' ? (
-              <div className="flex aspect-video items-center justify-center rounded-2xl bg-black">
-                <span className="h-8 w-8 animate-spin rounded-full border-2 border-ink-500 border-t-accent" />
-              </div>
-            ) : (
-              <>
+            <PlaybackPlanPanel
+              plan={playback.plan}
+              src={src}
+              subject="Cet épisode"
+              container={playingEp.containerExtension}
+              failed={playback.failed}
+              vlcLabel={`Lire S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`}
+              vlcOnlyLabel={`Ouvrir S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`}
+              onRetryGateway={playback.retryGateway}
+            >
+              {(plan) => (
                 <LandscapeStage video={video}>
                   <PlayerSlot
                     layout="live"
@@ -393,7 +279,7 @@ export function SeriesDetailView({
                         : []),
                       ...(showVlcButton ? [{ label: 'Ouvrir dans VLC', onSelect: () => launchVlc(src) }] : []),
                     ]}
-                    onMinimize={() => (onBack !== undefined ? onBack() : router.back())}
+                    onMinimize={close}
                     media={{
                       kind: 'episode',
                       ownerId: seriesId,
@@ -403,14 +289,10 @@ export function SeriesDetailView({
                       artwork: playingEp.imageUrl ?? posterUrl,
                     }}
                     src={src}
-                    transcode={plan === 'gateway'}
-                    directMkv={plan === 'direct-mkv'}
-                    onDirectMkvFailed={() => setDirectMkvFailed(true)}
-                    preferHls={plan === 'gateway' && supportsNativeHls()}
+                    {...planSourceProps(plan, startAt, supportsNativeHls())}
+                    onDirectMkvFailed={playback.markDirectMkvFailed}
                     contentType="episode"
                     container={playingEp.containerExtension}
-                    startAt={plan === 'gateway' && supportsNativeHls() ? 0 : startAt}
-                    startOffset={plan === 'gateway' && supportsNativeHls() ? startAt : 0}
                     duration={playingEp.durationSecs}
                     poster={playingEp.imageUrl ?? posterUrl}
                     onProgress={(pos, dur, force) =>
@@ -428,32 +310,14 @@ export function SeriesDetailView({
                       )
                     }
                     onEnded={() => handleEnded(playingEp)}
-                    onError={() => {
-                      setFailed(true);
-                      resetGatewayHealthCache(); // re-sonde possible au prochain essai, sans boucler
-                    }}
+                    onError={playback.markFailed}
                   />
                   {upNext !== null && (
-                    <UpNextOverlay
-                      episode={upNext}
-                      onPlay={() => playEpisode(upNext, 0)}
-                      onCancel={() => setUpNext(null)}
-                    />
+                    <UpNextOverlay episode={upNext} onPlay={() => playEpisode(upNext, 0)} onCancel={() => setUpNext(null)} />
                   )}
                 </LandscapeStage>
-                {/* VLC : meme place que film et Live, juste sous le lecteur. */}
-                {showVlcButton && (
-                  <ExternalPlayer
-                    streamUrl={src}
-                    label={
-                      failed
-                        ? 'Ça ne marche pas ici ? Ouvrir dans VLC'
-                        : `Lire S${playingEp.seasonNumber}E${playingEp.episodeNumber} dans VLC`
-                    }
-                  />
-                )}
-              </>
-            )}
+              )}
+            </PlaybackPlanPanel>
             <div className="flex items-center gap-3">
               <p className="min-w-0 flex-1 truncate text-sm text-fg-muted">
                 S{playingEp.seasonNumber} E{playingEp.episodeNumber} · {playingEp.title}
@@ -532,65 +396,25 @@ export function SeriesDetailView({
           </div>
         )}
         {details === null && (
-          <EmptyState
+          <ErrorState
             title="Épisodes indisponibles"
             hint="Impossible de charger les saisons depuis le serveur."
-            action={
-              <Button size="sm" variant="secondary" onClick={() => setDetailsRetry((n) => n + 1)}>
-                Réessayer
-              </Button>
-            }
+            onRetry={retryDetails}
           />
         )}
 
         {details !== null && details !== undefined && (
-          <>
-            <div className="mb-3 flex items-center gap-2">
-              <HScroll className="flex min-w-0 flex-1 gap-2 pb-1 [scrollbar-width:none]">
-                {details.seasons.map((s) => (
-                  <button
-                    key={s.seasonNumber}
-                    onClick={() => setSeason(s.seasonNumber)}
-                    className={cn(
-                      'shrink-0 rounded-full px-4 py-2.5 text-[13px] font-medium transition-colors',
-                      s.seasonNumber === season ? 'bg-accent text-white' : 'bg-ink-800 text-fg-muted hover:text-fg',
-                    )}
-                  >
-                    Saison {s.seasonNumber}
-                  </button>
-                ))}
-              </HScroll>
-              {episodes.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => void toggleWatched(episodes, !seasonWatched)}
-                  className="flex shrink-0 items-center gap-1.5 rounded-full px-3 py-2.5 text-xs font-medium text-fg-faint transition-colors hover:bg-ink-800 hover:text-fg"
-                >
-                  <IconCheck className="h-3.5 w-3.5" />
-                  {seasonWatched ? 'Saison non vue' : 'Saison vue'}
-                </button>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-1">
-              {episodes.map((ep) => {
-                const prog = epProgress.get(ep.id);
-                return (
-                  <EpisodeRow
-                    key={ep.id}
-                    episode={ep}
-                    fallbackImage={series?.backdropUrl ?? posterUrl}
-                    ratio={watchedRatio(prog, ep.durationSecs)}
-                    watched={prog?.finished === 1}
-                    playing={playingEp?.id === ep.id}
-                    onPlay={() => playEpisode(ep)}
-                    onToggleWatched={() => void toggleWatched([ep], prog?.finished !== 1)}
-                  />
-                );
-              })}
-              {episodes.length === 0 && <EmptyState title="Aucun épisode dans cette saison" />}
-            </div>
-          </>
+          <SeasonEpisodes
+            seasons={details.seasons}
+            season={season}
+            episodes={episodes}
+            progress={epProgress}
+            playingId={playingEp?.id ?? null}
+            fallbackImage={series?.backdropUrl ?? posterUrl}
+            onSelectSeason={setSeason}
+            onPlay={(ep) => playEpisode(ep)}
+            onToggleWatched={(list, watched) => void toggleWatched(list, watched)}
+          />
         )}
 
         <TitleRail title="Titres similaires" series={similar} />
