@@ -144,3 +144,7 @@ Mode connexion faible (oct. 2026) ✅ : `services/network/lowBandwidthService`
 Toute NOUVELLE tâche réseau de fond doit consulter `isLowBandwidth()` (TMDB,
 synchro, guide, EPG, foot, tendances, rotations d'images le font) ; en mode
 faible le Live démarre jusqu'à 30 s derrière le direct (`liveDelaySeconds`).
+Vitrine Live (oct. 2026) ✅ : vue France = « En ce moment » (`pickSpotlight`),
+récentes en cartes, rangées par section (`buildShowcaseRows`, « Tout voir » →
+pastille) ; recherche, favoris, onglets, pastilles, International, Tous =
+listes inchangées. Ligne et carte partagent `useLiveChannelActions`.

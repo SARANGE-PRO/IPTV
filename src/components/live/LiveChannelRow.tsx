@@ -5,11 +5,8 @@ import { memo, useState } from 'react';
 import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { IconMore } from '@/components/ui/actionIcons';
 import { IconChevronDown, IconHeart } from '@/components/ui/icons';
-import { useLongPress } from '@/hooks/useLongPress';
+import { useLiveChannelActions } from '@/hooks/useLiveChannelActions';
 import { cn } from '@/lib/cn';
-import { useFavoritesStore } from '@/stores/favoritesStore';
-import { useFavoritesUiStore } from '@/stores/favoritesUiStore';
-import { usePlayerStore } from '@/stores/playerStore';
 import type { TvNow } from '@/types/tvGuide';
 import { liveHref } from '@/utils/appRoutes';
 import { tvProgress } from '@/utils/tvNow';
@@ -53,24 +50,14 @@ export interface LiveRowData {
 function LiveChannelRowImpl({ row, onPlay }: { row: LiveRowData; onPlay?: (id: string) => void }) {
   const [open, setOpen] = useState(false);
   const versions = row.versions ?? [];
-  const versionIds = versions.length > 0 ? versions.map((v) => v.id) : [row.id];
-  // Une chaine est favorite si l'une de ses versions l'est (4K ajoutee depuis le lecteur…).
-  const favoriteId = useFavoritesStore((s) => versionIds.find((id) => s.ids.live.has(id)) ?? null);
-  const playingId = usePlayerStore((s) =>
-    s.session?.media.kind === 'live' && versionIds.includes(s.session.media.ownerId) ? s.session.media.ownerId : null,
-  );
-  const openSheet = useFavoritesUiStore((s) => s.openSheet);
-  const targetId = favoriteId ?? row.id;
+  const { favoriteId, playingId, openOptions, longPress } = useLiveChannelActions({
+    id: row.id,
+    name: row.name,
+    versionIds: versions.map((v) => v.id),
+    categoryId: row.categoryId,
+    categoryName: row.categoryName,
+  });
   const multi = versions.length > 1;
-  const openOptions = () =>
-    openSheet({
-      type: 'live',
-      itemId: targetId,
-      title: row.name,
-      hideCategory:
-        row.categoryName !== undefined ? { categoryId: row.categoryId, categoryName: row.categoryName } : undefined,
-    });
-  const longPress = useLongPress(openOptions);
 
   return (
     <div className={cn('rounded-xl transition-colors hover:bg-ink-800', playingId !== null && 'bg-ink-800/70')}>

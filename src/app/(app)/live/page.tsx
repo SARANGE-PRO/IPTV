@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { TabNameDialog } from '@/components/favorites/TabNameDialog';
 import { LiveChannelRow, type LiveRowData } from '@/components/live/LiveChannelRow';
+import { LiveShowcase } from '@/components/live/LiveShowcase';
 import { LiveViewBar } from '@/components/live/LiveViewBar';
 import { RecentChannelsStrip } from '@/components/live/RecentChannelsStrip';
 import { BrandMark } from '@/components/shared/BrandMark';
@@ -213,7 +214,7 @@ export default function LivePage() {
   // --- Sources ------------------------------------------------------------------
   const lineup = useLiveLineup();
   // Guide TV : « 20:45 · Le film du soir » sous chaque chaine FR.
-  const { nowFor } = useTvNow();
+  const { nowFor, nowMs } = useTvNow();
   const { rank } = useVersionRanking();
   const lineupView = !search.active && isLineupView(view);
   const visibleGroups = useMemo(
@@ -306,6 +307,14 @@ export default function LivePage() {
     });
   }, [recentChannels]);
 
+  // Vue France : vitrine (« En ce moment », recentes, rangees par theme) ; les
+  // autres vues (pastilles, favoris, international, tous, recherche) : listes.
+  const showcase = !search.active && view === 'france';
+  const toShowcaseRow = useCallback(
+    (group: LineupGroup) => groupRow(group, categoryName, nowFor, rank),
+    [categoryName, nowFor, rank],
+  );
+
   const canPage = catalogFilter !== null && !catalog.exhausted;
   const loadMore = useCallback(() => {
     if (visible < items.length) setVisible((v) => v + STEP);
@@ -395,7 +404,8 @@ export default function LivePage() {
         )}
       </div>
 
-      {!search.active && <RecentChannelsStrip onPlay={onPlayRecent} />}
+      {/* Vitrine France : les recentes y sont en cartes (sous « En ce moment »). */}
+      {!search.active && !showcase && <RecentChannelsStrip onPlay={onPlayRecent} />}
 
       <LiveViewBar
         view={view}
@@ -437,6 +447,16 @@ export default function LivePage() {
         <div className="mt-6">
           <LiveEmpty view={view} searching={search.active} tabName={tabName} />
         </div>
+      ) : showcase ? (
+        <LiveShowcase
+          groups={viewGroups}
+          toRow={toShowcaseRow}
+          nowFor={nowFor}
+          nowMs={nowMs}
+          onPlay={onPlay}
+          onPlayRecent={onPlayRecent}
+          onOpenView={selectView}
+        />
       ) : (
         <div className="mt-2">
           <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4">

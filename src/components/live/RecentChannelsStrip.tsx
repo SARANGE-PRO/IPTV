@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import type { ReactNode } from 'react';
+import { ChannelCardFrame } from '@/components/live/ChannelCard';
 import { HScroll } from '@/components/shared/HScroll';
 import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { IconClock } from '@/components/ui/actionIcons';
@@ -12,13 +13,25 @@ import { cn } from '@/lib/cn';
 import { cleanChannelDisplay } from '@/services/live/channelNormalizer';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import { usePlayerStore } from '@/stores/playerStore';
+import type { TvNow } from '@/types/tvGuide';
 import { liveHref } from '@/utils/appRoutes';
 
 const MAX_RECENTS = 10;
 
-/** Les 10 dernieres chaines regardees, a un tap (haut de la page Live).
- *  Appui long : retirer la chaine de la liste. */
-export function RecentChannelsStrip({ onPlay }: { onPlay?: (id: string) => void }) {
+/** Les 10 dernieres chaines regardees, a un tap. Appui long : retirer la
+ *  chaine de la liste. `cards` (vitrine Live) : cartes avec le programme en
+ *  cours ; sinon pastilles de logos (accueil, listes Live). */
+export function RecentChannelsStrip({
+  onPlay,
+  variant = 'tiles',
+  nowFor,
+  nowMs = Date.now(),
+}: {
+  onPlay?: (id: string) => void;
+  variant?: 'tiles' | 'cards';
+  nowFor?: (name: string) => TvNow | null;
+  nowMs?: number;
+}) {
   const recents = usePlaybackStore((s) => s.recentChannels);
   const playingId = usePlayerStore((s) => (s.session?.media.kind === 'live' ? s.session.media.ownerId : null));
   const list = recents.slice(0, MAX_RECENTS);
@@ -44,6 +57,22 @@ export function RecentChannelsStrip({ onPlay }: { onPlay?: (id: string) => void 
             ...(lineupLogos.get(entry.itemId) ?? []),
             ...(entry.posterUrl ? [entry.posterUrl] : []),
           ];
+          if (variant === 'cards') {
+            const inLineup = lineupNames.has(entry.itemId);
+            return (
+              <RecentLink key={entry.itemId} itemId={entry.itemId} name={name} onPlay={onPlay} className="w-[9.5rem]">
+                <ChannelCardFrame
+                  name={name}
+                  logoUrl={logoUrl}
+                  alternates={alternates}
+                  isFrench={inLineup}
+                  now={inLineup ? (nowFor?.(name) ?? null) : null}
+                  nowMs={nowMs}
+                  playing={playing}
+                />
+              </RecentLink>
+            );
+          }
           return (
             <RecentLink
               key={entry.itemId}
@@ -81,11 +110,13 @@ function RecentLink({
   itemId,
   name,
   onPlay,
+  className = 'w-[4.5rem]',
   children,
 }: {
   itemId: string;
   name: string;
   onPlay?: (id: string) => void;
+  className?: string;
   children: ReactNode;
 }) {
   const removeRecentChannel = usePlaybackStore((s) => s.removeRecentChannel);
@@ -97,7 +128,7 @@ function RecentLink({
       href={liveHref(itemId)}
       onClick={() => onPlay?.(itemId)}
       {...longPress}
-      className="group w-[4.5rem] shrink-0 select-none"
+      className={cn('group block shrink-0 select-none', className)}
     >
       {children}
     </Link>
