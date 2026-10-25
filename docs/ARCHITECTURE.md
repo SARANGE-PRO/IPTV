@@ -13,7 +13,8 @@ Vercel. UX inspirée Apple TV (sobriété, fluidité), palette Netflix (noir pro
 rouge accent, gris anthracite). Usage strictement légitime.
 
 **Stack** : Next.js (App Router) · TypeScript strict · Tailwind · Zustand · Dexie.js
-(IndexedDB) · Framer Motion · HLS natif + fallback hls.js · TMDB. Paquets : **npm**.
+(IndexedDB) · HLS natif + fallback hls.js · TMDB. Paquets : **npm**.
+Animations : keyframes Tailwind + CSS + gestes écrits à la main (pas de Framer Motion).
 
 ---
 
@@ -27,7 +28,7 @@ src/
 │   │                          #         search, settings + layout avec nav
 │   └── api/{xtream,tmdb}/      # Route Handlers = proxy (métadonnées uniquement)
 ├── components/{ui,layout,shared,live,movies,series,player}/
-├── stores/                    # 7 stores Zustand séparés
+├── stores/                    # 12 stores Zustand séparés
 ├── services/
 │   ├── xtream/                # client + api typée + urls vidéo + normalize
 │   ├── tmdb/                  # client + matcher (nettoyage titres) + cache
@@ -72,7 +73,7 @@ Jamais l'inverse. Les composants n'accèdent jamais directement à fetch/Dexie.
 ### Deux cibles de déploiement (même code)
 | Cible | Page | Flux HTTP du Xtream | MKV |
 |---|---|---|---|
-| **Vercel** (défaut) | HTTPS | Bloqué par le mixed-content → **passerelle** `infra/media-gateway` obligatoire | Passerelle (transcodage) sinon VLC |
+| **Vercel** (routes `/api` ; app HTTPS non utilisée en prod) | HTTPS | Bloqué par le mixed-content → **passerelle** `infra/media-gateway` obligatoire | Passerelle (transcodage) sinon VLC |
 | **Coquille HTTP** `infra/http-shell` (`NEXT_PUBLIC_PLAIN_HTTP=1`) : statique sur GitHub Pages (`build:static`, `/api` restant sur Vercel + CORS) ou Docker | HTTP pur | **Direct** depuis l'IP du client, sans passerelle | **Remux navigateur** (`services/player/mkvDirectEngine.ts` : fetch Range → `utils/matroska` → `utils/fmp4` → MediaSource) si codecs décodables, sinon passerelle si joignable, sinon VLC |
 
 La coquille HTTP supprime le besoin de passerelle pour tout ce qui est MP4/HLS :
@@ -131,7 +132,7 @@ Déconnexion : `clearSession()` + purge des caches liés au compte.
 
 ---
 
-## 4. Stores Zustand (7)
+## 4. Stores Zustand (12)
 
 Sélecteurs fins, persistance déléguée aux services, séparation données brutes /
 filtrées / préférences.
@@ -148,9 +149,13 @@ filtrées / préférences.
 - **liveLineupStore** — statut/révision de la grille Live FR (jamais les chaînes).
 - **playbackStore** — continueWatching, recentChannels, get/saveProgress
   (throttlé → Dexie), markFinished, clearHistory.
-- **settingsStore** — pays/langue par défaut, prefs lecteur/UI/blacklist.
-- **tmdbStore** — statut d'enrichissement ; cache réel dans Dexie via
-  `tmdbCacheService`. Enrichissement non bloquant.
+- **uiSettingsStore** — langue préférée, PiP / Cast / VLC, regroupement en cours.
+- **vodFilterStore** — tri, langue, genres, années, note de Films / Séries.
+- **liveUiStore** — vue, recherche et défilement de la page Live (retour).
+- **playerStore** — session du lecteur unique, `<video>`, échec.
+- **footballStore** — compétitions et équipes suivies.
+- Enrichissement TMDB : état dans **catalogStore** (`backfill`), cache dans Dexie
+  (`tmdbCacheService`). Non bloquant.
 
 ---
 
@@ -177,7 +182,10 @@ playback_history         [type+itemId], type, updatedAt, finished
 hidden_categories        [section+categoryId], section
 settings                 key
 sync_metadata            section
-search_index             token
+search_index             token                           (déclarée, inutilisée)
+epg_cache                id, fetchedAt                   (EPG Xtream, purgé > 48 h)
+reminders                id …                            (rappels foot)
+tmdb_genres              [type+id], type, fetchedAt
 ```
 
 > **Pas de table `diagnostic_reports`** (amendement) : les rapports diagnostic sont
@@ -249,7 +257,7 @@ les autres pays restent accessibles via `filterStore.country`. La **blacklist**
 - Jamais des milliers d'items d'un coup → **virtualisation** + pagination Dexie.
 - Listes lourdes **hors Zustand** (catalogStore ne garde que les catégories).
 - Sélecteurs fins ; `Set` pour favoris/blacklist (test O(1)).
-- Recherche : **debounce** + index inversé local (`search_index`).
+- Recherche : **debounce** + index `*searchTokens` des tables catalogue.
 - Sync par section, écritures Dexie en **bulk**, barre de progression.
 - Lazy-load posters (IntersectionObserver) et composants lourds (player, hls.js).
 - TMDB **non bloquant** : l'UI ne dépend jamais de TMDB pour fonctionner.
@@ -257,7 +265,7 @@ les autres pays restent accessibles via `filterStore.country`. La **blacklist**
 ### Lecteur vidéo (piège Safari)
 Safari iOS lit le **HLS `.m3u8` nativement** (aucun CORS requis pour `<video>`),
 mais **pas** le MPEG-TS `.ts` brut. → l'URL builder demande `.m3u8` pour le Live.
-hls.js seulement si HLS natif absent ; `mpegts.js` en option pour `.ts`. Le player
+hls.js seulement si HLS natif absent (pas de mpegts.js). Le player
 abstrait la détection de format et gère flux mort / timeout / format non supporté.
 
 ### Lecteur : découpage (oct. 2026)

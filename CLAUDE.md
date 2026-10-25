@@ -9,7 +9,8 @@ Usage personnel légitime — aucune solution de contournement DRM/piratage.
 
 ## Stack
 Next.js App Router · TypeScript **strict** · Tailwind · Zustand (stores séparés)
-· Dexie.js/IndexedDB · Framer Motion · HLS natif + fallback hls.js · TMDB.
+· Dexie.js/IndexedDB · HLS natif + fallback hls.js · TMDB.
+Animations : keyframes Tailwind + CSS + gestes écrits à la main (pas de Framer Motion).
 Gestionnaire de paquets : **npm**.
 
 ## Invariants non négociables
@@ -18,9 +19,11 @@ Gestionnaire de paquets : **npm**.
 2. **Proxy `/api/xtream` = MÉTADONNÉES uniquement.** Aucun flux vidéo
    (`.m3u8` / `.ts` / `.mp4`) ne transite par Vercel — coût, latence, blocages.
    La vidéo utilise l'URL directe du serveur Xtream, jamais mise en cache SW.
-   Deux cibles : Vercel (HTTPS → passerelle `infra/media-gateway` pour les flux
-   HTTP) et coquille HTTP pure (`infra/http-shell`, `NEXT_PUBLIC_PLAIN_HTTP=1`
-   → flux directs sans passerelle). Toute logique de schéma vit dans
+   PROD = coquille HTTP pure (`infra/http-shell`, `NEXT_PUBLIC_PLAIN_HTTP=1`,
+   GitHub Pages) → flux directs sans passerelle ; `/api/*` restent sur Vercel.
+   Vercel HTTPS seul ne lit pas un Xtream HTTP (passerelle `infra/media-gateway`
+   optionnelle, plus maintenue). En HTTP, Safari n'offre ni service worker, ni
+   notifications, ni stockage protégé : sauvegarde perso dans les Réglages. Toute logique de schéma vit dans
    `utils/secureUrl.ts`, jamais dans les composants.
 8. **Export statique possible** : aucune route dynamique `[id]`. Détail film/
    série = `?vod=` / `?series=` (modal `DetailModalHost`), Live =
@@ -51,7 +54,7 @@ Gestionnaire de paquets : **npm**.
    **Dexie**, lues paginées/virtualisées — **jamais** en masse dans Zustand.
    Sélecteurs fins, `Set` pour favoris/blacklist, debounce sur la recherche.
 7. **Lecteur** : préférer `.m3u8` (compat Safari natif) ; hls.js seulement si
-   nécessaire ; `mpegts.js` en option pour flux MPEG-TS bruts. Toujours gérer
+   nécessaire (pas de mpegts.js). Toujours gérer
    flux mort / timeout / format non supporté sans crash. MKV sur coquille HTTP :
    remux navigateur (`utils/matroska.ts`, `utils/fmp4.ts`, `utils/mkvRemuxer.ts`
    = briques PURES, imports relatifs, testables en Node avec ffmpeg ;
@@ -83,7 +86,7 @@ Gestionnaire de paquets : **npm**.
 - Chaîne FR EXACTE : guide XMLTV xmltvfr.fr lu EN FLUX côté serveur
   (`tvGuide.ts`, client HTTP natif Node — jamais le `fetch` de Next sur ce
   fichier de 16 Mo), cache 3 h (`unstable_cache`), rattaché match par match
-  (`broadcasts.ts` : affiche « A / B » ±30 min du coup d'envoi, noms EN↔FR
+  (`broadcasts.ts` : affiche « A / B » de −30 à +15 min du coup d'envoi, noms EN↔FR
   dans `utils/footballMatch.ts`). Sinon « probable » : droits APPRIS du guide,
   puis table 2026-27 de `config/footballCompetitions.ts`. Jamais de certitude
   affichée sans le guide (ou l'EPG Xtream, confirmé côté client).

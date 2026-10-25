@@ -9,7 +9,7 @@ sur l'écran d'accueil, déployable sur Vercel.
 ## Stack
 
 Next.js (App Router) · TypeScript strict · Tailwind CSS · Zustand · Dexie.js
-(IndexedDB) · Framer Motion · HLS natif + fallback hls.js · TMDB.
+(IndexedDB) · HLS natif + fallback hls.js · TMDB.
 
 ## Démarrer
 
@@ -26,8 +26,9 @@ saisis dans l'interface puis stockés localement.
 
 ## Déploiement
 
-- **Vercel** (HTTPS) : cible par défaut. Un Xtream HTTP-only y impose la passerelle
-  média (`infra/media-gateway`) pour relayer les flux.
+- **Vercel** (HTTPS) : héberge les routes `/api` (proxy Xtream, TMDB, foot). L'app
+  HTTPS seule ne lit pas un Xtream HTTP-only (passerelle `infra/media-gateway`
+  optionnelle, plus maintenue).
 - **Coquille HTTP pure** (`infra/http-shell`) : sert l'app en HTTP, donc les
   flux MP4/HLS se lisent **en direct sans passerelle**. Gratuit en statique sur
   GitHub Pages (`npm run build:static`, routes `/api` laissées sur Vercel), ou
