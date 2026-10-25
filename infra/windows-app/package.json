@@ -1,0 +1,11 @@
+{
+  "name": "iptv-windows-app",
+  "private": true,
+  "scripts": {
+    "icon": "tauri icon ../../public/icons/icon-512.png",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0"
+  }
+}
