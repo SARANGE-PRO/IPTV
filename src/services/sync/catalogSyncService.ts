@@ -14,7 +14,14 @@ import { invalidateLivePool } from '@/services/live/liveZappingService';
 import { ensureAllGenres } from '@/services/tmdb/tmdbGenreService';
 import * as xtreamApi from '@/services/xtream/xtreamApi';
 import type { Category, Section } from '@/types/models';
-import type { NumLike, XtreamCredentials } from '@/types/xtream';
+import type {
+  NumLike,
+  XtreamCategory,
+  XtreamCredentials,
+  XtreamLiveStream,
+  XtreamSeries,
+  XtreamVodStream,
+} from '@/types/xtream';
 
 /**
  * Synchronisation catalogue : fetch metadonnees (via proxy) -> normalisation
@@ -36,6 +43,41 @@ export interface SectionOutcome {
   error: string | null;
 }
 
+/**
+ * Garde-fou : une reponse qui n'est pas une liste (panel en maintenance, page
+ * d'erreur, `{"user_info":...}` d'un compte expire) ne doit JAMAIS remplacer
+ * la section par 0 element. On leve : l'ancien catalogue reste, statut erreur.
+ */
+export function requireList<T>(raw: unknown, what: string): T[] {
+  if (!Array.isArray(raw)) throw new Error(`Reponse inattendue du serveur (${what})`);
+  return raw as T[];
+}
+
+/** Liste vide alors que la section a des categories : reponse tronquee, refusee. */
+export function requireItems<T>(items: T[], categoryCount: number, what: string): T[] {
+  if (items.length === 0 && categoryCount > 0) throw new Error(`Liste vide renvoyee par le serveur (${what})`);
+  return items;
+}
+
+/**
+ * Generation de synchro : la deconnexion (ou un changement de compte) l'avance
+ * -> une synchro en cours n'ecrit plus rien apres la purge (sinon l'ancien
+ * catalogue reapparaissait sous le nouveau compte).
+ */
+let syncGeneration = 0;
+
+class SyncCancelled extends Error {
+  constructor() {
+    super('Synchro annulee');
+    this.name = 'SyncCancelled';
+  }
+}
+
+/** Abandonne toute synchro en cours (avant une purge du catalogue). */
+export function cancelCatalogSync(): void {
+  syncGeneration += 1;
+}
+
 function fetchCategories(creds: XtreamCredentials, section: Section) {
   if (section === 'live') return xtreamApi.getLiveCategories(creds);
   if (section === 'vod') return xtreamApi.getVodCategories(creds);
@@ -52,6 +94,7 @@ async function storeSection(
   section: Section,
   categories: Category[],
   categoryById: Map<string, Category>,
+  ensureAlive: () => void,
 ): Promise<number> {
   // Contexte de categorie (nom + flag FR) : repli de langue des films/series
   // sans tag dans le titre, theme des chaines Live.
@@ -61,24 +104,27 @@ async function storeSection(
   };
 
   if (section === 'live') {
-    const raw = await xtreamApi.getLiveStreams(creds);
-    const count = await catalogRepository.replaceLiveCatalog(categories, Array.isArray(raw) ? raw : [], (r) =>
+    const raw = requireItems(requireList<XtreamLiveStream>(await xtreamApi.getLiveStreams(creds), 'chaines'), categories.length, 'chaines');
+    ensureAlive();
+    const count = await catalogRepository.replaceLiveCatalog(categories, raw, (r) =>
       normalizeLiveChannel(r, context(r.category_id)),
     );
     invalidateLivePool();
     return count;
   }
   if (section === 'vod') {
-    const raw = await xtreamApi.getVodStreams(creds);
-    const count = await catalogRepository.replaceVodCatalog(categories, Array.isArray(raw) ? raw : [], (r) =>
+    const raw = requireItems(requireList<XtreamVodStream>(await xtreamApi.getVodStreams(creds), 'films'), categories.length, 'films');
+    ensureAlive();
+    const count = await catalogRepository.replaceVodCatalog(categories, raw, (r) =>
       normalizeMovie(r, context(r.category_id)),
     );
     // Une carte par titre : rangs de version calcules sur la table fraichement ecrite.
     await regroupSection('vod');
     return count;
   }
-  const raw = await xtreamApi.getSeries(creds);
-  const count = await catalogRepository.replaceSeriesCatalog(categories, Array.isArray(raw) ? raw : [], (r) =>
+  const raw = requireItems(requireList<XtreamSeries>(await xtreamApi.getSeries(creds), 'series'), categories.length, 'series');
+  ensureAlive();
+  const count = await catalogRepository.replaceSeriesCatalog(categories, raw, (r) =>
     normalizeSeries(r, context(r.category_id)),
   );
   await regroupSection('series');
@@ -89,15 +135,20 @@ async function storeSection(
 export async function syncSection(
   creds: XtreamCredentials,
   section: Section,
+  generation: number = syncGeneration,
 ): Promise<{ categoryCount: number; itemCount: number }> {
+  const ensureAlive = () => {
+    if (generation !== syncGeneration) throw new SyncCancelled();
+  };
   await syncMetadataRepository.markSyncStart(section);
   try {
     const rawCategories = await fetchCategories(creds, section);
-    const categories = (Array.isArray(rawCategories) ? rawCategories : []).map((c) =>
+    const categories = requireList<XtreamCategory>(rawCategories, 'categories').map((c) =>
       normalizeCategory(section, c),
     );
     const categoryById = new Map<string, Category>(categories.map((c) => [c.id, c] as [string, Category]));
-    const itemCount = await storeSection(creds, section, categories, categoryById);
+    const itemCount = await storeSection(creds, section, categories, categoryById, ensureAlive);
+    ensureAlive();
 
     await syncMetadataRepository.markSyncSuccess(section, {
       categoryCount: categories.length,
@@ -105,6 +156,8 @@ export async function syncSection(
     });
     return { categoryCount: categories.length, itemCount };
   } catch (err) {
+    // Annulee (deconnexion) : les metadonnees viennent d'etre purgees, on n'ecrit rien.
+    if (err instanceof SyncCancelled) throw err;
     await syncMetadataRepository.markSyncError(
       section,
       err instanceof Error ? err.message : 'Erreur inconnue',
@@ -127,7 +180,9 @@ export async function syncAllSections(
   },
 ): Promise<SectionOutcome[]> {
   const outcomes: SectionOutcome[] = [];
+  const generation = syncGeneration;
   for (const section of SECTIONS) {
+    if (generation !== syncGeneration) break;
     opts?.onSectionStart?.(section);
     let outcome: SectionOutcome;
     try {
@@ -143,7 +198,7 @@ export async function syncAllSections(
           error: null,
         };
       } else {
-        const result = await syncSection(creds, section);
+        const result = await syncSection(creds, section, generation);
         outcome = { section, ok: true, skipped: false, ...result, error: null };
       }
     } catch (err) {

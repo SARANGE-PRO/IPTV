@@ -14,6 +14,12 @@ const FRESH_MS = 30 * 60_000;
 const MAX_AGE_MS = 20 * 3_600_000;
 
 let memory: TvSchedule | null = null;
+/**
+ * Derniere verification reussie, en heure de l'APPAREIL. `fetchedAt` est
+ * l'heure du guide cote serveur (cache jusqu'a 3 h) : s'y fier faisait
+ * retelecharger et reecrire le guide complet a chaque minute.
+ */
+let checkedAt = 0;
 let inflight: Promise<TvSchedule | null> | null = null;
 
 function usable(s: TvSchedule | null | undefined): s is TvSchedule {
@@ -34,7 +40,9 @@ export async function getCachedTvSchedule(): Promise<TvSchedule | null> {
  */
 export async function refreshTvSchedule(): Promise<{ schedule: TvSchedule | null; loading: boolean }> {
   const cached = await getCachedTvSchedule();
-  if (cached !== null && Date.now() - cached.fetchedAt < FRESH_MS) return { schedule: cached, loading: false };
+  if (cached !== null && Date.now() - Math.max(checkedAt, cached.fetchedAt) < FRESH_MS) {
+    return { schedule: cached, loading: false };
+  }
   let loading = false;
   inflight ??= (async () => {
     try {
@@ -45,6 +53,9 @@ export async function refreshTvSchedule(): Promise<{ schedule: TvSchedule | null
         loading = body.loading === true;
         return null;
       }
+      checkedAt = Date.now();
+      // Meme guide que celui connu : meme objet (pas de re-rendu ni de reecriture).
+      if (memory !== null && memory.fetchedAt === body.fetchedAt) return memory;
       const schedule: TvSchedule = { fetchedAt: body.fetchedAt, channels: body.channels };
       memory = schedule;
       void settingsRepository.setSetting(SETTING_KEY, schedule).catch(() => undefined);

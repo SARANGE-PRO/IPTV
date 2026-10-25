@@ -5,6 +5,7 @@ import * as tmdbRepository from '@/db/repositories/tmdbRepository';
 import { stopCatalogBackfill } from '@/services/tmdb/tmdbEnrichmentService';
 import * as secureSessionService from '@/services/session/secureSessionService';
 import * as localDatabaseService from '@/services/storage/localDatabaseService';
+import { cancelCatalogSync } from '@/services/sync/catalogSyncService';
 import type { AuthErrorCode } from '@/services/session/secureSessionService';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { normalizeServerUrl } from '@/services/xtream/xtreamUrls';
@@ -125,6 +126,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     const accountChanged =
       prev !== undefined && (prev.serverUrl !== normalized.serverUrl || prev.username !== normalized.username);
     if (accountChanged) {
+      cancelCatalogSync();
       stopCatalogBackfill();
       await Promise.all([
         catalogRepository.clearCatalog(),
@@ -142,6 +144,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
   logout: async () => {
     // Purge session + caches lies au compte. Favoris et historique conserves
     // (purge optionnelle depuis les reglages, etape 11).
+    cancelCatalogSync();
     stopCatalogBackfill();
     await Promise.all([
       secureSessionService.clearSession(),
