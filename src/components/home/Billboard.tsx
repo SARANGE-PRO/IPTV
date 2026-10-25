@@ -15,9 +15,24 @@ import { useLowBandwidth } from '@/hooks/useLowBandwidth';
  * BILLBOARD d'accueil facon Netflix : image de fond plein cadre, titre,
  * meta (annee · note · genres), synopsis court, pastille de langue,
  * « Lecture » (lance directement), « Plus d'infos » (fiche), « Ma liste ».
- * Rotation douce entre 6 titres max, points cliquables. Hauteur fixe par
- * breakpoint : aucun saut de mise en page pendant le chargement des images.
+ * Rotation douce entre 6 titres max, points cliquables, glisser au doigt.
+ * Hauteur fixe par breakpoint : aucun saut de mise en page.
+ *
+ * `size` : « hero » sur l'accueil ; « compact » en tete de Films / Series
+ * (memes possibilites, plus de place pour le catalogue).
  */
+export type BillboardSize = 'hero' | 'compact';
+
+const FRAME: Record<BillboardSize, string> = {
+  hero: 'h-[50vh] max-h-[520px] min-h-[340px] md:h-[460px]',
+  compact: 'h-[36vh] max-h-[340px] min-h-[260px] md:h-[320px]',
+};
+const FRAME_BASE = 'relative -mx-4 overflow-hidden bg-ink-900 md:mx-0 md:rounded-3xl';
+
+/** Place reservee (meme gabarit) tant que le bandeau n'est pas calcule. */
+export function BillboardPlaceholder({ size = 'hero' }: { size?: BillboardSize }) {
+  return <div aria-hidden className={cn(FRAME_BASE, FRAME[size], 'animate-pulse')} />;
+}
 
 const ROTATE_MS = 9000;
 
@@ -27,7 +42,8 @@ function hrefs(item: BillboardItem): { play: string; info: string } {
     : { play: seriesHref(item.id, '', { play: true }), info: seriesHref(item.id) };
 }
 
-export function Billboard({ items }: { items: BillboardItem[] }) {
+export function Billboard({ items, size = 'hero' }: { items: BillboardItem[]; size?: BillboardSize }) {
+  const compact = size === 'compact';
   const [index, setIndex] = useState(0);
   const [paused, setPaused] = useState(false);
 
@@ -79,7 +95,7 @@ export function Billboard({ items }: { items: BillboardItem[] }) {
       // Au doigt : la rotation s'arrete (le titre ne change plus sous le tap).
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
-      className="relative -mx-4 h-[50vh] max-h-[520px] min-h-[340px] overflow-hidden bg-ink-900 md:mx-0 md:h-[460px] md:rounded-3xl"
+      className={cn(FRAME_BASE, FRAME[size])}
     >
       <PosterImage
         key={item.key}
@@ -91,11 +107,12 @@ export function Billboard({ items }: { items: BillboardItem[] }) {
       <div className="absolute inset-0 bg-gradient-to-t from-ink-950 via-ink-950/40 to-transparent" />
       <div className="absolute inset-0 bg-gradient-to-r from-ink-950/80 via-ink-950/20 to-transparent" />
 
-      <div className="absolute inset-x-0 bottom-0 px-5 pb-6 md:px-10 md:pb-10">
+      <div className={cn('absolute inset-x-0 bottom-0 px-5 md:px-10', compact ? 'pb-5 md:pb-8' : 'pb-6 md:pb-10')}>
         <div key={item.key} className="max-w-xl animate-fade-in">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-bold uppercase tracking-[0.2em] text-accent">
-              {item.type === 'vod' ? 'Film' : 'Série'}
+              {/* Onglet deja « Films » / « Series » : le type serait redondant. */}
+              {compact ? 'À la une' : item.type === 'vod' ? 'Film' : 'Série'}
             </span>
             {badge !== null && (
               <span className="rounded bg-white/15 px-1.5 py-0.5 text-[10px] font-bold uppercase text-white backdrop-blur-sm">
@@ -103,16 +120,26 @@ export function Billboard({ items }: { items: BillboardItem[] }) {
               </span>
             )}
           </div>
-          <h2 className="mt-2 line-clamp-2 text-3xl font-bold leading-tight tracking-tight text-fg drop-shadow-lg md:text-5xl">
+          <h2
+            className={cn(
+              'mt-2 line-clamp-2 font-bold leading-tight tracking-tight text-fg drop-shadow-lg',
+              compact ? 'text-2xl md:text-4xl' : 'text-3xl md:text-5xl',
+            )}
+          >
             {item.title}
           </h2>
           {meta.length > 0 && <p className="mt-2 text-xs font-medium text-fg-muted md:text-sm">{meta.join(' · ')}</p>}
           {item.overview !== null && (
-            <p className="mt-3 line-clamp-2 text-sm leading-relaxed text-fg/85 md:line-clamp-3 md:text-base">
+            <p
+              className={cn(
+                'line-clamp-2 leading-relaxed text-fg/85',
+                compact ? 'mt-2 text-[13px] md:text-sm' : 'mt-3 text-sm md:line-clamp-3 md:text-base',
+              )}
+            >
               {item.overview}
             </p>
           )}
-          <div className="mt-5 flex items-center gap-3">
+          <div className={cn('flex items-center gap-3', compact ? 'mt-4' : 'mt-5')}>
             <Link
               href={play}
               className="inline-flex h-11 items-center gap-2 rounded-xl bg-white px-6 text-[15px] font-semibold text-black transition-colors hover:bg-white/85 active:scale-[0.98]"

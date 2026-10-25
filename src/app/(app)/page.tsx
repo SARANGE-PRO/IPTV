@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useCallback } from 'react';
-import { Billboard } from '@/components/home/Billboard';
+import { Billboard, BillboardPlaceholder } from '@/components/home/Billboard';
 import { ContinueCard } from '@/components/home/ContinueCard';
 import { Top10Card } from '@/components/home/Top10Card';
 import { FootballHeader } from '@/components/football/FootballHeader';
@@ -160,10 +160,7 @@ export default function HomePage() {
       {billboardPending ? (
         // Meme gabarit que le Billboard : il arrive ~0,5 s apres le reste et
         // poussait toute la page (taps rates).
-        <div
-          aria-hidden
-          className="relative -mx-4 h-[50vh] max-h-[520px] min-h-[340px] animate-pulse bg-ink-900 md:mx-0 md:h-[460px] md:rounded-3xl"
-        />
+        <BillboardPlaceholder />
       ) : (
         billboard.length > 0 && <Billboard items={billboard} />
       )}

@@ -1,6 +1,6 @@
 'use client';
 
-import { CatalogHero } from '@/components/media/CatalogHero';
+import { SectionBillboard } from '@/components/media/SectionBillboard';
 import { MediaBrowser } from '@/components/shared/MediaBrowser';
 import * as catalogRepository from '@/services/data/catalogService';
 import type { CatalogFilter, FlatSort, LaneFilter, PageCursor } from '@/services/data/catalogService';
@@ -53,7 +53,7 @@ export default function SeriesPage() {
       countItems={countItems}
       enrichVisible={enrichVisible}
       subtitleFor={subtitleFor}
-      hero={<CatalogHero section="series" />}
+      hero={<SectionBillboard section="series" />}
     />
   );
 }

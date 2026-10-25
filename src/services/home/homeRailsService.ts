@@ -194,10 +194,14 @@ const BILLBOARD_SIZE = 6;
  * backdrops HD, synopsis), films et series alternes. Sans TMDB (non configure,
  * hors ligne) : repli sur le Top 10 local avec les backdrops deja en cache.
  */
-export async function loadBillboard(trending: { movies: TrendingItem[]; series: TrendingItem[] }): Promise<BillboardItem[]> {
+export async function loadBillboard(
+  trending: { movies: TrendingItem[]; series: TrendingItem[] },
+  /** Onglet Films / Series : uniquement ce type (l'accueil alterne les deux). */
+  only?: VodSection,
+): Promise<BillboardItem[]> {
   const fromTrending = interleave(
-    trending.movies.filter((t) => t.backdropPath !== null),
-    trending.series.filter((t) => t.backdropPath !== null),
+    only === 'series' ? [] : trending.movies.filter((t) => t.backdropPath !== null),
+    only === 'vod' ? [] : trending.series.filter((t) => t.backdropPath !== null),
   ).slice(0, BILLBOARD_SIZE);
 
   if (fromTrending.length > 0) {
@@ -221,7 +225,10 @@ export async function loadBillboard(trending: { movies: TrendingItem[]; series: 
     }));
   }
 
-  const [movies, series] = await Promise.all([getMovieTop10(BILLBOARD_SIZE), getSeriesTop10(BILLBOARD_SIZE)]);
+  const [movies, series] = await Promise.all([
+    only === 'series' ? Promise.resolve([]) : getMovieTop10(BILLBOARD_SIZE),
+    only === 'vod' ? Promise.resolve([]) : getSeriesTop10(BILLBOARD_SIZE),
+  ]);
   const entries = await tmdbRepository.getTmdbEntries([
     ...movies.map((m) => tmdbCacheKey('movie', m.name)),
     ...series.map((s) => tmdbCacheKey('tv', s.name)),
