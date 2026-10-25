@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SettingsCard, SettingsRow, StatusLine } from '@/components/settings/SettingsCard';
 import { Button } from '@/components/ui/Button';
 import { IconTrash } from '@/components/ui/icons';
 import { isStoragePersisted, requestPersistentStorage } from '@/lib/persistStorage';
+import { usePersonalBackup } from '@/hooks/usePersonalBackup';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import { isInsecurePage } from '@/utils/secureUrl';
 
@@ -16,6 +17,8 @@ export function DataCard() {
   const [usage, setUsage] = useState<{ used: number; quota: number } | null>(null);
   const [persisted, setPersisted] = useState<boolean | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const backup = usePersonalBackup();
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (navigator.storage?.estimate !== undefined) {
@@ -90,8 +93,34 @@ export function DataCard() {
             Effacer
           </Button>
         </SettingsRow>
+
+        <SettingsRow
+          stacked
+          label="Sauvegarde de tes données"
+          hint="Favoris, onglets, progression, chaînes masquées et réglages dans un fichier (sans identifiants). À garder dans Fichiers : si iOS vide le stockage, « Restaurer » les remet."
+        >
+          <div className="flex flex-wrap gap-2">
+            <Button variant="secondary" size="sm" disabled={backup.busy} onClick={() => void backup.exportFile()}>
+              Sauvegarder
+            </Button>
+            <Button variant="secondary" size="sm" disabled={backup.busy} onClick={() => fileRef.current?.click()}>
+              Restaurer
+            </Button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = '';
+                if (file !== undefined) void backup.importFile(file);
+              }}
+            />
+          </div>
+        </SettingsRow>
       </div>
-      {message !== null && <StatusLine>{message}</StatusLine>}
+      {(backup.message ?? message) !== null && <StatusLine>{backup.message ?? message}</StatusLine>}
     </SettingsCard>
   );
 }
