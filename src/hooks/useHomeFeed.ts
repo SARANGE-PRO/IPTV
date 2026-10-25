@@ -57,6 +57,8 @@ const EMPTY_TRENDING: TrendingResult = { movies: [], series: [] };
 export interface HomeFeed {
   hasCatalog: boolean;
   billboard: BillboardItem[];
+  /** Billboard pas encore calcule : la page lui reserve sa place (pas de saut). */
+  billboardPending: boolean;
   continueItems: ContinueItem[];
   myList: MyListEntry[];
   trending: TrendingResult;
@@ -68,6 +70,9 @@ const notHidden =
   (hidden: ReadonlySet<string>) =>
   <T extends { categoryId: string; posterUrl?: string | null; logoUrl?: string | null }>(row: T): boolean =>
     !hidden.has(row.categoryId);
+
+/** Billboard deja calcule dans la session (null : jamais). */
+let lastBillboard: BillboardItem[] | null = null;
 
 export function useHomeFeed(): HomeFeed {
   const sections = useCatalogStore((s) => s.sections);
@@ -88,7 +93,9 @@ export function useHomeFeed(): HomeFeed {
   const [continueItems, setContinueItems] = useState<ContinueItem[]>([]);
   const [myList, setMyList] = useState<MyListEntry[]>([]);
   const [trending, setTrending] = useState<TrendingResult>(EMPTY_TRENDING);
-  const [billboard, setBillboard] = useState<BillboardItem[]>([]);
+  // Dernier billboard de la session : affiche aussitot au retour sur l'accueil.
+  const [billboard, setBillboard] = useState<BillboardItem[]>(() => lastBillboard ?? []);
+  const [billboardReady, setBillboardReady] = useState(() => lastBillboard !== null);
   const [discovery, setDiscovery] = useState<HomeDiscovery>(EMPTY_DISCOVERY);
   const [discoveryLoading, setDiscoveryLoading] = useState(false);
 
@@ -136,7 +143,10 @@ export function useHomeFeed(): HomeFeed {
         if (!alive) return;
         setTrending(t);
         const bb = await loadBillboard(t).catch(() => []);
-        if (alive) setBillboard(bb);
+        if (!alive) return;
+        lastBillboard = bb;
+        setBillboard(bb);
+        setBillboardReady(true);
       });
     return () => {
       alive = false;
@@ -195,5 +205,6 @@ export function useHomeFeed(): HomeFeed {
     };
   }, [hasCatalog, regrouping, catalogKey, order, hiddenLive, hiddenVod, hiddenSeries]);
 
-  return { hasCatalog, billboard, continueItems, myList, trending, discovery, discoveryLoading };
+  const billboardPending = hasCatalog && !billboardReady;
+  return { hasCatalog, billboard, billboardPending, continueItems, myList, trending, discovery, discoveryLoading };
 }

@@ -38,7 +38,7 @@ const config: Config = {
         fg: {
           DEFAULT: '#F5F5F7',
           muted: '#A1A1AA',
-          faint: '#6B6B73',
+          faint: '#83838B', // 5,3:1 sur ink-950, 4,6:1 sur ink-700 (seuil AA 4,5:1)
         },
       },
       fontFamily: {

@@ -1,10 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
 import { SettingsCard, SettingsRow, Switch } from '@/components/settings/SettingsCard';
-import { CountrySelect } from '@/components/shared/CountrySelect';
-import { useCatalogStore } from '@/stores/catalogStore';
-import { useFilterStore } from '@/stores/filterStore';
 import { useUiSettingsStore, type PreferredLanguage } from '@/stores/uiSettingsStore';
 
 const LANGUAGES: { value: PreferredLanguage; label: string }[] = [
@@ -31,17 +27,6 @@ export function PlaybackPrefsCard() {
   const setPipEnabled = useUiSettingsStore((s) => s.setPipEnabled);
   const setShowCastButton = useUiSettingsStore((s) => s.setShowCastButton);
   const setShowVlcButton = useUiSettingsStore((s) => s.setShowVlcButton);
-  const country = useFilterStore((s) => s.country);
-  const setDefaultCountry = useFilterStore((s) => s.setDefaultCountry);
-  const sections = useCatalogStore((s) => s.sections);
-
-  const countries = useMemo(
-    () =>
-      [...sections.live.categories, ...sections.vod.categories, ...sections.series.categories]
-        .map((c) => c.country)
-        .filter((c): c is string => c !== null),
-    [sections],
-  );
 
   return (
     <SettingsCard title="Lecture et langue">
@@ -66,14 +51,6 @@ export function PlaybackPrefsCard() {
               </option>
             ))}
           </select>
-        </SettingsRow>
-        <SettingsRow stacked label="Pays mis en avant" hint="Catégories de ce pays en premier ; les autres restent accessibles.">
-          <CountrySelect
-            value={country}
-            countries={countries}
-            onChange={(c) => void setDefaultCountry(c)}
-            className="w-full"
-          />
         </SettingsRow>
         <SettingsRow
           label="Image dans l’image (PiP)"

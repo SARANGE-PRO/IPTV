@@ -37,6 +37,10 @@ interface AuthState {
   /** Detail technique (nom + message) quand status = 'storage_error'. */
   storageError: string | null;
   credentials: XtreamCredentials | null;
+  /** Session ouverte SANS verification serveur (reseau/serveur indisponible au lancement). */
+  serverUnverified: boolean;
+  /** Nouvel essai de verification (bandeau « Serveur injoignable »). */
+  recheckServer: () => Promise<void>;
   login: (creds: XtreamCredentials, rememberMe: boolean) => Promise<boolean>;
   logout: () => Promise<void>;
   restoreSession: () => Promise<void>;
@@ -44,11 +48,30 @@ interface AuthState {
   resetStorage: () => Promise<void>;
 }
 
+/** Refus explicite du serveur : seul cas qui renvoie a l'ecran de connexion. */
+function isRefusal(code: AuthErrorCode): boolean {
+  return code === 'invalid_credentials' || code === 'expired' || code === 'blocked';
+}
+
 export const useAuthStore = create<AuthState>()((set, get) => ({
   status: 'idle',
   error: null,
   storageError: null,
   credentials: null,
+  serverUnverified: false,
+
+  recheckServer: async () => {
+    const creds = get().credentials;
+    if (creds === null) return;
+    const result = await secureSessionService.validateCredentials(creds);
+    if (result.ok) {
+      await secureSessionService.markSessionStatus('valid').catch(() => undefined);
+      set({ serverUnverified: false });
+    } else if (isRefusal(result.code)) {
+      await secureSessionService.markSessionStatus('invalid').catch(() => undefined);
+      set({ status: 'unauthenticated', credentials: null, serverUnverified: false, error: result.code });
+    }
+  },
 
   restoreSession: async () => {
     // Garde contre les doubles montages (StrictMode) et les appels concurrents.
@@ -83,12 +106,17 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       if (result.ok) {
         await secureSessionService.markSessionStatus('valid');
         set({ status: 'authenticated', credentials: creds, error: null });
-      } else {
-        // Serveur injoignable -> statut 'unknown' (la session reste reutilisable) ;
-        // identifiants refuses/expires -> 'invalid'.
-        const transport = result.code === 'unreachable' || result.code === 'timeout';
-        await secureSessionService.markSessionStatus(transport ? 'unknown' : 'invalid');
+      } else if (isRefusal(result.code)) {
+        // Refus EXPLICITE du serveur (identifiants, abonnement) : reconnexion.
+        await secureSessionService.markSessionStatus('invalid');
         set({ status: 'unauthenticated', error: result.code });
+      } else {
+        // Verification impossible (hors ligne, serveur en panne, reponse
+        // illisible) : on entre quand meme sur le catalogue LOCAL, bandeau
+        // « Serveur injoignable · Reessayer ». Avant : retour a l'ecran de
+        // connexion au moindre lancement sans reseau.
+        await secureSessionService.markSessionStatus('unknown');
+        set({ status: 'authenticated', credentials: creds, error: null, serverUnverified: true });
       }
     } catch (err) {
       set({
@@ -137,7 +165,7 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
     }
 
     await secureSessionService.saveSession(normalized, rememberMe);
-    set({ status: 'authenticated', credentials: normalized, error: null });
+    set({ status: 'authenticated', credentials: normalized, error: null, serverUnverified: false });
     return true;
   },
 
@@ -153,6 +181,6 @@ export const useAuthStore = create<AuthState>()((set, get) => ({
       syncMetadataRepository.clearSyncMetadata(),
     ]);
     useCatalogStore.getState().reset();
-    set({ status: 'unauthenticated', credentials: null, error: null });
+    set({ status: 'unauthenticated', credentials: null, error: null, serverUnverified: false });
   },
 }));

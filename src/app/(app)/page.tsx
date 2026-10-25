@@ -106,7 +106,7 @@ export default function HomePage() {
   const { hydrated: catalogHydrated } = useCatalogSync();
   const recentChannels = usePlaybackStore((s) => s.recentChannels);
   const dismissContinue = usePlaybackStore((s) => s.dismissContinue);
-  const { hasCatalog, billboard, continueItems, myList, trending, discovery, discoveryLoading } = useHomeFeed();
+  const { hasCatalog, billboard, billboardPending, continueItems, myList, trending, discovery, discoveryLoading } = useHomeFeed();
   // Series suivies (commencees / favorites) avec des episodes apparus depuis.
   const newEpisodes = useNewEpisodes();
 
@@ -157,7 +157,16 @@ export default function HomePage() {
         </div>
       )}
 
-      {billboard.length > 0 && <Billboard items={billboard} />}
+      {billboardPending ? (
+        // Meme gabarit que le Billboard : il arrive ~0,5 s apres le reste et
+        // poussait toute la page (taps rates).
+        <div
+          aria-hidden
+          className="relative -mx-4 h-[50vh] max-h-[520px] min-h-[340px] animate-pulse bg-ink-900 md:mx-0 md:h-[460px] md:rounded-3xl"
+        />
+      ) : (
+        billboard.length > 0 && <Billboard items={billboard} />
+      )}
 
       {continueItems.length > 0 && (
         <Rail title="Continuer à regarder">

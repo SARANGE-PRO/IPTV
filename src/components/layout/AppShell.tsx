@@ -27,6 +27,7 @@ import { useFavoritesStore } from '@/stores/favoritesStore';
 import { useFilterStore } from '@/stores/filterStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
+import { ServerUnverifiedBanner } from '@/components/layout/ServerUnverifiedBanner';
 
 // Reglages (usage rare) : engrenage de l'accueil sur mobile, bas de la barre
 // laterale ailleurs. La recherche complete (titres, acteurs, genres) a un onglet.
@@ -117,6 +118,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         data-zib-sheet
         className="pb-[calc(6rem+var(--zib-mini-offset,0px))] pt-safe md:pb-[calc(2rem+var(--zib-mini-offset,0px))]"
       >
+        <ServerUnverifiedBanner />
         {children}
       </div>
 
