@@ -20,3 +20,16 @@ export async function getRecentChannels(limit: number): Promise<PlaybackEntry[]>
   });
   return out.slice(0, limit);
 }
+
+/**
+ * Retire une chaine des recentes : TOUTES ses versions (sinon la HD retiree
+ * laissait reapparaitre la FHD regardee avant).
+ */
+export async function removeRecentChannel(itemId: string): Promise<void> {
+  const raw = await playbackRepository.getRecentLiveChannels(200);
+  const ids = [itemId, ...raw.map((e) => e.itemId).filter((id) => id !== itemId)];
+  const entries = await getLineupEntries(ids).catch(() => ids.map(() => undefined));
+  const groupKey = entries[0]?.groupKey;
+  const targets = groupKey === undefined ? [itemId] : ids.filter((_, i) => i === 0 || entries[i]?.groupKey === groupKey);
+  await Promise.all(targets.map((id) => playbackRepository.removeProgress('live', id)));
+}

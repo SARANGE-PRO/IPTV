@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import * as playbackRepository from '@/db/repositories/playbackRepository';
 import { dismissContinue, type DismissTarget } from '@/services/home/continueWatchingService';
-import { getRecentChannels } from '@/services/live/recentChannelsService';
+import { getRecentChannels, removeRecentChannel } from '@/services/live/recentChannelsService';
 import { FINISHED_RATIO } from '@/services/player/resumePlaybackService';
 import type { MediaType, PlaybackEntry } from '@/types/models';
 
@@ -40,6 +40,8 @@ interface PlaybackState {
   recordLiveWatch: (channelId: string, name: string, logoUrl: string | null) => void;
   markFinished: (type: MediaType, itemId: string) => Promise<void>;
   removeEntry: (type: MediaType, itemId: string) => Promise<void>;
+  /** Retire une chaine des recentes, toutes versions confondues. */
+  removeRecentChannel: (itemId: string) => Promise<void>;
   /** Marque des episodes (ou un film) comme vus / non vus. */
   setWatched: (input: SetWatchedInput, watched: boolean) => Promise<void>;
   /** Retire une carte de « Continuer a regarder » (progression conservee). */
@@ -109,6 +111,11 @@ export const usePlaybackStore = create<PlaybackState>()((set, get) => ({
 
   removeEntry: async (type, itemId) => {
     await playbackRepository.removeProgress(type, itemId);
+    await get().hydrateRails();
+  },
+
+  removeRecentChannel: async (itemId) => {
+    await removeRecentChannel(itemId);
     await get().hydrateRails();
   },
 

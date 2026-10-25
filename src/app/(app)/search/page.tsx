@@ -17,6 +17,7 @@ import type { Movie, Series } from '@/types/models';
 import { liveHref, movieHref, seriesHref } from '@/utils/appRoutes';
 import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
 import { variantBadge } from '@/utils/variantPreference';
+import { setZapContext } from '@/services/live/liveZappingService';
 
 /** Comparaison souple : casse et accents ignores. */
 function normalizeQuery(value: string): string {
@@ -111,7 +112,17 @@ export default function SearchPage() {
         <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4">
           {titles.live.map((c) => (
             <div key={c.id} className="flex items-center gap-3 rounded-xl px-2 py-1.5 hover:bg-ink-800">
-              <Link href={liveHref(c.id)} className="flex min-w-0 flex-1 items-center gap-3">
+              <Link
+                href={liveHref(c.id)}
+                // ⏮ ⏭ / swipe = ces resultats, pas la derniere liste Live visitee.
+                onClick={() =>
+                  setZapContext({
+                    label: 'Résultats de recherche',
+                    entries: titles.live.map((ch) => ({ id: ch.id, groupKey: null })),
+                  })
+                }
+                className="flex min-w-0 flex-1 items-center gap-3"
+              >
                 <ChannelLogo channel={c} className="h-11 w-11 shrink-0" />
                 <span className="min-w-0 flex-1 truncate text-sm text-fg">{displayChannelName(c.name)}</span>
                 {c.isFrench === 1 && (

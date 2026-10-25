@@ -333,6 +333,12 @@ export default function HomePage() {
             <Link
               key={channel.id}
               href={liveHref(channel.id)}
+              onClick={() =>
+                setZapContext({
+                  label: 'Sport en direct',
+                  entries: discovery.liveSports.map((ch) => ({ id: ch.id, groupKey: null })),
+                })
+              }
               className="w-36 shrink-0 rounded-xl bg-ink-800 p-3 transition-colors hover:bg-ink-700"
             >
               <ChannelLogo channel={channel} className="mx-auto h-16 w-16" />

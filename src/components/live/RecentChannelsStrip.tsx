@@ -88,9 +88,9 @@ function RecentLink({
   onPlay?: (id: string) => void;
   children: ReactNode;
 }) {
-  const removeEntry = usePlaybackStore((s) => s.removeEntry);
+  const removeRecentChannel = usePlaybackStore((s) => s.removeRecentChannel);
   const longPress = useLongPress(() => {
-    if (window.confirm(`Retirer « ${name} » des chaînes récentes ?`)) void removeEntry('live', itemId);
+    if (window.confirm(`Retirer « ${name} » des chaînes récentes ?`)) void removeRecentChannel(itemId);
   });
   return (
     <Link

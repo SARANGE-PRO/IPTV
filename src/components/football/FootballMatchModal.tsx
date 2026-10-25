@@ -19,6 +19,7 @@ import { useAuthStore } from '@/stores/authStore';
 import type { FootballMatch } from '@/types/football';
 import { liveHref } from '@/utils/appRoutes';
 import { secureImageSrc } from '@/utils/secureUrl';
+import { setZapContext } from '@/services/live/liveZappingService';
 
 /**
  * Fiche d'un match : score/minute en direct (le parent passe la version a jour
@@ -109,6 +110,8 @@ export function FootballMatchModal({ match, onClose }: { match: FootballMatch; o
 
   const open = (id: string) => {
     onClose();
+    // Pas de liste d'origine : le zapping suit la categorie de la chaine.
+    setZapContext(null);
     router.push(liveHref(id));
   };
 
