@@ -3,6 +3,7 @@ import { normalizeShortEpg } from '@/services/epg/epgNormalizer';
 import * as xtreamApi from '@/services/xtream/xtreamApi';
 import type { EpgProgramme } from '@/types/epg';
 import type { XtreamCredentials } from '@/types/xtream';
+import { isLowBandwidth } from '@/services/network/lowBandwidthService';
 
 /**
  * EPG a la demande, JAMAIS en masse. Chargement uniquement pour la chaine
@@ -26,6 +27,8 @@ export async function getChannelEpg(
   if (cached !== undefined && Date.now() - cached.fetchedAt < TTL_MS) {
     return cached.programmes;
   }
+  // Connexion faible : programme memorise seulement, jamais de requete.
+  if (isLowBandwidth()) return cached?.programmes ?? [];
   try {
     const raw = await xtreamApi.getShortEpg(credentials, streamId, limit);
     const programmes = normalizeShortEpg(raw);
@@ -55,6 +58,7 @@ export async function getFullChannelEpg(
   if (cached !== undefined && Date.now() - cached.fetchedAt < FULL_TTL_MS) {
     return cached.programmes;
   }
+  if (isLowBandwidth()) return cached?.programmes ?? [];
   try {
     const raw = await xtreamApi.getFullEpg(credentials, streamId);
     let programmes = normalizeShortEpg(raw);

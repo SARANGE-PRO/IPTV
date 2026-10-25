@@ -1,6 +1,7 @@
 import * as settingsRepository from '@/db/repositories/settingsRepository';
 import { apiUrl } from '@/services/apiBase';
 import type { TvSchedule } from '@/types/tvGuide';
+import { isLowBandwidth } from '@/services/network/lowBandwidthService';
 
 /**
  * Programme TV des chaines FR (liste Live) : UN appel `/api/tvguide` pour
@@ -40,6 +41,8 @@ export async function getCachedTvSchedule(): Promise<TvSchedule | null> {
  */
 export async function refreshTvSchedule(): Promise<{ schedule: TvSchedule | null; loading: boolean }> {
   const cached = await getCachedTvSchedule();
+  // Connexion faible : guide memorise seulement (repris a la sortie du mode).
+  if (isLowBandwidth()) return { schedule: cached, loading: false };
   if (cached !== null && Date.now() - Math.max(checkedAt, cached.fetchedAt) < FRESH_MS) {
     return { schedule: cached, loading: false };
   }

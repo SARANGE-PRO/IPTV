@@ -1,4 +1,5 @@
-import { noteStarvation } from '@/services/player/networkQualityService';
+import { isLowBandwidth, touchLowBandwidth } from '@/services/network/lowBandwidthService';
+import { noteNetworkFailure, noteStarvation } from '@/services/player/networkQualityService';
 import { bufferedAhead, isSeekable } from '@/services/player/playbackCapabilityService';
 import { trackUserGestures, wasPausedByUser } from '@/services/player/playbackIntent';
 import { PLAYBACK_MESSAGES as MESSAGES, unsupportedContainer } from '@/services/player/playbackMessages';
@@ -9,6 +10,7 @@ import {
   HEALTHY_RESET_MS,
   isStarvedPause,
   LIVE_REJOIN_AFTER_MS,
+  liveDelaySeconds,
   recoveryBudget,
   retryDelay,
   STARTUP_GRACE_MS,
@@ -72,6 +74,16 @@ export interface PlaybackSessionEvents {
   onDirectMkvFailed: () => void;
 }
 
+/** Echecs definitifs imputables au reseau (pas au format). */
+const NETWORK_FAILURES: ReadonlySet<PlaybackFailure['code']> = new Set<PlaybackFailure['code']>([
+  'load_timeout',
+  'stream_stalled',
+  'hls_network',
+  'live_ended',
+  'native_error', // seulement MEDIA_ERR_NETWORK (2), voir fail()
+  'mkv_direct_network',
+]);
+
 const isOffline = (): boolean => typeof navigator !== 'undefined' && navigator.onLine === false;
 
 /** Lance et supervise le flux ; renvoie le nettoyage (fin du flux). */
@@ -90,6 +102,10 @@ export function startPlaybackSession(
   const autoRecover =
     kind === 'live' || (!options.transcode && !options.preferHls && !options.directMkv && baseOffset === 0);
 
+  /** Mode connexion faible au lancement du flux : delais assouplis, direct decale. */
+  const lowBandwidth = isLowBandwidth();
+  /** Decalage derriere le direct deja applique pour ce chargement. */
+  let liveDelayApplied = false;
   let cancelled = false;
   /** A joue depuis le dernier (re)chargement : position et seekability fiables. */
   let started = false;
@@ -145,6 +161,10 @@ export function startPlaybackSession(
         : f;
     setPhase('error');
     events.onFailure(final);
+    // Abandon apres relances pour une cause reseau : le mode « connexion
+    // faible » peut etre propose (jamais pour un format illisible).
+    const networkCause = NETWORK_FAILURES.has(f.code) && (f.code !== 'native_error' || f.mediaErrorCode === 2);
+    if (retries > 0 && networkCause) noteNetworkFailure();
   };
 
   const url = options.url;
@@ -191,6 +211,7 @@ export function startPlaybackSession(
     url,
     kind,
     directMkv: options.directMkv,
+    lowBandwidth,
     preferredLanguage: options.preferredLanguage,
     onRecoverableError: (f) => recover('error', f),
     onFatal: fail,
@@ -221,7 +242,7 @@ export function startPlaybackSession(
       }
       recover('timeout', { code: 'load_timeout', message: MESSAGES.timeout[kind] });
     };
-    startupTimer = setTimeout(onTimeout, startupTimeout(kind, retries));
+    startupTimer = setTimeout(onTimeout, startupTimeout(kind, retries, lowBandwidth));
   };
 
   const reload = () => {
@@ -238,6 +259,7 @@ export function startPlaybackSession(
     autoPausedAt = null;
     lastTime = -1;
     lastProgressAt = Date.now();
+    liveDelayApplied = false;
     source.detach();
     armStartupTimer();
     void source.attach();
@@ -304,8 +326,29 @@ export function startPlaybackSession(
     lastTime = video.currentTime;
     setPhase('ready');
     progress.evaluateSeek();
+    applyLiveDelay();
     events.onPlaying();
   };
+  /**
+   * Connexion faible, direct : on se place quelques secondes DERRIERE le
+   * direct (retard accepte) pour garder un coussin de tampon. Borne par la
+   * fenetre de la playlist ; une fois par chargement.
+   */
+  const applyLiveDelay = () => {
+    if (!lowBandwidth || kind !== 'live' || liveDelayApplied) return;
+    liveDelayApplied = true;
+    try {
+      const n = video.seekable.length;
+      if (n === 0) return;
+      const start = video.seekable.start(0);
+      const end = video.seekable.end(n - 1);
+      const delay = liveDelaySeconds(start, end);
+      if (delay !== null && end - video.currentTime < delay) video.currentTime = end - delay;
+    } catch {
+      // plages illisibles : on reste au direct
+    }
+  };
+
   const handleTimeUpdate = () => {
     const t = video.currentTime;
     if (t !== lastTime) {
@@ -314,6 +357,8 @@ export function startPlaybackSession(
     }
     progress.remember();
     progress.send(false);
+    // Lecture en cours : repousse l'extinction auto du mode connexion faible.
+    touchLowBandwidth();
   };
   const handlePlay = () => {
     if (cancelled || failed) return;
@@ -461,7 +506,7 @@ export function startPlaybackSession(
     if (retries > 0 && now - healthySince >= HEALTHY_RESET_MS && now - lastProgressAt < 2 * WATCHDOG_INTERVAL_MS) {
       retries = 0;
     }
-    if (now - lastProgressAt >= stallTimeout(kind, video.seeking)) {
+    if (now - lastProgressAt >= stallTimeout(kind, video.seeking, lowBandwidth)) {
       noteStarvation();
       recover('stall', { code: 'stream_stalled', message: MESSAGES.stalled[kind] });
     }

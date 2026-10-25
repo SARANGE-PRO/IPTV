@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useCatalogStore } from '@/stores/catalogStore';
 import { usePlayerStore } from '@/stores/playerStore';
 import type { Section } from '@/types/models';
+import { isLowBandwidth, subscribeLowBandwidth } from '@/services/network/lowBandwidthService';
 
 const SECTIONS: Section[] = ['live', 'vod', 'series'];
 
@@ -28,6 +29,8 @@ export function useAutoSync(): void {
       const { sections, syncing, sync } = useCatalogStore.getState();
       // Pas pendant une lecture (ecritures lourdes) : au prochain retour dans l'app.
       if (syncing || usePlayerStore.getState().session !== null) return;
+      // Connexion faible : reportee (re-verifiee a la sortie du mode).
+      if (isLowBandwidth()) return;
       // Sections deja synchronisees seulement : une section qui n'a JAMAIS
       // reussi (null) comptait comme datee de 0 -> resynchro a chaque retour.
       const times = SECTIONS.map((s) => sections[s].lastFetchAt).filter((t): t is number => t !== null);
@@ -42,6 +45,13 @@ export function useAutoSync(): void {
     };
     check();
     document.addEventListener('visibilitychange', check);
-    return () => document.removeEventListener('visibilitychange', check);
+    // Sortie du mode connexion faible : la synchro reportee repart.
+    const offLow = subscribeLowBandwidth(() => {
+      if (!isLowBandwidth()) check();
+    });
+    return () => {
+      offLow();
+      document.removeEventListener('visibilitychange', check);
+    };
   }, [credentials, hydrated]);
 }

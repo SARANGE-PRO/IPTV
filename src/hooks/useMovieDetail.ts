@@ -8,6 +8,7 @@ import { EMPTY_VOD_EXTRAS, loadVodExtras, type VodExtras } from '@/services/medi
 import { useAuthStore } from '@/stores/authStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import type { Movie, PlaybackEntry } from '@/types/models';
+import { isLowBandwidth } from '@/services/network/lowBandwidthService';
 
 /**
  * Donnees de la fiche film : le film (undefined = chargement, null =
@@ -84,7 +85,8 @@ export function useMovieDetail(vodId: string, resumeVariantId: string | null) {
 
   // Complements du panel a la demande (non bloquant, jamais indispensable).
   useEffect(() => {
-    if (credentials === null) return;
+    // Connexion faible : pas de complements panel (synopsis TMDB en cache suffit).
+    if (credentials === null || isLowBandwidth()) return;
     let active = true;
     loadVodExtras(credentials, vodId)
       .then((x) => {

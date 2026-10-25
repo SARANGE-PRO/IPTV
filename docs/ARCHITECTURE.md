@@ -283,6 +283,17 @@ Sans session, la `<video>` reste montée (src vide) : la lecture suivante garde
 l'autorisation son d'iOS. La langue préférée est lue au lancement d'un flux,
 jamais en cours de lecture.
 
+### Mode connexion faible
+`services/network/lowBandwidthService` : quand il est actif, seule la lecture
+utilise le réseau. Coupés ou reportés : client TMDB (et backfill), synchro auto,
+guide TV, EPG Xtream, scores foot, tendances, nouveaux épisodes, compléments de
+fiche, rotations Billboard/hero (un fond TMDB = 150–400 Ko ; les affiches,
+20–70 Ko et en cache 1 an, restent). Lecteur : versions légères d'office,
+délais de démarrage/gel assouplis, Live placé jusqu'à 30 s derrière le direct
+(borné par la fenêtre de la playlist), tampon hls.js allongé. Proposé seul si
+3 incidents en 5 min ou abandon réseau (`shouldPropose`), une fois par session.
+S'éteint après 3 h sans lecture ; à la sortie, les tâches reprennent.
+
 ### Fiches film / série
 Données par hooks (`useMovieDetail`, `useSeriesDetail` : `error` + `retry`),
 plan de lecture par `useVodPlayback` ; blocs communs `DetailHero`,

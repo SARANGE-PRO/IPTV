@@ -19,6 +19,7 @@ import { cn } from '@/lib/cn';
 import { HOME_HREF, LIVE_HREF, SEARCH_HREF, SETTINGS_HREF } from '@/utils/appRoutes';
 import { useAutoSync } from '@/hooks/useAutoSync';
 import { useStorageMaintenance } from '@/hooks/useStorageMaintenance';
+import { useLowBandwidthLifecycle } from '@/hooks/useLowBandwidth';
 import { usePreconnectMedia } from '@/hooks/usePreconnectMedia';
 import { useReminderScheduler } from '@/hooks/useReminderScheduler';
 import { requestPersistentStorage } from '@/lib/persistStorage';
@@ -28,6 +29,7 @@ import { useFilterStore } from '@/stores/filterStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
 import { ServerUnverifiedBanner } from '@/components/layout/ServerUnverifiedBanner';
+import { LowBandwidthBanner } from '@/components/layout/LowBandwidthBanner';
 
 // Reglages (usage rare) : engrenage de l'accueil sur mobile, bas de la barre
 // laterale ailleurs. La recherche complete (titres, acteurs, genres) a un onglet.
@@ -59,6 +61,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   useAutoSync();
   // Caches TMDB / EPG perimes : purges en fond (quota iOS partage).
   useStorageMaintenance();
+  // Mode connexion faible : etat relu, taches reportees relancees a la sortie.
+  useLowBandwidthLifecycle(startBackfill);
 
   useEffect(() => {
     // Enrichissement TMDB : reprend la ou il s'etait arrete, a CHAQUE lancement
@@ -119,6 +123,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         className="pb-[calc(6rem+var(--zib-mini-offset,0px))] pt-safe md:pb-[calc(2rem+var(--zib-mini-offset,0px))]"
       >
         <ServerUnverifiedBanner />
+        <LowBandwidthBanner />
         {children}
       </div>
 

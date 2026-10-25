@@ -19,6 +19,8 @@ export interface StreamSourceOptions {
   url: string;
   kind: StreamKind;
   directMkv: boolean;
+  /** Mode connexion faible : tampon plus long, direct moins colle (hls.js). */
+  lowBandwidth?: boolean;
   /** Piste audio du MKV direct : lue a chaque attachement (pas de rechargement). */
   preferredLanguage: () => PreferredLanguage;
   /** Erreur que la supervision peut relancer (HLS fatal). */
@@ -124,8 +126,11 @@ export function createStreamSource(video: HTMLVideoElement, opts: StreamSourceOp
       }
       const instance = new HlsCtor({
         enableWorker: true,
-        lowLatencyMode: opts.kind === 'live',
+        lowLatencyMode: opts.kind === 'live' && opts.lowBandwidth !== true,
         backBufferLength: opts.kind === 'live' ? 30 : 90,
+        // Connexion faible : plus de segments entre la lecture et le direct, et
+        // un tampon cible plus long (retard accepte contre moins de coupures).
+        ...(opts.lowBandwidth === true ? { liveSyncDurationCount: 6, maxBufferLength: 60 } : {}),
       });
       hls = instance;
       let networkRecoveries = 0;

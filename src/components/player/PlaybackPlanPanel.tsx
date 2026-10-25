@@ -8,6 +8,7 @@ import type { PlaybackMode } from '@/hooks/usePlaybackPlan';
 import { isGatewayConfigured } from '@/services/player/mediaGatewayService';
 import type { ResolvedPlaybackMode } from '@/services/player/playbackPlanService';
 import { useUiSettingsStore } from '@/stores/uiSettingsStore';
+import { LowBandwidthButton } from '@/components/player/LowBandwidthButton';
 
 /**
  * Zone de lecture d'une fiche selon le plan (usePlaybackPlan) :
@@ -89,6 +90,7 @@ export function PlaybackPlanPanel({
   return (
     <>
       {children(plan)}
+      <LowBandwidthButton />
       {/* VLC : meme place pour film, episode et Live, juste sous le lecteur. */}
       {showVlcButton && (
         <ExternalPlayer streamUrl={src} label={failed ? 'Ça ne marche pas ici ? Ouvrir dans VLC' : vlcLabel} />

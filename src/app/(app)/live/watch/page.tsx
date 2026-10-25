@@ -37,6 +37,7 @@ import { LIVE_HREF, liveHref } from '@/utils/appRoutes';
 import { canGoBack } from '@/utils/navigation';
 import { displayChannelName } from '@/utils/displayTitle';
 import { supportsNativeHls } from '@/utils/playerSupport';
+import { LowBandwidthButton } from '@/components/player/LowBandwidthButton';
 
 /** Lecture d'une chaine : `/live/watch?id=<streamId>` (route statique, voir
  *  utils/appRoutes). Suspense : exige par useSearchParams au prerendu. */
@@ -416,6 +417,7 @@ function LiveWatch() {
                   </button>
                 </div>
               )}
+              <LowBandwidthButton />
               <NowPlaying credentials={credentials} streamId={streamId} />
               {versions.length > 1 && (
                 <div>

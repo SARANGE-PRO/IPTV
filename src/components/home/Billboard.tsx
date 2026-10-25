@@ -9,6 +9,7 @@ import { cn } from '@/lib/cn';
 import type { BillboardItem } from '@/services/home/homeRailsService';
 import { movieHref, seriesHref } from '@/utils/appRoutes';
 import { variantBadge } from '@/utils/variantPreference';
+import { useLowBandwidth } from '@/hooks/useLowBandwidth';
 
 /**
  * BILLBOARD d'accueil facon Netflix : image de fond plein cadre, titre,
@@ -51,11 +52,13 @@ export function Billboard({ items }: { items: BillboardItem[] }) {
     setIndex((i) => (i + (dx < 0 ? 1 : items.length - 1)) % items.length);
   };
 
+  // Connexion faible : pas de rotation (chaque fond = 150 a 400 Ko).
+  const { enabled: lowBandwidth } = useLowBandwidth();
   useEffect(() => {
-    if (items.length <= 1 || paused) return;
+    if (items.length <= 1 || paused || lowBandwidth) return;
     const id = window.setInterval(() => setIndex((i) => (i + 1) % items.length), ROTATE_MS);
     return () => window.clearInterval(id);
-  }, [items.length, paused]);
+  }, [items.length, paused, lowBandwidth]);
 
   const item = items[index] ?? items[0];
   if (item === undefined) return null;

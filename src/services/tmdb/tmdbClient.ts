@@ -1,4 +1,5 @@
 import { apiUrl } from '@/services/apiBase';
+import { isLowBandwidth } from '@/services/network/lowBandwidthService';
 /** Client vers le proxy /api/tmdb. La cle reste cote serveur ; ici, aucun secret. */
 
 export class TmdbError extends Error {
@@ -137,6 +138,9 @@ function retryDelayMs(res: Response, attempt: number): number {
 }
 
 async function call<T>(body: Record<string, unknown>): Promise<T | null> {
+  // Connexion faible : rien d'autre que la lecture sur le reseau. Les appelants
+  // traitent deja un echec TMDB (cache local, affichage sans enrichissement).
+  if (isLowBandwidth()) throw new TmdbError('low_bandwidth', 'Mode connexion faible : TMDB suspendu.');
   for (let attempt = 0; ; attempt += 1) {
     await delay(reserveSlot());
 

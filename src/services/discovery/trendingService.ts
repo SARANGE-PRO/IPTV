@@ -5,6 +5,7 @@ import type { Movie, Series } from '@/types/models';
 import { displayYear } from '@/utils/displayTitle';
 import { vodKeysMatch, vodMatchKey } from '@/utils/vodMatchKey';
 import { apiUrl } from '@/services/apiBase';
+import { isLowBandwidth } from '@/services/network/lowBandwidthService';
 
 /**
  * TENDANCES : on part de TMDB trending (ce qui est chaud mondialement, affiches
@@ -100,6 +101,12 @@ let memo: { at: number; key: string; limit: number; result: TrendingResult } | n
  * catalogue ou la preference de langue change (invalide le memo).
  */
 export async function loadTrending(limit = 10, memoKey = ''): Promise<TrendingResult> {
+  // Connexion faible : dernieres tendances connues (meme perimees), sans reseau.
+  if (isLowBandwidth()) {
+    return memo !== null
+      ? { movies: memo.result.movies.slice(0, limit), series: memo.result.series.slice(0, limit) }
+      : { movies: [], series: [] };
+  }
   if (memo !== null && memo.key === memoKey && memo.limit >= limit && Date.now() - memo.at < MEMO_TTL_MS) {
     return { movies: memo.result.movies.slice(0, limit), series: memo.result.series.slice(0, limit) };
   }

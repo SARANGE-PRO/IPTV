@@ -69,19 +69,42 @@ export function recoveryBudget(kind: StreamKind, mediaErrorCode: number | null, 
   return RETRY_DELAYS.vod.length;
 }
 
-/** Delai max sans signe de vie au demarrage (avant prolongation eventuelle). */
-export function startupTimeout(kind: StreamKind, retriesSoFar: number): number {
-  if (kind === 'live') return retriesSoFar === 0 ? 15_000 : 12_000;
-  return retriesSoFar === 0 ? 40_000 : 30_000;
+/**
+ * Delai max sans signe de vie au demarrage (avant prolongation eventuelle).
+ * `relaxed` (mode connexion faible) : un reseau lent n'est pas un flux mort,
+ * le relancer trop tot le ferait repartir de zero.
+ */
+export function startupTimeout(kind: StreamKind, retriesSoFar: number, relaxed = false): number {
+  if (kind === 'live') return relaxed ? 25_000 : retriesSoFar === 0 ? 15_000 : 12_000;
+  return relaxed ? 60_000 : retriesSoFar === 0 ? 40_000 : 30_000;
 }
 
 /**
  * Temps sans progression (lecture demandee, onglet visible) au-dela duquel
  * le flux est considere gele. Un seek VOD sur un serveur lent a droit a plus.
  */
-export function stallTimeout(kind: StreamKind, seeking: boolean): number {
-  if (kind === 'live') return 10_000;
-  return seeking ? 45_000 : 25_000;
+export function stallTimeout(kind: StreamKind, seeking: boolean, relaxed = false): number {
+  if (kind === 'live') return relaxed ? 20_000 : 10_000;
+  return seeking ? 45_000 : relaxed ? 40_000 : 25_000;
+}
+
+/** Retard maximal sur le direct accepte en mode connexion faible. */
+const LIVE_DELAY_MAX_S = 30;
+/** Marge gardee au debut de la fenetre (les segments les plus vieux expirent). */
+const LIVE_WINDOW_MARGIN_S = 10;
+/** En dessous, se decaler ne vaut pas le seek. */
+const LIVE_DELAY_MIN_S = 5;
+
+/**
+ * Mode connexion faible : de combien se placer DERRIERE le direct pour avoir
+ * un coussin de tampon. Borne par la fenetre de la playlist du serveur
+ * (souvent 3 a 6 segments chez Xtream). null = rester au direct.
+ */
+export function liveDelaySeconds(windowStart: number, windowEnd: number): number | null {
+  const window = windowEnd - windowStart;
+  if (!Number.isFinite(window) || window <= 0) return null;
+  const delay = Math.min(LIVE_DELAY_MAX_S, window - LIVE_WINDOW_MARGIN_S);
+  return delay >= LIVE_DELAY_MIN_S ? delay : null;
 }
 
 // --- Pause SUBIE (reseau faible) ---------------------------------------------

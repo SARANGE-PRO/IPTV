@@ -5,6 +5,7 @@ import { bouquetAvailability, isLive, loadFootballFeed } from '@/services/footba
 import type { ChannelRef } from '@/services/football/channelIndex';
 import { useFootballStore } from '@/stores/footballStore';
 import type { FootballMatch, GuideStatus } from '@/types/football';
+import { isLowBandwidth, subscribeLowBandwidth } from '@/services/network/lowBandwidthService';
 
 /**
  * Flux foot des competitions suivies, rafraichi automatiquement :
@@ -53,6 +54,12 @@ export function useFootballFeed(): FootballFeedState {
     let alive = true;
     const run = async () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      // Connexion faible : derniers scores gardes, pas de requete (reprise a la sortie du mode).
+      if (isLowBandwidth()) {
+        setLoading(false);
+        schedule(IDLE_MS);
+        return;
+      }
       const feed = await loadFootballFeed(competitions);
       if (!alive) return;
       setLoading(false);
@@ -79,7 +86,11 @@ export function useFootballFeed(): FootballFeedState {
     };
     void run();
     document.addEventListener('visibilitychange', onVisible);
+    const offLow = subscribeLowBandwidth(() => {
+      if (!isLowBandwidth()) void run();
+    });
     return () => {
+      offLow();
       alive = false;
       if (timer.current !== null) clearTimeout(timer.current);
       document.removeEventListener('visibilitychange', onVisible);

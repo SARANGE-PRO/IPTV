@@ -9,6 +9,7 @@ import type { Section } from '@/types/models';
 import { movieHref, seriesHref } from '@/utils/appRoutes';
 import { displayTitle, displayYear } from '@/utils/displayTitle';
 import { variantBadge } from '@/utils/variantPreference';
+import { useLowBandwidth } from '@/hooks/useLowBandwidth';
 
 /**
  * Hero editorial (facon Netflix) en tete de catalogue : met en avant un contenu
@@ -79,11 +80,13 @@ export function CatalogHero({ section }: { section: Extract<Section, 'vod' | 'se
 
   // Rotation suspendue des que le doigt se pose : le titre ne change pas sous le tap.
   const [held, setHeld] = useState(false);
+  // Connexion faible : pas de rotation (chaque fond = 150 a 400 Ko).
+  const { enabled: lowBandwidth } = useLowBandwidth();
   useEffect(() => {
-    if (items.length <= 1 || held) return;
+    if (items.length <= 1 || held || lowBandwidth) return;
     const id = setInterval(() => setIndex((i) => (i + 1) % items.length), ROTATE_MS);
     return () => clearInterval(id);
-  }, [items.length, held]);
+  }, [items.length, held, lowBandwidth]);
 
   const item = items[index] ?? null;
   if (item === null) return null;

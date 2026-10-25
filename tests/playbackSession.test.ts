@@ -1,8 +1,14 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { setLowBandwidth } from '@/services/network/lowBandwidthService';
 import { pauseByUser } from '@/services/player/playbackIntent';
 import { startPlaybackSession, type PhaseUpdate, type PlayerPhase } from '@/services/player/playbackSession';
 import type { PlaybackFailure } from '@/types/playbackDiagnostics';
+
+vi.mock('@/db/repositories/settingsRepository', () => ({
+  getSetting: async () => undefined,
+  setSetting: async () => undefined,
+}));
 
 /**
  * Supervision d'un flux (services/player/playbackSession) sur une FAUSSE
@@ -404,6 +410,41 @@ describe('VOD : reprise et progression', () => {
     s.video.currentTime = 0;
     s.video.emit('loadedmetadata');
     expect(s.video.currentTime).toBe(300);
+    s.stop();
+  });
+});
+
+describe('mode connexion faible', () => {
+  afterEach(() => setLowBandwidth(false));
+
+  it('direct : demarre derriere le direct (coussin de tampon), borne a 30 s', async () => {
+    setLowBandwidth(true);
+    const s = start({ live: true });
+    await tick(0);
+    s.video.seekable = ranges([[0, 60]]);
+    s.video.start(59.5);
+    expect(s.video.currentTime).toBe(30);
+    s.stop();
+  });
+
+  it('hors mode : reste au direct', async () => {
+    const s = start({ live: true });
+    await tick(0);
+    s.video.seekable = ranges([[0, 60]]);
+    s.video.start(59.5);
+    expect(s.video.currentTime).toBe(59.5);
+    s.stop();
+  });
+
+  it('gel tolere plus longtemps (20 s au lieu de 10 s) avant de recharger', async () => {
+    setLowBandwidth(true);
+    const s = start({ live: true });
+    await tick(0);
+    s.video.start(100);
+    await tick(12_000);
+    expect(s.phase()).toBe('ready');
+    await tick(9_000);
+    expect(s.phase()).toBe('reconnecting');
     s.stop();
   });
 });

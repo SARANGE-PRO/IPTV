@@ -2,6 +2,7 @@
 
 import { SettingsCard, SettingsRow, Switch } from '@/components/settings/SettingsCard';
 import { useUiSettingsStore, type PreferredLanguage } from '@/stores/uiSettingsStore';
+import { useLowBandwidth } from '@/hooks/useLowBandwidth';
 
 const LANGUAGES: { value: PreferredLanguage; label: string }[] = [
   { value: 'VF', label: 'VF (français)' },
@@ -27,6 +28,7 @@ export function PlaybackPrefsCard() {
   const setPipEnabled = useUiSettingsStore((s) => s.setPipEnabled);
   const setShowCastButton = useUiSettingsStore((s) => s.setShowCastButton);
   const setShowVlcButton = useUiSettingsStore((s) => s.setShowVlcButton);
+  const lowBandwidth = useLowBandwidth();
 
   return (
     <SettingsCard title="Lecture et langue">
@@ -57,6 +59,12 @@ export function PlaybackPrefsCard() {
           hint="Bouton PiP sur la vidéo. En plein écran, l’iPhone passe aussi en PiP quand tu quittes l’app (Réglages iOS › Général › Image dans l’image)."
         >
           <Switch checked={pipEnabled} onChange={(v) => void setPipEnabled(v)} label="Image dans l’image" />
+        </SettingsRow>
+        <SettingsRow
+          label="Mode connexion faible"
+          hint="Métro, campagne : seule la lecture utilise le réseau (guide, scores, synchro, recommandations et défilement des images en pause) ; le direct est un peu décalé pour moins couper. S’éteint seul après 3 h sans lecture."
+        >
+          <Switch checked={lowBandwidth.enabled} onChange={(v) => lowBandwidth.setEnabled(v)} label="Mode connexion faible" />
         </SettingsRow>
         <SettingsRow label="Bouton « Diffuser sur la TV »" hint="Ouvre la vidéo dans VLC, qui la diffuse sur ta TV (Android TV, Chromecast).">
           <Switch checked={showCastButton} onChange={(v) => void setShowCastButton(v)} label="Bouton Diffuser sur la TV" />

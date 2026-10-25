@@ -139,3 +139,8 @@ Ergonomie (oct. 2026) ✅ : barre du bas avec Recherche (Réglages = engrenage d
 l'accueil), lecteur (paysage plein écran partout, actions sur l'écran d'échec,
 mini-lecteur annulable), Live (swipe, chaîne précédente, état conservé),
 fiches (en-tête collant, glisser pour fermer), accueil réordonné.
+Mode connexion faible (oct. 2026) ✅ : `services/network/lowBandwidthService`
+(interrupteur, extinction après 3 h sans lecture, proposition auto stricte).
+Toute NOUVELLE tâche réseau de fond doit consulter `isLowBandwidth()` (TMDB,
+synchro, guide, EPG, foot, tendances, rotations d'images le font) ; en mode
+faible le Live démarre jusqu'à 30 s derrière le direct (`liveDelaySeconds`).

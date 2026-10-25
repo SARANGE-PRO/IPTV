@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getNewEpisodes, refreshNewEpisodes, type NewEpisodesItem } from '@/services/home/newEpisodesService';
 import { useAuthStore } from '@/stores/authStore';
 import { useCatalogStore } from '@/stores/catalogStore';
+import { isLowBandwidth } from '@/services/network/lowBandwidthService';
 
 /** Une verification au lancement de l'app, puis apres chaque synchro. */
 let checkedThisSession = false;
@@ -24,7 +25,8 @@ export function useNewEpisodes(): NewEpisodesItem[] {
     load();
     const syncJustEnded = wasSyncing.current && !syncing;
     wasSyncing.current = syncing;
-    if (credentials !== null && !syncing && (syncJustEnded || !checkedThisSession)) {
+    // Connexion faible : verification reportee (prochaine visite hors mode).
+    if (credentials !== null && !syncing && !isLowBandwidth() && (syncJustEnded || !checkedThisSession)) {
       checkedThisSession = true;
       void refreshNewEpisodes(credentials).then(load);
     }

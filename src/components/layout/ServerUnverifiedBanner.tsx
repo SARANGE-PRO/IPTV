@@ -28,7 +28,7 @@ export function ServerUnverifiedBanner() {
 
   if (!unverified) return null;
   return (
-    <div role="status" className="mx-4 mt-3 flex items-center gap-3 rounded-xl bg-amber-400/10 px-4 py-2 md:mx-8">
+    <div role="status" className="mx-4 mt-3 flex items-center gap-3 rounded-xl bg-amber-400/10 px-4 py-2 phone-land:hidden md:mx-8">
       <span className="min-w-0 flex-1 text-xs text-amber-200">
         Serveur injoignable — contenu enregistré sur l’appareil.
       </span>

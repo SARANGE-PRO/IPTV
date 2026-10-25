@@ -7,6 +7,8 @@
  * Ailleurs (Chrome/Android), `navigator.connection` complete le signal.
  */
 
+import { considerProposal, isLowBandwidth, subscribeLowBandwidth } from '@/services/network/lowBandwidthService';
+
 const WINDOW_MS = 10 * 60_000;
 const INCIDENTS_FOR_CONSTRAINED = 2;
 
@@ -32,7 +34,8 @@ function connectionSaysSlow(): boolean {
 function evaluate(): void {
   const now = Date.now();
   while (incidents.length > 0 && now - incidents[0]! > WINDOW_MS) incidents.shift();
-  const next = incidents.length >= INCIDENTS_FOR_CONSTRAINED || connectionSaysSlow();
+  // Mode « connexion faible » actif : versions legeres d'office.
+  const next = incidents.length >= INCIDENTS_FOR_CONSTRAINED || connectionSaysSlow() || isLowBandwidth();
   if (next === constrained) return;
   constrained = next;
   for (const listener of listeners) listener();
@@ -42,7 +45,15 @@ function evaluate(): void {
 export function noteStarvation(): void {
   incidents.push(Date.now());
   evaluate();
+  considerProposal(incidents, false);
 }
+
+/** Lecture abandonnee apres ses relances, pour une cause reseau. */
+export function noteNetworkFailure(): void {
+  considerProposal(incidents, true);
+}
+
+subscribeLowBandwidth(evaluate);
 
 export function isNetworkConstrained(): boolean {
   evaluate();
