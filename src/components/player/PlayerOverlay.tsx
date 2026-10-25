@@ -63,21 +63,24 @@ export function PlayerOverlay({
         </div>
       )}
       {phase === 'error' && !compact && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 overflow-y-auto bg-black/85 px-6 py-6 text-center">
-          <p className="text-sm leading-relaxed text-fg">{failure?.message}</p>
-          <div className="flex flex-wrap justify-center gap-2">
-            {(failure === null || !NOT_RETRYABLE.has(failure.code)) && (
-              <Button size="sm" variant="secondary" onClick={onRetry}>
-                Réessayer
-              </Button>
-            )}
-            {(getErrorActions?.() ?? []).map((action) => (
-              <Button key={action.label} size="sm" variant="secondary" onClick={action.onSelect}>
-                {action.label}
-              </Button>
-            ))}
+        // Contenu centre mais defilable : un long message ne deborde plus par le haut.
+        <div className="absolute inset-0 overflow-y-auto bg-black/85">
+          <div className="flex min-h-full flex-col items-center justify-center gap-3 px-6 py-6 text-center">
+            <p className="text-sm leading-relaxed text-fg">{failure?.message}</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {(failure === null || !NOT_RETRYABLE.has(failure.code)) && (
+                <Button size="sm" variant="secondary" onClick={onRetry}>
+                  Réessayer
+                </Button>
+              )}
+              {(getErrorActions?.() ?? []).map((action) => (
+                <Button key={action.label} size="sm" variant="secondary" onClick={action.onSelect}>
+                  {action.label}
+                </Button>
+              ))}
+            </div>
+            {failure !== null && <PlaybackErrorInfo failure={failure} context={context} />}
           </div>
-          {failure !== null && <PlaybackErrorInfo failure={failure} context={context} />}
         </div>
       )}
     </>

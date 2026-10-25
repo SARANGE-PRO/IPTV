@@ -112,6 +112,16 @@ export function SeriesDetailView({
 
   const episodes = useMemo(() => allEpisodes.filter((e) => e.seasonNumber === season), [allEpisodes, season]);
 
+  // Episode choisi bas dans la liste : la fiche remonte jusqu'au lecteur (sinon
+  // la lecture demarrait hors de l'ecran — le son sans l'image).
+  const playerRef = useRef<HTMLDivElement | null>(null);
+  const playingId = playingEp?.id ?? null;
+  useEffect(() => {
+    if (playingId === null) return;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+    playerRef.current?.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  }, [playingId]);
+
   const playEpisode = useCallback(
     (ep: Episode, from?: number) => {
       setUpNext(null);
@@ -257,7 +267,7 @@ export function SeriesDetailView({
         />
 
         {playingEp !== null && src !== null ? (
-          <div className="mb-6 space-y-3">
+          <div ref={playerRef} className="mb-6 scroll-mt-20 space-y-3">
             <PlaybackPlanPanel
               plan={playback.plan}
               src={src}

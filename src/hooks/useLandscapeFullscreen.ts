@@ -15,6 +15,9 @@ export interface LandscapeFullscreenState {
   fullscreen: boolean;
 }
 
+/** Deplacement max (px) d'un doigt pour que ce soit un tap et non un swipe. */
+const TAP_SLOP_PX = 10;
+
 /** Evenements de plein ecran (WebKit iPhone + standard). */
 const FULLSCREEN_EVENTS = ['webkitbeginfullscreen', 'webkitendfullscreen', 'fullscreenchange'] as const;
 
@@ -43,18 +46,36 @@ export function useLandscapeFullscreen(video: HTMLVideoElement | null): Landscap
     const onTap = () => {
       if (query.matches) enterVideoFullscreen(video);
     };
+    // Un SWIPE (zapping Live, glisser pour reduire) n'est pas un tap : sans ce
+    // filtre, la fin du swipe ouvrait le plein ecran natif, qui capte ensuite
+    // tous les touchers (le zapping ne marchait qu'une fois).
+    let touchStart: { x: number; y: number } | null = null;
+    const onTouchStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      touchStart = e.touches.length === 1 && t !== undefined ? { x: t.clientX, y: t.clientY } : null;
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      const t = e.changedTouches[0];
+      const start = touchStart;
+      touchStart = null;
+      if (start === null || t === undefined) return;
+      if (Math.hypot(t.clientX - start.x, t.clientY - start.y) > TAP_SLOP_PX) return;
+      onTap();
+    };
 
     onOrientation();
     syncFullscreen();
     query.addEventListener('change', onOrientation);
-    video.addEventListener('touchend', onTap);
+    video.addEventListener('touchstart', onTouchStart, { passive: true });
+    video.addEventListener('touchend', onTouchEnd);
     video.addEventListener('click', onTap);
     for (const name of FULLSCREEN_EVENTS) {
       (name === 'fullscreenchange' ? document : video).addEventListener(name, syncFullscreen);
     }
     return () => {
       query.removeEventListener('change', onOrientation);
-      video.removeEventListener('touchend', onTap);
+      video.removeEventListener('touchstart', onTouchStart);
+      video.removeEventListener('touchend', onTouchEnd);
       video.removeEventListener('click', onTap);
       for (const name of FULLSCREEN_EVENTS) {
         (name === 'fullscreenchange' ? document : video).removeEventListener(name, syncFullscreen);

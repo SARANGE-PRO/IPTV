@@ -205,7 +205,8 @@ export function VideoPlayer({
       <div className={cn('relative overflow-hidden rounded-2xl bg-black', className)}>
         <video
           ref={videoRef}
-          controls={!compact}
+          // Echec definitif : pas de barre native SOUS l'ecran d'echec (boutons superposes).
+          controls={!compact && phase !== 'error'}
           disablePictureInPicture={!pipEnabled}
           playsInline
           autoPlay
