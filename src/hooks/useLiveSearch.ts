@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import * as catalogRepository from '@/services/data/catalogService';
 import type { LiveChannel } from '@/types/models';
 
@@ -8,9 +8,13 @@ export const LIVE_SEARCH_LIMIT = 120;
 export function useLiveSearch(query: string, hidden: ReadonlySet<string>) {
   const [results, setResults] = useState<LiveChannel[]>([]);
   const [loading, setLoading] = useState(false);
+  /** Lecture en echec : distinct de « aucun resultat ». */
+  const [error, setError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const active = query.length >= 2;
 
   useEffect(() => {
+    setError(false);
     if (!active) {
       setResults([]);
       return;
@@ -23,7 +27,9 @@ export function useLiveSearch(query: string, hidden: ReadonlySet<string>) {
         if (current) setResults(rows);
       })
       .catch(() => {
-        if (current) setResults([]);
+        if (!current) return;
+        setResults([]);
+        setError(true);
       })
       .finally(() => {
         if (current) setLoading(false);
@@ -31,7 +37,9 @@ export function useLiveSearch(query: string, hidden: ReadonlySet<string>) {
     return () => {
       current = false;
     };
-  }, [active, query, hidden]);
+  }, [active, query, hidden, attempt]);
 
-  return { active, results, loading };
+  const retry = useCallback(() => setAttempt((a) => a + 1), []);
+
+  return { active, results, loading, error, retry };
 }

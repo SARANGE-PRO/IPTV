@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   getOrderedFavoriteIds,
   resolveChannels,
@@ -16,6 +16,8 @@ import type { MediaType, Movie, Series } from '@/types/models';
 
 export interface FavoriteItems {
   loading: boolean;
+  /** Lecture en echec : distinct de « aucun favori » (voir `retry`). */
+  error: boolean;
   channels: FavoriteChannel[];
   movies: Movie[];
   series: Series[];
@@ -24,17 +26,21 @@ export interface FavoriteItems {
   order: Record<'live' | 'vod' | 'series', string[]>;
 }
 
+export type FavoriteItemsView = FavoriteItems & { retry: () => void };
+
 const TYPES = ['live', 'vod', 'series'] as const;
 
-export function useFavoriteItems(tabId: string | null, types: readonly MediaType[] = TYPES): FavoriteItems {
+export function useFavoriteItems(tabId: string | null, types: readonly MediaType[] = TYPES): FavoriteItemsView {
   const ids = useFavoritesStore((s) => s.ids);
   const tabItems = useFavoritesStore((s) => (tabId !== null ? s.tabItems[tabId] : undefined));
   const orderRevision = useFavoritesStore((s) => s.orderRevision);
   // Cle texte : un tableau litteral passe par l'appelant ne relance pas l'effet.
   const typesKey = types.join(',');
   const wanted = useMemo(() => new Set(typesKey.split(',')), [typesKey]);
+  const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState<FavoriteItems>({
     loading: true,
+    error: false,
     channels: [],
     movies: [],
     series: [],
@@ -44,7 +50,7 @@ export function useFavoriteItems(tabId: string | null, types: readonly MediaType
 
   useEffect(() => {
     let active = true;
-    setState((prev) => ({ ...prev, loading: true }));
+    setState((prev) => ({ ...prev, loading: true, error: false }));
     const idsOf = async (type: 'live' | 'vod' | 'series'): Promise<string[]> => {
       if (!wanted.has(type)) return [];
       if (tabId === null) return getOrderedFavoriteIds(type);
@@ -60,6 +66,7 @@ export function useFavoriteItems(tabId: string | null, types: readonly MediaType
       if (!active) return;
       setState({
         loading: false,
+        error: false,
         channels: channels.items,
         movies: movies.items,
         series: series.items,
@@ -71,12 +78,13 @@ export function useFavoriteItems(tabId: string | null, types: readonly MediaType
         },
       });
     })().catch(() => {
-      if (active) setState((prev) => ({ ...prev, loading: false }));
+      if (active) setState((prev) => ({ ...prev, loading: false, error: true }));
     });
     return () => {
       active = false;
     };
-  }, [tabId, tabItems, ids, orderRevision, wanted]);
+  }, [tabId, tabItems, ids, orderRevision, wanted, attempt]);
 
-  return state;
+  const retry = useCallback(() => setAttempt((a) => a + 1), []);
+  return useMemo(() => ({ ...state, retry }), [state, retry]);
 }

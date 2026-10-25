@@ -18,6 +18,7 @@ import {
 import { cn } from '@/lib/cn';
 import { HOME_HREF, LIVE_HREF, SEARCH_HREF, SETTINGS_HREF } from '@/utils/appRoutes';
 import { useAutoSync } from '@/hooks/useAutoSync';
+import { useStorageMaintenance } from '@/hooks/useStorageMaintenance';
 import { usePreconnectMedia } from '@/hooks/usePreconnectMedia';
 import { useReminderScheduler } from '@/hooks/useReminderScheduler';
 import { requestPersistentStorage } from '@/lib/persistStorage';
@@ -55,6 +56,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   usePreconnectMedia();
   // Catalogue de plus de 7 jours : resynchro de fond.
   useAutoSync();
+  // Caches TMDB / EPG perimes : purges en fond (quota iOS partage).
+  useStorageMaintenance();
 
   useEffect(() => {
     // Enrichissement TMDB : reprend la ou il s'etait arrete, a CHAQUE lancement

@@ -70,6 +70,11 @@ export async function getFullChannelEpg(
   }
 }
 
+/** Purge les programmes plus anciens que `cutoff` (ms) : chaines plus regardees. */
+export function purgeEpgOlderThan(cutoff: number): Promise<number> {
+  return db.epg_cache.where('fetchedAt').below(cutoff).delete();
+}
+
 export async function clearEpgCache(): Promise<void> {
   await db.epg_cache.clear();
 }

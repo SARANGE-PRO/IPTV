@@ -3,14 +3,16 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { BrandMark } from '@/components/shared/BrandMark';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { ErrorState } from '@/components/shared/ErrorState';
 import { HScroll } from '@/components/shared/HScroll';
 import { MediaCard } from '@/components/shared/MediaCard';
-import { Button } from '@/components/ui/Button';
+import { SyncCatalogButton } from '@/components/shared/SyncCatalogButton';
 import { IconX } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { FIRST_PAGE } from '@/services/data/catalogService';
 import type { CatalogFilter, CatalogPage, FlatSort, LaneFilter, PageCursor } from '@/services/data/catalogService';
+import { useCatalogSync } from '@/hooks/useCatalogSync';
 import { useDebounce } from '@/hooks/useDebounce';
 import { cn } from '@/lib/cn';
 import { useLoadMore } from '@/hooks/useLoadMore';
@@ -155,6 +157,10 @@ export function MediaBrowser<T extends BrowserItem>({
   // Echec de lecture locale (Dexie) : message + Reessayer au lieu de squelettes infinis.
   const [loadError, setLoadError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  // Recherche en echec : distinct de « aucun resultat » (et plus de squelettes sans fin).
+  const [searchError, setSearchError] = useState(false);
+  const [searchKey, setSearchKey] = useState(0);
+  const { hydrated: catalogHydrated } = useCatalogSync();
   // Annee / note repliees derriere « Filtres (n) » : moins de rangees avant la grille.
   const [filtersOpen, setFiltersOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement | null>(null);
@@ -226,9 +232,14 @@ export function MediaBrowser<T extends BrowserItem>({
       return;
     }
     let alive = true;
-    void countItems(filters.lane, {}, hiddenArg).then((n) => {
-      if (alive) setCount(n);
-    });
+    void countItems(filters.lane, {}, hiddenArg)
+      .then((n) => {
+        if (alive) setCount(n);
+      })
+      .catch(() => {
+        // Compteur facultatif : la grille reste utilisable sans lui.
+        if (alive) setCount(null);
+      });
     return () => {
       alive = false;
     };
@@ -236,6 +247,7 @@ export function MediaBrowser<T extends BrowserItem>({
 
   // Recherche indexée croisée avec la pill et les filtres.
   useEffect(() => {
+    setSearchError(false);
     if (debouncedQuery.length < 2) {
       setResults(null);
       setSearching(false);
@@ -243,16 +255,24 @@ export function MediaBrowser<T extends BrowserItem>({
     }
     let alive = true;
     setSearching(true);
-    void searchFiltered(debouncedQuery, filters.lane, order, filter, SEARCH_LIMIT, hiddenArg).then((r) => {
-      if (!alive) return;
-      setResults(r);
-      setSearching(false);
-      enrichVisible?.(r);
-    });
+    searchFiltered(debouncedQuery, filters.lane, order, filter, SEARCH_LIMIT, hiddenArg)
+      .then((r) => {
+        if (!alive) return;
+        setResults(r);
+        enrichVisible?.(r);
+      })
+      .catch(() => {
+        if (!alive) return;
+        setResults([]);
+        setSearchError(true);
+      })
+      .finally(() => {
+        if (alive) setSearching(false);
+      });
     return () => {
       alive = false;
     };
-  }, [debouncedQuery, searchFiltered, filters.lane, order, filter, hiddenArg, enrichVisible]);
+  }, [debouncedQuery, searchFiltered, filters.lane, order, filter, hiddenArg, enrichVisible, searchKey]);
 
   const loadMore = () => {
     const cursor = cursorRef.current;
@@ -276,7 +296,8 @@ export function MediaBrowser<T extends BrowserItem>({
   const shown = results ?? items;
   const sentinelRef = useLoadMore(loadMore, results === null && !endReached && items.length > 0 && !loadError, items.length);
 
-  const catalogEmpty = catalogSlice.itemCount === 0 && catalogSlice.status !== 'loading';
+  // Avant la relecture du catalogue local, « vide » ne veut encore rien dire.
+  const catalogEmpty = catalogHydrated && catalogSlice.itemCount === 0 && catalogSlice.status !== 'loading';
   const selectClass =
     'h-10 rounded-xl border border-ink-600 bg-ink-800 px-3 text-xs text-fg outline-none';
   const decade = decadeValue(filters.minYear, filters.maxYear);
@@ -465,20 +486,17 @@ export function MediaBrowser<T extends BrowserItem>({
         <div className="mt-6">
           <EmptyState
             title="Catalogue non synchronisé"
-            hint="Lance une synchronisation depuis les réglages pour charger le catalogue."
+            hint="Récupère les films et séries de ton serveur pour commencer."
+            action={<SyncCatalogButton />}
           />
         </div>
       ) : loadError && items.length === 0 ? (
         <div className="mt-6">
-          <EmptyState
-            title="Impossible d'afficher le catalogue"
-            hint="Le stockage local n'a pas répondu."
-            action={
-              <Button variant="secondary" onClick={() => setReloadKey((k) => k + 1)}>
-                Réessayer
-              </Button>
-            }
-          />
+          <ErrorState title="Impossible d'afficher le catalogue" onRetry={() => setReloadKey((k) => k + 1)} />
+        </div>
+      ) : searchError ? (
+        <div className="mt-6">
+          <ErrorState title="La recherche n’a pas abouti" onRetry={() => setSearchKey((k) => k + 1)} />
         </div>
       ) : (
         <>

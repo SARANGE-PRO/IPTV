@@ -112,8 +112,13 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
   },
 
   hydrate: async () => {
-    await Promise.all(SECTIONS.map((section) => get().hydrateSection(section)));
-    set({ hydrated: true });
+    try {
+      await Promise.all(SECTIONS.map((section) => get().hydrateSection(section)));
+    } finally {
+      // Meme en echec de lecture : les pages sortent du squelette (etat vide
+      // avec « Synchroniser » plutot qu'un chargement sans fin).
+      set({ hydrated: true });
+    }
   },
 
   sync: async (creds, opts) => {

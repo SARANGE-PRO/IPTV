@@ -11,17 +11,17 @@ import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { MediaCard } from '@/components/shared/MediaCard';
 import { Rail } from '@/components/shared/Rail';
+import { SyncCatalogButton } from '@/components/shared/SyncCatalogButton';
 import { ZibLogo } from '@/components/shared/ZibLogo';
 import { Button } from '@/components/ui/Button';
 import { IconRefresh, IconSettings } from '@/components/ui/icons';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { useCatalogSync } from '@/hooks/useCatalogSync';
 import { useHomeFeed } from '@/hooks/useHomeFeed';
 import { useNewEpisodes } from '@/hooks/useNewEpisodes';
 import { setZapContext } from '@/services/live/liveZappingService';
 import { tmdbPoster } from '@/services/tmdb/tmdbImage';
 import type { TrendingItem } from '@/services/discovery/trendingService';
-import { useAuthStore } from '@/stores/authStore';
-import { useCatalogStore } from '@/stores/catalogStore';
 import { usePlaybackStore } from '@/stores/playbackStore';
 import type { Movie, Series } from '@/types/models';
 import { FAVORITES_HREF, LIVE_HREF, liveHref, movieHref, seriesHref, SETTINGS_HREF } from '@/utils/appRoutes';
@@ -103,9 +103,7 @@ function RailSkeleton() {
 }
 
 export default function HomePage() {
-  const credentials = useAuthStore((s) => s.credentials);
-  const syncing = useCatalogStore((s) => s.syncing);
-  const sync = useCatalogStore((s) => s.sync);
+  const { hydrated: catalogHydrated } = useCatalogSync();
   const recentChannels = usePlaybackStore((s) => s.recentChannels);
   const dismissContinue = usePlaybackStore((s) => s.dismissContinue);
   const { hasCatalog, billboard, continueItems, myList, trending, discovery, discoveryLoading } = useHomeFeed();
@@ -149,23 +147,12 @@ export default function HomePage() {
         </Link>
       </div>
 
-      {!hasCatalog && (
+      {catalogHydrated && !hasCatalog && (
         <div className="mt-8">
           <EmptyState
             title="Catalogue non synchronisé"
             hint="Récupère les chaînes, films et séries de ton serveur pour commencer."
-            action={
-              <Button
-                size="lg"
-                onClick={() => {
-                  if (credentials !== null) void sync(credentials, { force: true });
-                }}
-                disabled={syncing || credentials === null}
-              >
-                <IconRefresh className="mr-2 h-4 w-4" />
-                {syncing ? 'Synchronisation…' : 'Synchroniser le catalogue'}
-              </Button>
-            }
+            action={<SyncCatalogButton size="lg" />}
           />
         </div>
       )}

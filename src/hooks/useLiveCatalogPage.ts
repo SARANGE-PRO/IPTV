@@ -8,12 +8,16 @@ const PAGE = 200;
 /**
  * International / Tous : pagination Dexie (jamais les 55k en memoire), ordre
  * fournisseur, categories masquees exclues. `filter` null = inactif.
+ * `error` : premiere page illisible (la page propose « Reessayer ») ; une page
+ * SUIVANTE en echec s'arrete simplement la, sans effacer ce qui est affiche.
  */
 export function useLiveCatalogPage(filter: LiveFilter | null, hidden: ReadonlySet<string>) {
   const [channels, setChannels] = useState<LiveChannel[]>([]);
   const [count, setCount] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [exhausted, setExhausted] = useState(false);
+  const [error, setError] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const offsetRef = useRef(0);
   const busyRef = useRef(false);
   const kind = filter?.kind ?? null;
@@ -22,6 +26,7 @@ export function useLiveCatalogPage(filter: LiveFilter | null, hidden: ReadonlySe
     setChannels([]);
     setCount(null);
     setExhausted(false);
+    setError(false);
     offsetRef.current = 0;
     if (filter === null) return;
     let active = true;
@@ -39,7 +44,9 @@ export function useLiveCatalogPage(filter: LiveFilter | null, hidden: ReadonlySe
         setCount(total);
       })
       .catch(() => {
-        if (active) setExhausted(true);
+        if (!active) return;
+        setExhausted(true);
+        setError(true);
       })
       .finally(() => {
         busyRef.current = false;
@@ -50,7 +57,7 @@ export function useLiveCatalogPage(filter: LiveFilter | null, hidden: ReadonlySe
     };
     // `filter` est recree a chaque rendu : seul son genre compte.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, hidden]);
+  }, [kind, hidden, attempt]);
 
   const loadMore = useCallback(() => {
     if (filter === null || exhausted || busyRef.current) return;
@@ -70,5 +77,7 @@ export function useLiveCatalogPage(filter: LiveFilter | null, hidden: ReadonlySe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, exhausted, hidden]);
 
-  return { channels, count, loading, exhausted, loadMore };
+  const retry = useCallback(() => setAttempt((a) => a + 1), []);
+
+  return { channels, count, loading, exhausted, error, loadMore, retry };
 }

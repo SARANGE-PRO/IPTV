@@ -7,10 +7,13 @@ import { LiveViewBar } from '@/components/live/LiveViewBar';
 import { RecentChannelsStrip } from '@/components/live/RecentChannelsStrip';
 import { BrandMark } from '@/components/shared/BrandMark';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { ErrorState } from '@/components/shared/ErrorState';
+import { SyncCatalogButton } from '@/components/shared/SyncCatalogButton';
 import { IconChevronRight } from '@/components/ui/actionIcons';
 import { IconSearch, IconX } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { useCatalogSync } from '@/hooks/useCatalogSync';
 import { useDebounce } from '@/hooks/useDebounce';
 import { useFavoriteItems } from '@/hooks/useFavoriteItems';
 import { useLiveCatalogPage } from '@/hooks/useLiveCatalogPage';
@@ -133,6 +136,7 @@ export default function LivePage() {
   const favoritesHydrated = useFavoritesStore((s) => s.hydrated);
   const createTab = useFavoritesStore((s) => s.createTab);
   const recentChannels = usePlaybackStore((s) => s.recentChannels);
+  const { hydrated: catalogHydrated } = useCatalogSync();
 
   // Retour d'une chaine : meme vue, meme recherche, meme position (store de
   // session) ; premier affichage : vue memorisee dans les reglages.
@@ -310,9 +314,19 @@ export default function LivePage() {
   const sentinelRef = useLoadMore(loadMore, visible < items.length || canPage, `${visible}:${items.length}`);
 
   // --- Etats ----------------------------------------------------------------------
-  const catalogEmpty = slice.categories.length === 0 && slice.status !== 'loading';
+  // Avant la relecture du catalogue local, « vide » ne veut encore rien dire.
+  const catalogEmpty = catalogHydrated && slice.categories.length === 0 && slice.status !== 'loading';
   const lineupPending = lineupView && (visibleGroups === null || lineup.status === 'building');
-  const loading = search.active
+  // Lecture locale en echec : message + « Reessayer », jamais une fausse liste vide.
+  const listError = search.active
+    ? search.error
+    : favoritesView
+      ? favorites.error
+      : catalogFilter !== null && catalog.error;
+  const retryList = search.active ? search.retry : favoritesView ? favorites.retry : catalog.retry;
+  const loading = !catalogHydrated
+    ? true
+    : search.active
     ? search.loading && search.results.length === 0
     : favoritesView
       ? favorites.loading && favorites.channels.length === 0
@@ -396,24 +410,17 @@ export default function LivePage() {
         <div className="mt-6">
           <EmptyState
             title="Catalogue non synchronisé"
-            hint="Lance une synchronisation depuis les réglages pour charger les chaînes."
+            hint="Récupère les chaînes de ton serveur pour commencer."
+            action={<SyncCatalogButton />}
           />
         </div>
       ) : lineupView && lineup.status === 'error' ? (
         <div className="mt-6">
-          <EmptyState
-            title="Impossible de classer les chaînes"
-            hint="Le stockage local n'a pas répondu. Réessaie ; si ça persiste, relance une synchronisation."
-            action={
-              <button
-                type="button"
-                onClick={lineup.retry}
-                className="rounded-xl bg-ink-700 px-4 py-2 text-sm font-medium text-fg hover:bg-ink-600"
-              >
-                Réessayer
-              </button>
-            }
-          />
+          <ErrorState title="Impossible de classer les chaînes" onRetry={lineup.retry} />
+        </div>
+      ) : listError ? (
+        <div className="mt-6">
+          <ErrorState title="Impossible de lire les chaînes" onRetry={retryList} />
         </div>
       ) : loading ? (
         <div className="mt-3">

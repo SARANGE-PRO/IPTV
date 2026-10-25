@@ -12,7 +12,14 @@
 
 // Incremente quand une icone/ressource precachee change : les PWA deja
 // installees ne doivent pas conserver l'ancienne identite visuelle.
-const CACHE = 'zibtv-shell-v3';
+// v4 : les chunks du build vivent dans STATIC_CACHE (borne) ; l'ancien cache
+// v3, qui accumulait tous les builds, est supprime a l'activation.
+const CACHE = 'zibtv-shell-v4';
+// Chunks /_next/static : noms haches, un build en ajoute ~50 sans jamais
+// reprendre les anciens -> on garde les plus recents seulement (quota iOS
+// partage avec IndexedDB, donc avec le catalogue).
+const STATIC_CACHE = 'zibtv-static-v1';
+const STATIC_MAX_ENTRIES = 150;
 const OFFLINE_URL = '/offline.html';
 const PRECACHE = [
   '/offline.html',
@@ -29,10 +36,19 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+      .then((keys) =>
+        Promise.all(keys.filter((k) => k !== CACHE && k !== STATIC_CACHE).map((k) => caches.delete(k))),
+      )
       .then(() => self.clients.claim()),
   );
 });
+
+/** Les cles d'un cache sortent dans l'ordre d'insertion : on retire les plus anciennes. */
+function trimCache(name, max) {
+  return caches.open(name).then((cache) =>
+    cache.keys().then((keys) => Promise.all(keys.slice(0, Math.max(0, keys.length - max)).map((k) => cache.delete(k)))),
+  );
+}
 
 function isCacheableAsset(url) {
   return (
@@ -109,7 +125,10 @@ self.addEventListener('fetch', (event) => {
           fetch(request).then((res) => {
             if (res.ok) {
               const copy = res.clone();
-              caches.open(CACHE).then((cache) => cache.put(request, copy));
+              const isBuildChunk = url.pathname.startsWith('/_next/static/');
+              const name = isBuildChunk ? STATIC_CACHE : CACHE;
+              const stored = caches.open(name).then((cache) => cache.put(request, copy));
+              if (isBuildChunk) stored.then(() => trimCache(STATIC_CACHE, STATIC_MAX_ENTRIES)).catch(() => {});
             }
             return res;
           }),

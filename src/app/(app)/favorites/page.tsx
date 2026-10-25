@@ -8,6 +8,7 @@ import { TabNameDialog } from '@/components/favorites/TabNameDialog';
 import { LiveChannelRow, type LiveRowData } from '@/components/live/LiveChannelRow';
 import { BrandMark } from '@/components/shared/BrandMark';
 import { EmptyState } from '@/components/shared/EmptyState';
+import { ErrorState } from '@/components/shared/ErrorState';
 import { MediaCard } from '@/components/shared/MediaCard';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useFavoriteItems } from '@/hooks/useFavoriteItems';
@@ -295,6 +296,10 @@ export default function FavoritesPage() {
             {Array.from({ length: 6 }, (_, i) => (
               <Skeleton key={i} className="h-14 rounded-xl" />
             ))}
+          </div>
+        ) : data.error && total === 0 ? (
+          <div className="mt-6">
+            <ErrorState title="Impossible de lire tes favoris" onRetry={data.retry} />
           </div>
         ) : total === 0 ? (
           <div className="mt-6">
