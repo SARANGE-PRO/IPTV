@@ -19,7 +19,7 @@ import { useDebounce } from '@/hooks/useDebounce';
 import { useFavoriteItems } from '@/hooks/useFavoriteItems';
 import { useLiveCatalogPage } from '@/hooks/useLiveCatalogPage';
 import { useLiveLineup } from '@/hooks/useLiveLineup';
-import { LIVE_SEARCH_LIMIT, useLiveSearch } from '@/hooks/useLiveSearch';
+import { useLiveSearch } from '@/hooks/useLiveSearch';
 import { useTvNow } from '@/hooks/useTvNow';
 import { useVersionRanking } from '@/hooks/useVersionRanking';
 import { useLoadMore } from '@/hooks/useLoadMore';
@@ -315,11 +315,13 @@ export default function LivePage() {
     [categoryName, nowFor, rank],
   );
 
-  const canPage = catalogFilter !== null && !catalog.exhausted;
+  // Pages Dexie : International / Tous, et recherche (tous ses resultats).
+  const canPage = search.active ? search.canLoadMore : catalogFilter !== null && !catalog.exhausted;
   const loadMore = useCallback(() => {
     if (visible < items.length) setVisible((v) => v + STEP);
+    else if (search.active && search.canLoadMore) search.loadMore();
     else if (canPage) catalog.loadMore();
-  }, [visible, items.length, canPage, catalog]);
+  }, [visible, items.length, canPage, catalog, search]);
   const sentinelRef = useLoadMore(loadMore, visible < items.length || canPage, `${visible}:${items.length}`);
 
   // --- Etats ----------------------------------------------------------------------
@@ -354,7 +356,9 @@ export default function LivePage() {
 
   let summary: string | null = null;
   if (search.active) {
-    summary = `${rowCount}${rowCount >= LIVE_SEARCH_LIMIT ? '+' : ''} résultat${rowCount > 1 ? 's' : ''}`;
+    // Total des flux trouves (les versions d'une meme chaine sont regroupees en une ligne).
+    const total = search.total;
+    summary = `${total}${search.capped ? '+' : ''} résultat${total > 1 ? 's' : ''}`;
   } else if (lineupView && !lineupPending) {
     const streams = viewGroups.reduce((n, g) => n + g.versions.length, 0);
     summary = `${formatCount(viewGroups.length)} chaîne${viewGroups.length > 1 ? 's' : ''} · ${formatCount(streams)} flux`;

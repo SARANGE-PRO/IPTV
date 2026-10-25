@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { ChannelLogo } from '@/components/shared/ChannelLogo';
 import { EmptyState } from '@/components/shared/EmptyState';
@@ -14,7 +15,8 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { useSearch } from '@/hooks/useSearch';
 import { tmdbPoster } from '@/services/tmdb/tmdbImage';
 import type { Movie, Series } from '@/types/models';
-import { liveHref, movieHref, seriesHref } from '@/utils/appRoutes';
+import { useLiveUiStore } from '@/stores/liveUiStore';
+import { LIVE_HREF, liveHref, movieHref, seriesHref } from '@/utils/appRoutes';
 import { displayChannelName, displayTitle, displayYear } from '@/utils/displayTitle';
 import { variantBadge } from '@/utils/variantPreference';
 import { setZapContext } from '@/services/live/liveZappingService';
@@ -85,6 +87,7 @@ export default function SearchPage() {
   const [query, setQuery] = useState(initialQuery);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const s = useSearch(query);
+  const router = useRouter();
 
   // Requete dans l'URL SANS navigation (replaceState) : retour arriere = ecran restaure.
   useEffect(() => {
@@ -108,7 +111,7 @@ export default function SearchPage() {
     needle !== '' && titles.live.some((c) => normalizeQuery(displayChannelName(c.name)).startsWith(needle));
   const channelsSection =
     titles.live.length > 0 ? (
-      <Section title={`Chaînes (${titles.live.length})`}>
+      <Section title={`Chaînes (${titles.liveTotal})`}>
         <div className="flex flex-col sm:grid sm:grid-cols-2 sm:gap-x-4">
           {titles.live.map((c) => (
             <div key={c.id} className="flex items-center gap-3 rounded-xl px-2 py-1.5 hover:bg-ink-800">
@@ -133,6 +136,20 @@ export default function SearchPage() {
             </div>
           ))}
         </div>
+              {titles.liveTotal > titles.live.length && (
+          <button
+            type="button"
+            onClick={() => {
+              // La page Live s'ouvre sur CETTE recherche, avec tous les resultats (pages).
+              useLiveUiStore.getState().save({ view: 'france', query: s.debounced, visible: 80, scrollY: 0 });
+              rememberOnOpen();
+              router.push(LIVE_HREF);
+            }}
+            className="mt-2 flex h-11 w-full items-center justify-center rounded-xl bg-ink-800 text-sm font-medium text-fg hover:bg-ink-700"
+          >
+            Voir les {titles.liveTotal} chaînes
+          </button>
+        )}
       </Section>
     ) : null;
 

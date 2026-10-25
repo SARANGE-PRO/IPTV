@@ -821,6 +821,51 @@ async function searchIn<T extends Searchable>(
   return out;
 }
 
+/** Plafond de securite de la recherche Live complete (mot ultra-courant). */
+export const LIVE_SEARCH_CAP = 5000;
+
+/**
+ * Recherche Live COMPLETE (toutes les chaines d'un prefixe fournisseur
+ * « XYZ: », pas seulement les 120 premieres) : renvoie les IDENTIFIANTS
+ * ordonnes, les chaines se chargent ensuite par pages (`getLiveChannelsByIds`,
+ * ordre conserve).
+ * Ordre : mot exact d'abord (`xyz` avant `xyzplus`), nom qui commence par la
+ * recherche, puis ordre du fournisseur. Index existant, aucune migration.
+ */
+export async function findLiveChannelIds(
+  query: string,
+  hiddenCategoryIds?: ReadonlySet<string>,
+  cap: number = LIVE_SEARCH_CAP,
+): Promise<{ ids: string[]; capped: boolean }> {
+  const tokens = tokenizeQuery(query);
+  const primary = tokens.reduce<string | null>((best, t) => (best === null || t.length > best.length ? t : best), null);
+  if (primary === null) return { ids: [], capped: false };
+  const rest = tokens.filter((t) => t !== primary);
+  const nq = normalizeText(query);
+  const hits: { id: string; exact: number; starts: number; order: number }[] = [];
+  await db.xtream_live_streams
+    .where('searchTokens')
+    .startsWith(primary)
+    .distinct()
+    .filter(
+      (c) =>
+        (hiddenCategoryIds === undefined || !hiddenCategoryIds.has(c.categoryId)) &&
+        rest.every((t) => c.searchTokens.some((tok) => tok.startsWith(t))),
+    )
+    .limit(cap + 1)
+    .each((c) => {
+      hits.push({
+        id: c.id,
+        exact: c.searchTokens.includes(primary) ? 1 : 0,
+        starts: c.normalizedName.startsWith(nq) ? 1 : 0,
+        order: c.sortOrder ?? 0,
+      });
+    });
+  const capped = hits.length > cap;
+  hits.sort((a, b) => b.exact - a.exact || b.starts - a.starts || a.order - b.order || a.id.localeCompare(b.id));
+  return { ids: hits.slice(0, cap).map((h) => h.id), capped };
+}
+
 export function searchLiveChannels(
   query: string,
   limit = 60,

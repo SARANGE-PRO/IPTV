@@ -26,7 +26,7 @@ import { variantOrder } from '@/utils/variantPreference';
  * Requete vide : recherches recentes + tendances.
  */
 
-const EMPTY_TITLES: TitleResults = { movies: [], series: [], live: [] };
+const EMPTY_TITLES: TitleResults = { movies: [], series: [], live: [], liveTotal: 0 };
 const EMPTY_TRENDING: TrendingResult = { movies: [], series: [] };
 
 export interface SearchState {

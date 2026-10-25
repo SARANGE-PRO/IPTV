@@ -28,19 +28,25 @@ export interface TitleResults {
   movies: Movie[];
   series: Series[];
   live: LiveChannel[];
+  /** Nombre total de chaines trouvees (l'apercu n'en montre que 24). */
+  liveTotal: number;
 }
+
+const LIVE_PREVIEW = 24;
 
 export async function searchTitles(
   query: string,
   order: readonly MediaVariant[],
   hidden: HiddenSets,
 ): Promise<TitleResults> {
-  const [live, movies, series] = await Promise.all([
-    catalogRepository.searchLiveChannels(query, 24, hidden.live),
+  const [liveIds, movies, series] = await Promise.all([
+    catalogRepository.findLiveChannelIds(query, hidden.live),
     catalogRepository.searchMovies(query, 30, hidden.vod, order),
     catalogRepository.searchSeries(query, 30, hidden.series, order),
   ]);
-  return { movies, series, live };
+  // Apercu : 24 chaines (dans le meme ordre que la page Live), plus le total.
+  const live = await catalogRepository.getLiveChannelsByIds(liveIds.ids.slice(0, LIVE_PREVIEW));
+  return { movies, series, live, liveTotal: liveIds.ids.length };
 }
 
 // --- Genres ----------------------------------------------------------------------
