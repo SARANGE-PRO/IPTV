@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import Script from 'next/script';
 import type { ReactNode } from 'react';
+import { SPLASH_SCREENS } from '@/config/splashScreens';
 import { ServiceWorkerRegister } from '@/components/layout/ServiceWorkerRegister';
 import { ZibIntro } from '@/components/layout/intro/ZibIntro';
 import { ZIB_INTRO_BOOT_SCRIPT } from '@/components/layout/intro/zibIntroBoot';
@@ -15,7 +16,8 @@ export const metadata: Metadata = {
   description: 'ZiBTV — Live TV, films et séries.',
   applicationName: 'ZiBTV',
   manifest: '/manifest.webmanifest',
-  appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'ZiBTV' },
+  // Ecran de lancement iOS (au lieu d'un ecran vide pendant le chargement).
+  appleWebApp: { capable: true, statusBarStyle: 'black-translucent', title: 'ZiBTV', startupImage: SPLASH_SCREENS },
   formatDetection: { telephone: false },
   icons: {
     icon: [

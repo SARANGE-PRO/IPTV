@@ -8,6 +8,7 @@
     "build:static": "node scripts/build-static.mjs",
     "test:mkv": "node scripts/mkv-remux-test/run.mjs",
     "icons": "node scripts/gen-icons.mjs",
+    "splash": "node scripts/gen-splash.mjs",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
