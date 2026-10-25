@@ -260,6 +260,29 @@ mais **pas** le MPEG-TS `.ts` brut. → l'URL builder demande `.m3u8` pour le Li
 hls.js seulement si HLS natif absent ; `mpegts.js` en option pour `.ts`. Le player
 abstrait la détection de format et gère flux mort / timeout / format non supporté.
 
+### Lecteur : découpage (oct. 2026)
+`VideoPlayer` ne fait que brancher ; la logique est dans des services testés
+(`tests/playbackSession.test.ts`, fausse `<video>` + horloge simulée) :
+- `services/player/playbackSession` — supervision d'UN flux : relances
+  (`playbackRecoveryPolicy`), anti-gel, pause subie, hors-ligne (rattrapé même
+  sans évènement `online`), autoplay refusé, rejoindre le direct ;
+- `streamSource` — branchement natif / hls.js / MKV direct (générations) ;
+- `progressTracker` — progression (rappels figés pour l'ancien titre au
+  zapping) et reprise par seek ; `playbackMessages` — messages d'échec ;
+- `components/player/PlayerOverlay` (spinner, hors-ligne, échec) et
+  `hooks/usePipPolicy`.
+Sans session, la `<video>` reste montée (src vide) : la lecture suivante garde
+l'autorisation son d'iOS. La langue préférée est lue au lancement d'un flux,
+jamais en cours de lecture.
+
+### Fiches film / série
+Données par hooks (`useMovieDetail`, `useSeriesDetail` : `error` + `retry`),
+plan de lecture par `useVodPlayback` ; blocs communs `DetailHero`,
+`DetailHeader`, `PlaybackPlanPanel` (VLC seul / sonde / lecteur),
+`SeasonEpisodes`. Plan → props du lecteur : `planSourceProps` (pur, partagé
+avec l'enchaînement d'épisodes). Frontières d'erreur locales autour des fiches
+et du lecteur (montés dans le layout, hors de portée de `(app)/error.tsx`).
+
 ---
 
 ## 8. Mode diagnostic anonymisé (amendement — important)

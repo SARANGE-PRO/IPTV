@@ -38,6 +38,8 @@ export interface SeriesPlaybackDeps {
   markFinished: (episodeId: string) => void;
   play: (session: PlayerSession, handlers: PlayerHandlers) => void;
   sessionKey: (media: NowPlayingMedia, source: PlayerSource) => string;
+  /** Cle de la lecture en cours (null : aucune). */
+  currentSessionKey: () => string | null;
 }
 
 export function episodeLabel(seriesName: string, ep: Episode): string {
@@ -99,8 +101,12 @@ export function nextEpisodeContinuation(
   return {
     label: `S${next.seasonNumber}E${next.episodeNumber}`,
     start: async () => {
+      const before = deps.currentSessionKey();
       const playback = await buildEpisodePlayback(ctx, deps, next).catch(() => null);
       if (playback === null) return false;
+      // Une autre lecture a demarre pendant la preparation (sonde passerelle) :
+      // l'episode suivant ne doit pas la remplacer.
+      if (deps.currentSessionKey() !== before) return false;
       deps.play(playback.session, playback.handlers);
       return true;
     },

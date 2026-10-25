@@ -133,6 +133,16 @@ export function MiniPlayer({
     if (video !== null && video.paused) void video.play().catch(() => {});
   };
 
+  // Une AUTRE lecture demarre pendant « Annuler » (episode suivant, ⏭ de
+  // l'ecran verrouille) : la fermeture differee visait l'ancienne, on l'oublie.
+  const mediaKey = media === null ? null : `${media.kind}:${media.itemId}`;
+  useEffect(() => {
+    clearUndo();
+    setUndoing(false);
+    setLeaving(null);
+    setOffset({ x: 0, y: 0 });
+  }, [mediaKey]);
+
   const rootRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (mode !== 'mini') {

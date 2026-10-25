@@ -65,6 +65,8 @@ Gestionnaire de paquets : **npm**.
    Échecs transitoires relancés par le lecteur selon
    `services/player/playbackRecoveryPolicy.ts` (gel, coupure du direct, pause subie tampon vide,
    hors-ligne, autoplay refusé) ; `onError` = échec DÉFINITIF seulement.
+   Supervision dans `services/player/playbackSession.ts` (testée) — `VideoPlayer`
+   ne fait que brancher ; sans session la `<video>` reste montée (src vide).
    VLC : dernier recours, affiché uniquement si activé dans les Réglages.
    **PiP** (`services/player/pictureInPicture`, `PipButton`, interrupteur
    Réglages) : iOS n'ouvre le PiP QUE dans un tap (jamais à la mise en

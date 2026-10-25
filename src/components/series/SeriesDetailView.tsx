@@ -173,6 +173,7 @@ export function SeriesDetailView({
         markFinished: (episodeId) => void usePlaybackStore.getState().markFinished('episode', episodeId),
         play: (session, handlers) => usePlayerStore.getState().play(session, handlers),
         sessionKey: playerSessionKey,
+        currentSessionKey: () => usePlayerStore.getState().session?.key ?? null,
       },
       playingEp,
     );
