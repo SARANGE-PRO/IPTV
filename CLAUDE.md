@@ -148,3 +148,12 @@ Vitrine Live (oct. 2026) ✅ : vue France = « En ce moment » (`pickSpotlight`)
 récentes en cartes, rangées par section (`buildShowcaseRows`, « Tout voir » →
 pastille) ; recherche, favoris, onglets, pastilles, International, Tous =
 listes inchangées. Ligne et carte partagent `useLiveChannelActions`.
+Mode privé (oct. 2026) ✅ : appui long sur le logo des Réglages + code
+(`services/privacy/privateModeService`, empreinte, 5 essais puis 60 s).
+Profil privé = base Dexie À PART (`zibtv-prive`, `db/personalDb`) pour les
+données PERSONNELLES (favoris, onglets, historique/récentes) + réglages
+personnels (`get/setPersonalSetting` : recherches, dernière vue, fiabilité
+apprise, Top 10, nouveaux épisodes). Toute nouvelle donnée personnelle DOIT
+passer par `personalDb()` / `*PersonalSetting`, jamais `db` / `setSetting`.
+Profil en sessionStorage (fermer l'app = normal), verrou après 15 min dehors,
+écran verrouillé neutre (« ZiBTV »). Discrétion, pas chiffrement.

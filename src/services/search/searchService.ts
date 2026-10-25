@@ -176,7 +176,7 @@ const RECENT_KEY = 'recentSearches';
 const RECENT_MAX = 10;
 
 export async function getRecentSearches(): Promise<string[]> {
-  return (await settingsRepository.getSetting<string[]>(RECENT_KEY)) ?? [];
+  return (await settingsRepository.getPersonalSetting<string[]>(RECENT_KEY)) ?? [];
 }
 
 /** Ajoute une recherche (en tete, sans doublon insensible a la casse/accents). */
@@ -185,16 +185,16 @@ export async function rememberSearch(query: string): Promise<string[]> {
   if (q.length < 2) return getRecentSearches();
   const nq = normalizeText(q);
   const next = [q, ...(await getRecentSearches()).filter((r) => normalizeText(r) !== nq)].slice(0, RECENT_MAX);
-  await settingsRepository.setSetting(RECENT_KEY, next);
+  await settingsRepository.setPersonalSetting(RECENT_KEY, next);
   return next;
 }
 
 export async function removeRecentSearch(query: string): Promise<string[]> {
   const next = (await getRecentSearches()).filter((r) => r !== query);
-  await settingsRepository.setSetting(RECENT_KEY, next);
+  await settingsRepository.setPersonalSetting(RECENT_KEY, next);
   return next;
 }
 
 export async function clearRecentSearches(): Promise<void> {
-  await settingsRepository.setSetting(RECENT_KEY, []);
+  await settingsRepository.setPersonalSetting(RECENT_KEY, []);
 }

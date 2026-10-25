@@ -54,7 +54,7 @@ export function refreshNewEpisodes(creds: XtreamCredentials): Promise<void> {
       if (ids.length === 0) return;
       const [rows, saved] = await Promise.all([
         catalogRepository.getSeriesByIds(ids),
-        settingsRepository.getSetting<Snapshot>(SETTING_KEY),
+        settingsRepository.getPersonalSetting<Snapshot>(SETTING_KEY),
       ]);
       const snapshot: Snapshot = { ...(saved ?? {}) };
       const now = Date.now();
@@ -82,7 +82,7 @@ export function refreshNewEpisodes(creds: XtreamCredentials): Promise<void> {
           fresh: [...(previous?.fresh ?? []).filter((f) => now - f.at < NEW_FOR_MS), ...added],
         };
       }
-      await settingsRepository.setSetting(SETTING_KEY, snapshot);
+      await settingsRepository.setPersonalSetting(SETTING_KEY, snapshot);
     } catch {
       // Jamais bloquant : la rangee reste telle quelle.
     } finally {
@@ -94,7 +94,7 @@ export function refreshNewEpisodes(creds: XtreamCredentials): Promise<void> {
 
 /** Rangee de l'accueil : series suivies avec des episodes nouveaux non regardes. */
 export async function getNewEpisodes(limit = 12): Promise<NewEpisodesItem[]> {
-  const snapshot = (await settingsRepository.getSetting<Snapshot>(SETTING_KEY).catch(() => undefined)) ?? {};
+  const snapshot = (await settingsRepository.getPersonalSetting<Snapshot>(SETTING_KEY).catch(() => undefined)) ?? {};
   const now = Date.now();
   const candidates = Object.entries(snapshot)
     .map(([seriesId, s]) => ({ seriesId, fresh: s.fresh.filter((f) => now - f.at < NEW_FOR_MS) }))

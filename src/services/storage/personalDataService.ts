@@ -1,4 +1,4 @@
-import { db } from '@/db/database';
+import { personalDb } from '@/db/personalDb';
 
 /**
  * Sauvegarde des donnees PERSONNELLES (favoris, onglets, progression, chaines
@@ -34,9 +34,20 @@ export interface PersonalBackup {
   tables: Record<BackupTable, unknown[]>;
 }
 
+/** Tables du profil actif (le profil prive n'a ni categories masquees ni rappels : communs). */
+function profileTables(): BackupTable[] {
+  const names = new Set(personalDb().tables.map((t) => t.name));
+  return TABLES.filter((name) => names.has(name));
+}
+
 export async function exportPersonalData(): Promise<PersonalBackup> {
-  const entries = await Promise.all(TABLES.map(async (name) => [name, await db.table(name).toArray()] as const));
-  const tables = Object.fromEntries(entries) as Record<BackupTable, unknown[]>;
+  const entries = await Promise.all(
+    profileTables().map(async (name) => [name, await personalDb().table(name).toArray()] as const),
+  );
+  const tables = { ...Object.fromEntries(TABLES.map((n) => [n, []])), ...Object.fromEntries(entries) } as Record<
+    BackupTable,
+    unknown[]
+  >;
   tables.settings = tables.settings.filter(
     (row) => !CACHE_SETTINGS.has(String((row as { key?: unknown }).key ?? '')),
   );
@@ -63,11 +74,12 @@ export function parseBackup(raw: unknown): PersonalBackup | null {
  */
 export async function importPersonalData(backup: PersonalBackup): Promise<number> {
   let written = 0;
-  await db.transaction('rw', TABLES.map((name) => db.table(name)), async () => {
-    for (const name of TABLES) {
+  const names = profileTables();
+  await personalDb().transaction('rw', names.map((name) => personalDb().table(name)), async () => {
+    for (const name of names) {
       const rows = (backup.tables[name] ?? []).filter((row) => typeof row === 'object' && row !== null);
       if (rows.length === 0) continue;
-      await db.table(name).bulkPut(rows);
+      await personalDb().table(name).bulkPut(rows);
       written += rows.length;
     }
   });

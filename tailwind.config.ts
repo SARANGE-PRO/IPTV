@@ -73,6 +73,11 @@ const config: Config = {
           from: { opacity: '0', transform: 'translate3d(0, 6px, 0)' },
           to: { opacity: '1', transform: 'none' },
         },
+        shake: {
+          '0%, 100%': { transform: 'translateX(0)' },
+          '20%, 60%': { transform: 'translateX(-8px)' },
+          '40%, 80%': { transform: 'translateX(8px)' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 0.25s ease-out both',
@@ -80,6 +85,7 @@ const config: Config = {
         shimmer: 'shimmer 1.6s ease-in-out infinite',
         // « backwards » : aucun transform residuel apres l'animation (voir PageTransition).
         'page-in': 'page-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) backwards',
+        shake: 'shake 0.4s ease-in-out',
       },
     },
   },

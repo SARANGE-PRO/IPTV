@@ -157,7 +157,7 @@ export default function LivePage() {
     restoredRef.current = true;
     const tabIds = useFavoritesStore.getState().tabs.map((t) => t.id);
     void settingsRepository
-      .getSetting<string>(SETTING_KEY)
+      .getPersonalSetting<string>(SETTING_KEY)
       .then((saved) => setView(restoreView(saved, tabIds)))
       .catch(() => undefined);
   }, [favoritesHydrated]);
@@ -206,7 +206,7 @@ export default function LivePage() {
     setQuery('');
     // La nouvelle liste repart du haut (sinon on atterrit en bas d'une liste courte).
     window.scrollTo({ top: 0 });
-    void settingsRepository.setSetting(SETTING_KEY, next).catch(() => undefined);
+    void settingsRepository.setPersonalSetting(SETTING_KEY, next).catch(() => undefined);
   }, []);
 
   const categoryName = useMemo(() => new Map(slice.categories.map((c) => [c.id, c.name] as const)), [slice.categories]);

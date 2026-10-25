@@ -26,7 +26,7 @@ function notify(): void {
 /** Charge l'historique (une fois). */
 export function loadReliability(): Promise<void> {
   loaded ??= settingsRepository
-    .getSetting<Record<string, StreamStat>>(SETTING_KEY)
+    .getPersonalSetting<Record<string, StreamStat>>(SETTING_KEY)
     .then((saved) => {
       if (saved == null) return;
       for (const [id, stat] of Object.entries(saved)) if (!stats.has(id)) stats.set(id, stat);
@@ -45,7 +45,7 @@ function schedulePersist(): void {
   persistTimer = setTimeout(() => {
     persistTimer = null;
     const entries = [...stats.entries()].sort((a, b) => lastSeen(b[1]) - lastSeen(a[1])).slice(0, MAX_ENTRIES);
-    void settingsRepository.setSetting(SETTING_KEY, Object.fromEntries(entries)).catch(() => undefined);
+    void settingsRepository.setPersonalSetting(SETTING_KEY, Object.fromEntries(entries)).catch(() => undefined);
   }, PERSIST_DELAY_MS);
 }
 

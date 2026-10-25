@@ -42,7 +42,7 @@ async function cachedByIds<T extends { id: string }>(
   limit: number,
   load: (ids: string[]) => Promise<T[]>,
 ): Promise<T[] | null> {
-  const cached = await settingsRepository.getSetting<RankingCache>(key);
+  const cached = await settingsRepository.getPersonalSetting<RankingCache>(key);
   if (cached === undefined || Date.now() - cached.generatedAt >= CACHE_TTL_MS || cached.ids.length < limit) {
     return null;
   }
@@ -148,7 +148,7 @@ export async function getMovieTop10(limit = 10): Promise<Movie[]> {
     playbackRepository.getRecentHistory(120),
   ]);
   const rows = curate([...rated, ...recent], (m) => m.addedAt, userSignals(favorites, history, 'vod'), limit);
-  await settingsRepository.setSetting<RankingCache>('rankingTopMovies', {
+  await settingsRepository.setPersonalSetting<RankingCache>('rankingTopMovies', {
     generatedAt: Date.now(),
     ids: rows.map((movie) => movie.id),
   });
@@ -166,7 +166,7 @@ export async function getSeriesTop10(limit = 10): Promise<Series[]> {
     playbackRepository.getRecentHistory(120),
   ]);
   const rows = curate([...rated, ...recent], (s) => s.lastModifiedAt, userSignals(favorites, history, 'series'), limit);
-  await settingsRepository.setSetting<RankingCache>('rankingTopSeries', {
+  await settingsRepository.setPersonalSetting<RankingCache>('rankingTopSeries', {
     generatedAt: Date.now(),
     ids: rows.map((series) => series.id),
   });

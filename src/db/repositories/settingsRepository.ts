@@ -1,4 +1,5 @@
 import { db } from '@/db/database';
+import { personalDb } from '@/db/personalDb';
 import type { SettingEntry } from '@/types/models';
 
 /**
@@ -26,4 +27,18 @@ export function getAllSettings(): Promise<SettingEntry[]> {
 
 export async function clearSettings(): Promise<void> {
   await db.settings.clear();
+}
+
+/**
+ * Reglages PERSONNELS (recherches recentes, derniere vue, chaines apprises…) :
+ * dans la base du profil actif — en mode prive, rien ne fuit vers le profil
+ * normal. Les reglages de l'app (langue, lecteur…) restent dans `getSetting`.
+ */
+export async function getPersonalSetting<T>(key: string): Promise<T | undefined> {
+  const row = await personalDb().settings.get(key);
+  return row === undefined ? undefined : (row.value as T);
+}
+
+export async function setPersonalSetting<T>(key: string, value: T): Promise<void> {
+  await personalDb().settings.put({ key, value });
 }

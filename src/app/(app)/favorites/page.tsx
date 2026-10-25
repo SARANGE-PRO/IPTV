@@ -72,7 +72,7 @@ export default function FavoritesPage() {
     if (!hydrated || restoredRef.current) return;
     restoredRef.current = true;
     void settingsRepository
-      .getSetting<string>(SETTING_KEY)
+      .getPersonalSetting<string>(SETTING_KEY)
       .then((saved) => {
         if (saved !== undefined && useFavoritesStore.getState().tabs.some((t) => t.id === saved)) setSelected(saved);
       })
@@ -87,7 +87,7 @@ export default function FavoritesPage() {
   const select = useCallback((tabId: FavoritesSelection) => {
     setSelected(tabId);
     setEditing(false);
-    void settingsRepository.setSetting(SETTING_KEY, tabId ?? '').catch(() => undefined);
+    void settingsRepository.setPersonalSetting(SETTING_KEY, tabId ?? '').catch(() => undefined);
   }, []);
 
   const data = useFavoriteItems(selected);

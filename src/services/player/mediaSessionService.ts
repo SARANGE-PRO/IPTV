@@ -1,5 +1,6 @@
 import { pauseByUser } from '@/services/player/playbackIntent';
 import { secureImageSrc } from '@/utils/secureUrl';
+import { isPrivateProfile } from '@/db/profile';
 
 /**
  * Media Session (ecran verrouille iOS, Centre de controle, touches media du
@@ -44,12 +45,16 @@ function setHandler(action: MediaSessionAction, handler: (() => void) | null | u
 export function applyNowPlaying(meta: NowPlayingMeta, actions: NowPlayingActions): void {
   if (!supported()) return;
   try {
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: meta.title,
-      artist: meta.subtitle ?? 'ZiBTV',
-      album: 'ZiBTV',
-      artwork: artworkList(meta.artwork),
-    });
+    // Mode prive : l'ecran verrouille et le Centre de controle ne montrent
+    // jamais ce qui joue.
+    navigator.mediaSession.metadata = isPrivateProfile()
+      ? new MediaMetadata({ title: 'ZiBTV', artist: '', album: 'ZiBTV', artwork: artworkList(null) })
+      : new MediaMetadata({
+          title: meta.title,
+          artist: meta.subtitle ?? 'ZiBTV',
+          album: 'ZiBTV',
+          artwork: artworkList(meta.artwork),
+        });
   } catch {
     return;
   }
