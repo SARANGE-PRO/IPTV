@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { IconTrash } from '@/components/ui/icons';
 import { isStoragePersisted, requestPersistentStorage } from '@/lib/persistStorage';
 import { usePlaybackStore } from '@/stores/playbackStore';
+import { isInsecurePage } from '@/utils/secureUrl';
 
 const MB = 1024 * 1024;
 
@@ -57,7 +58,14 @@ export function DataCard() {
           </span>
         </div>
 
-        {persisted !== null && (
+        {persisted === false && isInsecurePage() ? (
+          <SettingsRow
+            label="Protection contre la purge"
+            hint="Indisponible sur la version HTTP de ZiBTV (limite de Safari). Si iOS manque de place, il peut vider le stockage : le catalogue se resynchronise, mais favoris et progression seraient perdus."
+          >
+            <span className="shrink-0 text-xs font-medium text-fg-muted">Indisponible</span>
+          </SettingsRow>
+        ) : persisted !== null && (
           <SettingsRow
             label="Protection contre la purge"
             hint={

@@ -11,6 +11,7 @@ import {
   removeReminder,
   requestNotificationPermission,
 } from '@/services/notifications/reminderService';
+import { isInsecurePage } from '@/utils/secureUrl';
 
 /**
  * Reglage Notifications & rappels : etat de la permission + activation (geste
@@ -35,6 +36,8 @@ const PERMISSION_LABEL: Record<NotificationPermissionState, string> = {
   default: 'non activées',
   unsupported: 'non supportées par ce navigateur',
 };
+
+const INSECURE_LABEL = 'indisponibles sur la version HTTP de ZiBTV (limite de Safari)';
 
 export function NotificationsCard() {
   const [permission, setPermission] = useState<NotificationPermissionState>('default');
@@ -83,7 +86,7 @@ export function NotificationsCard() {
                   : 'font-medium text-fg'
             }
           >
-            {PERMISSION_LABEL[permission]}
+            {permission === 'unsupported' && isInsecurePage() ? INSECURE_LABEL : PERMISSION_LABEL[permission]}
           </span>
         </span>
         {permission === 'default' && (

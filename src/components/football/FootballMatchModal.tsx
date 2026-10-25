@@ -302,6 +302,11 @@ export function FootballMatchModal({ match, onClose }: { match: FootballMatch; o
             {reminded ? 'Rappel activé' : 'Me notifier avant le coup d’envoi'}
           </button>
         )}
+        {upcoming && notificationSupported() && (
+          <p className="mt-1.5 text-center text-xs text-fg-muted">
+            Sur iPhone, le rappel n’arrive que si ZiBTV est ouverte (ou à sa réouverture).
+          </p>
+        )}
       </div>
     </div>
   );

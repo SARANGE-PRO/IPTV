@@ -1,4 +1,5 @@
 import type Hls from 'hls.js';
+import { isChunkLoadError, reloadForNewBuild } from '@/services/appUpdateService';
 import type { MkvDirectEngine } from '@/services/player/mkvDirectEngine';
 import type { StreamKind } from '@/services/player/playbackRecoveryPolicy';
 import type { PreferredLanguage } from '@/types/mediaLanguage';
@@ -104,7 +105,9 @@ export function createStreamSource(video: HTMLVideoElement, opts: StreamSourceOp
       mkvEngine = engine;
       await engine.attach(video);
       return true;
-    } catch {
+    } catch (err) {
+      // Ancienne version ouverte apres un deploiement : on recharge l'app.
+      if (isChunkLoadError(err) && reloadForNewBuild()) return false;
       opts.onFatal({ code: 'mkv_direct_media', message: 'Impossible de charger le lecteur MKV direct.' });
       return false;
     }
@@ -166,7 +169,8 @@ export function createStreamSource(video: HTMLVideoElement, opts: StreamSourceOp
       instance.loadSource(opts.url);
       instance.attachMedia(video);
       return true;
-    } catch {
+    } catch (err) {
+      if (isChunkLoadError(err) && reloadForNewBuild()) return false;
       opts.onFatal({ code: 'hls_module_failed', message: 'Impossible de charger le module de lecture HLS.' });
       return false;
     }

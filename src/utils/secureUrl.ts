@@ -46,6 +46,15 @@ const PLAIN_HTTP_SHELL = process.env.NEXT_PUBLIC_PLAIN_HTTP === '1';
  * (Safari refuse le fMP4 progressif du transcodage -> MediaError 4). Sans effet
  * hors passerelle.
  */
+/**
+ * Page servie en HTTP (coquille infra/http-shell) : Safari n'y est pas un
+ * « contexte securise » -> ni service worker, ni notifications, ni stockage
+ * protege. Les Reglages le disent au lieu de promettre ces fonctions.
+ */
+export function isInsecurePage(): boolean {
+  return typeof window !== 'undefined' && window.isSecureContext === false;
+}
+
 export function secureMediaUrl(
   value: string | null | undefined,
   options: { hls?: boolean; start?: number; transcode?: boolean } = {},
