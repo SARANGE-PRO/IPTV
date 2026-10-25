@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="t">
+  <title id="t">ZiBTV</title>
+  <defs>
+    <linearGradient id="iTop" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#E50914"/><stop offset="50%" stop-color="#B20710"/>
+      <stop offset="80%" stop-color="#2A0103"/><stop offset="100%" stop-color="#000000"/>
+    </linearGradient>
+    <linearGradient id="iBot" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#000000"/><stop offset="20%" stop-color="#2A0103"/>
+      <stop offset="50%" stop-color="#B20710"/><stop offset="100%" stop-color="#E50914"/>
+    </linearGradient>
+    <linearGradient id="iDiag" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF3038"/><stop offset="50%" stop-color="#E50914"/><stop offset="100%" stop-color="#B20710"/>
+    </linearGradient>
+  </defs>
+  <rect width="100" height="100" fill="#000000"/>
+  <g transform="translate(15 15) scale(0.7)">
+    <polygon points="10,10 90,10 68,40 10,40" fill="url(#iTop)"/>
+    <polygon points="32,60 90,60 90,90 10,90" fill="url(#iBot)"/>
+    <polygon points="90,10 60,10 10,90 40,90" fill="url(#iDiag)"/>
+  </g>
+</svg>

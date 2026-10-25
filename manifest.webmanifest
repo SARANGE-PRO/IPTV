@@ -1,0 +1,20 @@
+{
+  "name": "ZiBTV",
+  "short_name": "ZiBTV",
+  "description": "ZiBTV — Live TV, films et séries.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#08080A",
+  "theme_color": "#08080A",
+  "lang": "fr",
+  "dir": "ltr",
+  "categories": ["entertainment", "video"],
+  "icons": [
+    { "src": "/brand/zibtv-icon.svg?v=3", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icons/icon-192.png?v=3", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png?v=3", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/maskable-512.png?v=3", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
