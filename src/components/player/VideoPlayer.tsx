@@ -50,6 +50,7 @@ import { mediaGatewayStopUrl, secureImageSrc, secureMediaUrl } from '@/utils/sec
  */
 
 export interface VideoPlayerProps {
+  /** '' = lecteur AU REPOS (aucune session) : la <video> reste montee, vide. */
   src: string;
   poster?: string | null;
   live?: boolean;
@@ -185,7 +186,11 @@ export function VideoPlayer({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const mkvEngineRef = useRef<MkvDirectEngine | null>(null);
+  // Lue au lancement d'un flux seulement : changer la langue dans les Reglages
+  // ne doit pas recharger ce qui joue (Live compris).
   const preferredLanguage = useUiSettingsStore((s) => s.preferredLanguage);
+  const preferredLanguageRef = useRef(preferredLanguage);
+  preferredLanguageRef.current = preferredLanguage;
   const pipEnabled = useUiSettingsStore((s) => s.pipEnabled);
   const onDirectMkvFailedRef = useRef(onDirectMkvFailed);
   onDirectMkvFailedRef.current = onDirectMkvFailed;
@@ -199,6 +204,7 @@ export function VideoPlayer({
   // non-natifs, contextualise le diagnostic (voir plus bas) et, sur une page
   // HTTP (coquille infra/http-shell, lecture directe par defaut), force malgre
   // tout le passage par la passerelle : c'est son transcodage qu'on veut.
+  const idle = src === '';
   const streamUrl = secureMediaUrl(src, { hls: preferHls, start: startOffset, transcode });
   const posterUrl = secureImageSrc(poster);
 
@@ -225,6 +231,16 @@ export function VideoPlayer({
   useEffect(() => {
     const video = videoRef.current;
     if (video === null) return;
+    if (idle) {
+      // Fin de session : la source a ete retiree par le nettoyage du flux
+      // precedent ; on garde l'ELEMENT (autorisation son iOS a la prochaine
+      // lecture) mais aucune fenetre PiP ne doit survivre a la session.
+      setPhase('ready');
+      setFailure(null);
+      setLimitedSeek(false);
+      if (isInPip(video)) exitPip(video);
+      return;
+    }
     // Instantane de CE flux. Au zapping, la meme <video> passe au flux suivant :
     // le nettoyage doit encore rapporter la position a l'ANCIEN titre, alors que
     // les refs pointent deja sur le nouveau.
@@ -405,7 +421,7 @@ export function VideoPlayer({
           if (stale()) return;
           const engine = new mod.MkvDirectEngine({
             url: streamUrl,
-            preferredLanguage,
+            preferredLanguage: preferredLanguageRef.current,
             onFatal: (code: MkvDirectErrorCode, detail: string) => {
               const unsupported = code === 'header' || code === 'no_video' || code === 'unsupported_video' || code === 'unsupported_audio';
               fail({
@@ -843,7 +859,7 @@ export function VideoPlayer({
     };
     // src / preferHls / transcode sont deja dans streamUrl (URL calculee).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamUrl, attempt, directMkv, preferredLanguage]);
+  }, [streamUrl, idle, attempt, directMkv]);
 
   // Expose la <video> (stable sur toute la vie du composant, zapping compris).
   useEffect(() => {

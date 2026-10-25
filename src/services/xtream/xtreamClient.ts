@@ -14,6 +14,7 @@ export type XtreamErrorCode =
   | 'timeout'
   | 'upstream'
   | 'invalid_response'
+  | 'rate_limited'
   | 'unknown';
 
 export class XtreamApiError extends Error {
@@ -39,6 +40,7 @@ const KNOWN_CODES: ReadonlySet<string> = new Set([
   'timeout',
   'upstream',
   'invalid_response',
+  'rate_limited',
 ]);
 
 /** Garde-fou client : le proxy a son propre timeout, mais si Vercel/le reseau
@@ -54,33 +56,36 @@ export async function callXtream<T>(
   action?: string,
   params?: Record<string, string | number>,
 ): Promise<T> {
-  let response: Response;
   const controller = new AbortController();
   const timeoutMs =
     action !== undefined && LIST_ACTIONS.has(action) ? LIST_REQUEST_TIMEOUT_MS : REQUEST_TIMEOUT_MS;
+  // Le delai couvre AUSSI la lecture du corps : un catalogue de plusieurs Mo
+  // peut caler en 4G apres les en-tetes (l'abandon interrompt alors json()).
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    response = await fetch(apiUrl('/api/xtream'), {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ ...credentials, action, params }),
-      signal: controller.signal,
-    });
-  } catch (error) {
-    const timedOut = error instanceof DOMException && error.name === 'AbortError';
-    throw new XtreamApiError(
-      timedOut ? 'timeout' : 'unreachable',
-      timedOut ? 'Le serveur met trop de temps a repondre.' : 'Impossible de joindre le proxy API.',
-    );
-  } finally {
-    clearTimeout(timeoutId);
-  }
+  const timedOut = (): XtreamApiError => new XtreamApiError('timeout', 'Le serveur met trop de temps a repondre.');
 
+  let response: Response;
   let payload: ProxyEnvelope | null = null;
   try {
-    payload = (await response.json()) as ProxyEnvelope;
-  } catch {
-    // payload reste null -> erreur normalisee ci-dessous
+    try {
+      response = await fetch(apiUrl('/api/xtream'), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...credentials, action, params }),
+        signal: controller.signal,
+      });
+    } catch {
+      if (controller.signal.aborted) throw timedOut();
+      throw new XtreamApiError('unreachable', 'Impossible de joindre le proxy API.');
+    }
+    try {
+      payload = (await response.json()) as ProxyEnvelope;
+    } catch {
+      if (controller.signal.aborted) throw timedOut();
+      // payload reste null -> erreur normalisee ci-dessous
+    }
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   if (payload !== null && payload.ok === true) return payload.data as T;

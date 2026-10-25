@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { TMDB_API_KEY } from '@/config/env';
+import { clientIp, createRateLimiter } from '@/server/rateLimit';
 
 /**
  * Proxy TMDB — la cle reste STRICTEMENT cote serveur (TMDB_API_KEY, jamais
@@ -119,36 +120,10 @@ function fail(status: number, code: string, message: string): NextResponse {
   return NextResponse.json({ ok: false, error: { code, message } }, { status, headers: NO_STORE });
 }
 
-/**
- * Rate-limit BEST-EFFORT par IP (fenetre glissante, en memoire). Limite : l'etat
- * est par INSTANCE serverless (Vercel en spawn plusieurs, remise a zero au cold
- * start) -> ce n'est pas un quota distribue, juste un garde-fou contre l'abus
- * grossier d'un endpoint public (proteger le quota TMDB de l'utilisateur).
- */
-const RATE_WINDOW_MS = 60_000;
 // 240/min : le backfill client s'espace a ~214/min (tmdbClient). TMDB lui-meme
-// accepte ~50 req/s ; ce plafond ne protege que contre un abus grossier.
-const RATE_MAX = 240; // requetes / minute / IP
-const rateHits = new Map<string, number[]>();
-
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const recent = (rateHits.get(ip) ?? []).filter((t) => now - t < RATE_WINDOW_MS);
-  recent.push(now);
-  rateHits.set(ip, recent);
-  // Borne la Map (evite une croissance non bornee sur une instance longue-duree).
-  if (rateHits.size > 5000) {
-    for (const [key, times] of rateHits) {
-      if (times.every((t) => now - t >= RATE_WINDOW_MS)) rateHits.delete(key);
-    }
-  }
-  return recent.length > RATE_MAX;
-}
-
-function clientIp(request: Request): string {
-  const fwd = request.headers.get('x-forwarded-for') ?? '';
-  return fwd.split(',')[0]?.trim() || 'unknown';
-}
+// accepte ~50 req/s ; ce plafond (best-effort, par instance) ne protege que
+// contre un abus grossier du quota TMDB de l'utilisateur.
+const isRateLimited = createRateLimiter({ windowMs: 60_000, max: 240 });
 
 /** Preflight CORS (coquille statique) : en-tetes via next.config.mjs. */
 export function OPTIONS(): Response {

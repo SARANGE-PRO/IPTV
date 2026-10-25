@@ -3,6 +3,9 @@
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { DetailModal } from '@/components/shared/DetailModal';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { ErrorBoundary } from '@/components/shared/ErrorBoundary';
+import { Button } from '@/components/ui/Button';
 import { MovieDetailView } from '@/components/movies/MovieDetailView';
 import { SeriesDetailView } from '@/components/series/SeriesDetailView';
 import { usePlaybackStore } from '@/stores/playbackStore';
@@ -65,28 +68,52 @@ export function DetailModalHost() {
   if (vodId !== null) {
     return (
       <DetailModal key={`vod:${vodId}`} onClose={close}>
-        <MovieDetailView
-          key={vodId}
-          vodId={vodId}
-          onBack={close}
-          autoPlay={autoPlay || resume.vodItemId !== null}
-          resumeVariantId={resume.vodItemId}
-        />
+        <ErrorBoundary resetKey={vodId} fallback={(reset) => <DetailCrash onRetry={reset} onClose={close} />}>
+          <MovieDetailView
+            key={vodId}
+            vodId={vodId}
+            onBack={close}
+            autoPlay={autoPlay || resume.vodItemId !== null}
+            resumeVariantId={resume.vodItemId}
+          />
+        </ErrorBoundary>
       </DetailModal>
     );
   }
   if (seriesId !== null) {
     return (
       <DetailModal key={`series:${seriesId}`} onClose={close}>
-        <SeriesDetailView
-          key={seriesId}
-          seriesId={seriesId}
-          onBack={close}
-          autoPlay={autoPlay || resume.episodeId !== null}
-          episodeId={episodeId ?? resume.episodeId}
-        />
+        <ErrorBoundary resetKey={seriesId} fallback={(reset) => <DetailCrash onRetry={reset} onClose={close} />}>
+          <SeriesDetailView
+            key={seriesId}
+            seriesId={seriesId}
+            onBack={close}
+            autoPlay={autoPlay || resume.episodeId !== null}
+            episodeId={episodeId ?? resume.episodeId}
+          />
+        </ErrorBoundary>
       </DetailModal>
     );
   }
   return null;
+}
+
+/** Fiche plantee : la modale reste ouverte, avec reprise ou fermeture. */
+function DetailCrash({ onRetry, onClose }: { onRetry: () => void; onClose: () => void }) {
+  return (
+    <div className="px-4 pb-10 pt-12 md:px-8">
+      <EmptyState
+        title="Cette fiche n’a pas pu s’afficher"
+        hint="Réessaie — ta lecture en cours et tes données sont intactes."
+        action={
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button onClick={onRetry}>Réessayer</Button>
+            <Button variant="secondary" onClick={onClose}>
+              Fermer
+            </Button>
+          </div>
+        }
+      />
+    </div>
+  );
 }

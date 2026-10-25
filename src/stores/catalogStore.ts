@@ -130,25 +130,52 @@ export const useCatalogStore = create<CatalogState>()((set, get) => ({
       },
     }));
 
-    const outcomes = await catalogSyncService.syncAllSections(creds, {
-      force: opts?.force ?? false,
-      onSectionStart: (section) => {
-        set((state) => ({ syncProgress: { ...state.syncProgress, [section]: 'loading' } }));
-      },
-      onSectionDone: (outcome) => {
-        set((state) => ({
-          syncProgress: {
-            ...state.syncProgress,
-            [outcome.section]: outcome.ok ? (outcome.skipped ? 'skipped' : 'done') : 'error',
-          },
-          syncCounts: { ...state.syncCounts, [outcome.section]: outcome.itemCount },
-        }));
-        void get().hydrateSection(outcome.section);
-      },
-    });
+    let outcomes: catalogSyncService.SectionOutcome[] | null = null;
+    try {
+      outcomes = await catalogSyncService.syncAllSections(creds, {
+        force: opts?.force ?? false,
+        onSectionStart: (section) => {
+          set((state) => ({ syncProgress: { ...state.syncProgress, [section]: 'loading' } }));
+        },
+        onSectionDone: (outcome) => {
+          set((state) => ({
+            syncProgress: {
+              ...state.syncProgress,
+              [outcome.section]: outcome.ok ? (outcome.skipped ? 'skipped' : 'done') : 'error',
+            },
+            syncCounts: { ...state.syncCounts, [outcome.section]: outcome.itemCount },
+          }));
+          void get().hydrateSection(outcome.section);
+        },
+      });
+    } catch {
+      // Exception imprevue (quota plein, base fermee...) : synchro en echec,
+      // les statuts sont relus depuis la base ci-dessous.
+    }
 
-    await get().hydrate();
-    set({ syncing: false });
+    try {
+      await get().hydrate();
+    } catch {
+      // Base illisible : aucune section ne doit rester bloquee sur « chargement ».
+      set((state) => ({
+        sections: Object.fromEntries(
+          SECTIONS.map((section) => {
+            const current = state.sections[section];
+            return [
+              section,
+              current.status === 'loading'
+                ? { ...current, status: 'error', error: 'Lecture du catalogue impossible.' }
+                : current,
+            ];
+          }),
+        ) as Record<Section, CatalogSectionState>,
+      }));
+    } finally {
+      // TOUJOURS libere : sinon plus aucune synchro possible jusqu'au redemarrage.
+      set({ syncing: false });
+    }
+
+    if (outcomes === null) return false;
     // Enrichissement TMDB en tache de fond (reprend la ou il s'etait arrete).
     void get().startBackfill();
     return outcomes.every((o) => o.ok);

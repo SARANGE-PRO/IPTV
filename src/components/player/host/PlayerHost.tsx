@@ -19,8 +19,12 @@ import { useMiniPlayerMediaSession } from '@/hooks/useMiniPlayerMediaSession';
 import { bindPlayPause } from '@/services/player/mediaSessionService';
 import { recordStreamFailure, recordStreamSuccess } from '@/services/live/streamReliabilityService';
 import { getPlayerHandlers, usePlayerStore } from '@/stores/playerStore';
+import type { PlayerSource } from '@/types/nowPlaying';
 import type { PlaybackFailure } from '@/types/playbackDiagnostics';
 import { nowPlayingHref } from '@/utils/appRoutes';
+
+/** Aucune session : lecteur au repos, sans source. */
+const IDLE_SOURCE: PlayerSource = { src: '' };
 
 /** Mise en page de la video selon l'endroit ou elle se trouve. */
 const LAYOUT = {
@@ -150,23 +154,23 @@ export function PlayerHost() {
   return (
     <>
       {mounted &&
-        session !== null &&
-        callbacks !== null &&
         createPortal(
-          // PAS de `key` par session : la MEME <video> enchaine les flux
-          // (zapping, episode suivant). iOS n'autorise le son qu'apres un geste
-          // sur l'element ; un nouvel element par chaine pourrait exiger un tap.
+          // PAS de `key` par session, et monte MEME sans session (src '') : la
+          // MEME <video> enchaine les flux (zapping, episode suivant, nouvelle
+          // lecture apres fermeture du mini-lecteur). iOS n'autorise le son
+          // qu'apres un geste sur l'element ; un nouvel element pourrait exiger
+          // un tap.
           <VideoPlayer
-            {...session.source}
+            {...(session?.source ?? IDLE_SOURCE)}
             {...layout}
             compact={mini}
             onVideoElement={setVideo}
-            onProgress={callbacks.onProgress}
-            onEnded={callbacks.onEnded}
-            onError={callbacks.onError}
-            onPlaying={callbacks.onPlaying}
-            onDirectMkvFailed={callbacks.onDirectMkvFailed}
-            getErrorActions={callbacks.getErrorActions}
+            onProgress={callbacks?.onProgress}
+            onEnded={callbacks?.onEnded}
+            onError={callbacks?.onError}
+            onPlaying={callbacks?.onPlaying}
+            onDirectMkvFailed={callbacks?.onDirectMkvFailed}
+            getErrorActions={callbacks?.getErrorActions}
           />,
           getSurface(),
         )}

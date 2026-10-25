@@ -5,23 +5,45 @@
 # et lit le fichier CNAME qu'elle contient (domaine HTTP). Les valeurs non
 # secretes (origine de l'API Vercel, domaine) sont versionnees dans
 # infra/http-shell/pages.env — pas de « Variables » de depot a configurer.
+#
+# `verify` (typecheck, lint, tests) bloque le deploiement : une regression ne
+# part jamais sur le telephone. Sur une pull request, seul `verify` tourne.
 name: Pages (coquille HTTP)
 
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build-deploy:
+  verify:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      # tsc couvre aussi src/app/api, que le build statique met de cote.
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+
+  build-deploy:
+    needs: verify
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

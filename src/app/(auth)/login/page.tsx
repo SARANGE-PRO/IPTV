@@ -24,6 +24,7 @@ const ERROR_MESSAGES: Record<AuthErrorCode, string> = {
   upstream: 'Le serveur a renvoyé une erreur. Réessaie plus tard.',
   invalid_response: 'Réponse inattendue du serveur.',
   invalid_request: 'Requête invalide.',
+  rate_limited: 'Trop de tentatives d’affilée. Patiente une minute puis réessaie.',
   unknown: 'Une erreur inattendue est survenue. Réessaie.',
 };
 
