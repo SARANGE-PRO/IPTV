@@ -26,6 +26,7 @@ import { createStreamSource } from '@/services/player/streamSource';
 import type { PreferredLanguage } from '@/types/mediaLanguage';
 import type { PlaybackFailure } from '@/types/playbackDiagnostics';
 import { mediaGatewayStopUrl } from '@/utils/secureUrl';
+import { markPlaybackActive } from '@/services/player/playbackActivity';
 
 /**
  * Supervision d'UN flux sur la <video> du lecteur unique (sortie de
@@ -564,8 +565,10 @@ export function startPlaybackSession(
 
   armStartupTimer();
   void source.attach();
+  const endActivity = markPlaybackActive();
 
   return () => {
+    endActivity();
     cancelled = true;
     clearStartupTimer();
     clearRetryTimer();

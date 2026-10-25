@@ -8,6 +8,7 @@ import type { Movie, Series, TmdbMetadata } from '@/types/models';
 import { variantOrder } from '@/utils/variantPreference';
 import { enrichByTmdbId, enrichMovieLite, enrichSeriesLite, tmdbCacheKey } from './tmdbMatcher';
 import { isLowBandwidth } from '@/services/network/lowBandwidthService';
+import { isPlaybackActive, whenPlaybackIdle } from '@/services/player/playbackActivity';
 
 /**
  * MOTEUR d'enrichissement TMDB du catalogue (refonte VOD, etape 1 ; fiabilise
@@ -284,6 +285,11 @@ export async function runCatalogBackfill(opts?: {
     while (!signal.aborted) {
       // Connexion faible : on s'arrete ; la sortie du mode relance le backfill.
       if (isLowBandwidth()) break;
+      // Lecture en cours : on attend sa fin (le debit va a la video, pas a TMDB).
+      if (isPlaybackActive()) {
+        await whenPlaybackIdle(signal);
+        if (signal.aborted) break;
+      }
       // La preference peut changer pendant un long run : relue periodiquement.
       if (round % 20 === 0) order = variantOrder(await loadPreferredLanguage());
       round += 1;

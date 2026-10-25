@@ -83,3 +83,21 @@ describe('retard sur le direct', () => {
     expect(liveDelaySeconds(0, Number.POSITIVE_INFINITY)).toBeNull();
   });
 });
+
+describe('activite de lecture', () => {
+  it('les taches de fond attendent la fin de la lecture', async () => {
+    vi.resetModules();
+    const act = await import('@/services/player/playbackActivity');
+    const end = act.markPlaybackActive();
+    expect(act.isPlaybackActive()).toBe(true);
+    let resumed = false;
+    void act.whenPlaybackIdle().then(() => (resumed = true));
+    await Promise.resolve();
+    expect(resumed).toBe(false);
+    end();
+    end(); // idempotent
+    await Promise.resolve();
+    expect(resumed).toBe(true);
+    expect(act.isPlaybackActive()).toBe(false);
+  });
+});
