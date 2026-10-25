@@ -7,7 +7,7 @@ import { ErrorState } from '@/components/shared/ErrorState';
 import { HScroll } from '@/components/shared/HScroll';
 import { MediaCard } from '@/components/shared/MediaCard';
 import { SyncCatalogButton } from '@/components/shared/SyncCatalogButton';
-import { IconX } from '@/components/ui/icons';
+import { IconSearch, IconX } from '@/components/ui/icons';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { FIRST_PAGE } from '@/services/data/catalogService';
@@ -116,6 +116,21 @@ function decadeValue(minYear: number | null, maxYear: number | null): string {
  * par titre : les versions (VF/VOSTFR/4K…) sont regroupées, la version préférée
  * représente le titre ; la pastille de variante vient de la ligne Dexie.
  */
+/**
+ * Etat d'une section quittee (onglet change) : au retour, memes pages
+ * chargees, meme recherche, meme position — comme la page Live. Repris
+ * seulement si la vue est identique (tri, langue, filtres, catalogue).
+ */
+interface BrowserSnapshot {
+  key: string;
+  items: BrowserItem[];
+  cursor: PageCursor | null;
+  endReached: boolean;
+  scrollY: number;
+  query: string;
+}
+const snapshots = new Map<VodSection, BrowserSnapshot>();
+
 export function MediaBrowser<T extends BrowserItem>({
   section,
   title,
@@ -147,11 +162,16 @@ export function MediaBrowser<T extends BrowserItem>({
   const setMinRating = useVodFilterStore((s) => s.setMinRating);
   const resetFilters = useVodFilterStore((s) => s.resetFilters);
 
+  const [snapshot] = useState(() => snapshots.get(section) ?? null);
+  const pendingSnapshotRef = useRef(snapshot);
+  const restoreScrollRef = useRef<number | null>(null);
   const [items, setItems] = useState<T[]>([]);
   const [loading, setLoading] = useState(false);
   const [endReached, setEndReached] = useState(false);
   const [count, setCount] = useState<number | null>(null);
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(() => snapshot?.query ?? '');
+  // Recherche repliee en icone (deroulee si une recherche est en cours).
+  const [searchOpen, setSearchOpen] = useState(() => (snapshot?.query ?? '') !== '');
   const [results, setResults] = useState<T[] | null>(null);
   const [searching, setSearching] = useState(false);
   // Echec de lecture locale (Dexie) : message + Reessayer au lieu de squelettes infinis.
@@ -188,6 +208,15 @@ export function MediaBrowser<T extends BrowserItem>({
     return cf;
   }, [filters]);
 
+  const viewKey = [
+    filters.sort,
+    filters.lane,
+    JSON.stringify(filter),
+    order.join(','),
+    [...hiddenSet].sort().join(','),
+    catalogSlice.lastFetchAt ?? 0,
+  ].join('|');
+
   useEffect(() => {
     if (!hydrated) void hydrate();
   }, [hydrated, hydrate]);
@@ -199,6 +228,19 @@ export function MediaBrowser<T extends BrowserItem>({
   // (et à la fin d'un re-classement des versions : les rangs ont changé).
   useEffect(() => {
     if (!hydrated || regrouping) return;
+    // Retour sur l'onglet, vue identique : pages et position reprises telles quelles.
+    const snap = pendingSnapshotRef.current;
+    pendingSnapshotRef.current = null;
+    if (snap !== null && snap.key === viewKey && snap.items.length > 0) {
+      setItems(snap.items as T[]);
+      cursorRef.current = snap.cursor;
+      setEndReached(snap.endReached);
+      setLoading(false);
+      setLoadError(false);
+      loadingRef.current = false;
+      restoreScrollRef.current = snap.scrollY;
+      return;
+    }
     let alive = true;
     cursorRef.current = FIRST_PAGE;
     setItems([]);
@@ -223,7 +265,57 @@ export function MediaBrowser<T extends BrowserItem>({
     return () => {
       alive = false;
     };
-  }, [hydrated, regrouping, fetchFlatPage, filters.sort, filters.lane, order, filter, hiddenArg, enrichVisible, reloadKey]);
+    // viewKey : derive des memes valeurs (+ date du catalogue : resynchro = rechargement).
+  }, [hydrated, regrouping, fetchFlatPage, filters.sort, filters.lane, order, filter, hiddenArg, enrichVisible, reloadKey, viewKey]);
+
+  // Position retrouvee une fois les pages reprises affichees.
+  useEffect(() => {
+    const y = restoreScrollRef.current;
+    if (y === null || items.length === 0) return;
+    restoreScrollRef.current = null;
+    // Le routeur remet la fenetre en haut APRES ce rendu : on repasse juste apres.
+    const go = () => window.scrollTo({ top: y });
+    const frame = requestAnimationFrame(go);
+    const timer = setTimeout(go, 150);
+    return () => {
+      cancelAnimationFrame(frame);
+      clearTimeout(timer);
+    };
+  }, [items.length]);
+
+  // Instantane au depart de la page. La position est suivie AU FIL du
+  // defilement : au demontage, la navigation a deja remis la fenetre en haut.
+  const latestRef = useRef({ viewKey, items, endReached, query });
+  latestRef.current = { viewKey, items, endReached, query };
+  useEffect(() => {
+    let scrollY = window.scrollY;
+    let frame: number | null = null;
+    // L'URL change AVANT que le routeur ne remonte la fenetre : ce defilement-la
+    // n'est pas celui de la page (sinon la position memorisee valait 0).
+    const path = window.location.pathname;
+    const onScroll = () => {
+      if (frame !== null) return;
+      frame = requestAnimationFrame(() => {
+        frame = null;
+        if (window.location.pathname === path) scrollY = window.scrollY;
+      });
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (frame !== null) cancelAnimationFrame(frame);
+      const l = latestRef.current;
+      if (l.items.length === 0) return;
+      snapshots.set(section, {
+        key: l.viewKey,
+        items: l.items,
+        cursor: cursorRef.current,
+        endReached: l.endReached,
+        scrollY,
+        query: l.query,
+      });
+    };
+  }, [section]);
 
   // Compte total : seulement sans filtre actif (compte d'index rapide).
   useEffect(() => {
@@ -299,12 +391,11 @@ export function MediaBrowser<T extends BrowserItem>({
   // Avant la relecture du catalogue local, « vide » ne veut encore rien dire.
   const catalogEmpty = catalogHydrated && catalogSlice.itemCount === 0 && catalogSlice.status !== 'loading';
   const selectClass =
-    'h-10 rounded-xl border border-ink-600 bg-ink-800 px-3 text-xs text-fg outline-none';
+    'h-11 rounded-xl border border-ink-600 bg-ink-800 px-3 text-[13px] text-fg outline-none';
   const decade = decadeValue(filters.minYear, filters.maxYear);
-  const extraFilters = (decade !== 'all' ? 1 : 0) + (filters.minRating !== null ? 1 : 0);
-  const showSecondaryRow = filters.genreIds.length > 1 || active;
+  const filterCount = (filters.sort !== 'recent' ? 1 : 0) + (decade !== 'all' ? 1 : 0) + (filters.minRating !== null ? 1 : 0) + filters.genreIds.length;
   const pill = (on: boolean): string =>
-    `shrink-0 rounded-full px-4 py-2 text-[13px] font-medium transition-colors ${
+    `h-11 shrink-0 rounded-full px-3.5 text-[13px] font-medium transition-colors ${
       on ? 'bg-accent text-white' : 'bg-ink-800 text-fg-muted hover:text-fg'
     }`;
 
@@ -317,149 +408,154 @@ export function MediaBrowser<T extends BrowserItem>({
 
       {hero}
 
-      {/* Recherche + tri + année + note */}
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-        <div className="relative flex-1">
-          <Input
-            ref={searchRef}
-            type="search"
-            enterKeyHint="search"
-            className="pr-12"
-            placeholder={`Rechercher des ${itemNoun}…`}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.currentTarget.blur();
-            }}
-            autoCapitalize="none"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-          {query !== '' && (
+      {/* UNE barre collante (loupe · langue · tri · filtres) : avant, ~64 % de
+          l'ecran iPhone etait occupe par les controles avant la 1re affiche. */}
+      <div className="sticky top-safe z-20 -mx-4 mt-3 bg-ink-950/90 px-4 py-2 backdrop-blur-md md:-mx-8 md:px-8">
+        {searchOpen ? (
+          <div className="relative">
+            <Input
+              ref={searchRef}
+              type="search"
+              enterKeyHint="search"
+              autoFocus
+              className="pr-12"
+              placeholder={`Rechercher des ${itemNoun}…`}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.currentTarget.blur();
+              }}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+            />
             <button
               type="button"
-              aria-label="Effacer la recherche"
+              aria-label="Fermer la recherche"
               onClick={() => {
                 setQuery('');
-                searchRef.current?.focus();
+                setResults(null); // sans attendre le delai de la recherche
+                setSearchOpen(false);
               }}
-              className="absolute right-1 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-full text-fg-faint hover:text-fg"
+              className="absolute right-0 top-1/2 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full text-fg-faint hover:text-fg"
             >
               <IconX className="h-4 w-4" />
             </button>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <select
-            aria-label="Trier"
-            value={filters.sort}
-            onChange={(e) => setSort(section, e.target.value as FlatSort)}
-            className={selectClass}
-          >
-            {SORT_OPTIONS.map((o) => (
-              <option key={o.id} value={o.id}>Tri : {o.label}</option>
-            ))}
-          </select>
-          <button
-            type="button"
-            aria-expanded={filtersOpen}
-            onClick={() => setFiltersOpen((o) => !o)}
-            className={cn(
-              'h-10 rounded-xl border px-3 text-xs font-medium transition-colors',
-              extraFilters > 0 ? 'border-accent/60 bg-accent/15 text-fg' : 'border-ink-600 bg-ink-800 text-fg-muted',
-            )}
-          >
-            Filtres{extraFilters > 0 ? ` (${extraFilters})` : ''}
-          </button>
-        </div>
+          </div>
+        ) : (
+          <HScroll className="flex items-center gap-2 [scrollbar-width:none]">
+            <button
+              type="button"
+              aria-label={`Rechercher des ${itemNoun}`}
+              onClick={() => setSearchOpen(true)}
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-ink-800 text-fg-muted hover:text-fg"
+            >
+              <IconSearch className="h-5 w-5" />
+            </button>
+            {/* Toujours visible (tri, annee, note, genres derriere) ; les langues defilent. */}
+            <button
+              type="button"
+              aria-expanded={filtersOpen}
+              onClick={() => setFiltersOpen((o) => !o)}
+              className={pill(filtersOpen || filterCount > 0)}
+            >
+              Filtres{filterCount > 0 ? ` (${filterCount})` : ''}
+            </button>
+            <span aria-hidden className="h-6 w-px shrink-0 bg-ink-700" />
+            <div className="flex shrink-0 items-center gap-1.5" role="group" aria-label="Langue">
+              {LANES.map((l) => (
+                <button
+                  key={l.id}
+                  type="button"
+                  title={l.hint}
+                  aria-pressed={filters.lane === l.id}
+                  onClick={() => setLane(section, l.id)}
+                  className={pill(filters.lane === l.id)}
+                >
+                  {l.label}
+                </button>
+              ))}
+            </div>
+          </HScroll>
+        )}
       </div>
 
+      {/* Genres, annee, note : derriere « Filtres », ouverts a la demande. */}
       {filtersOpen && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl bg-ink-900/60 p-2">
-          <select
-            aria-label="Filtrer par année"
-            value={decade}
-            onChange={(e) => {
-              const d = DECADES.find((x) => x.value === e.target.value) ?? DECADES[0]!;
-              setYearRange(section, d.min, d.max);
-            }}
-            className={selectClass}
-          >
-            {DECADES.map((d) => (
-              <option key={d.value} value={d.value}>{d.label}</option>
-            ))}
-          </select>
-          <select
-            aria-label="Filtrer par note"
-            value={filters.minRating === null ? 'all' : String(filters.minRating)}
-            onChange={(e) => {
-              const r = RATINGS.find((x) => x.value === e.target.value) ?? RATINGS[0]!;
-              setMinRating(section, r.min);
-            }}
-            className={selectClass}
-          >
-            {RATINGS.map((r) => (
-              <option key={r.value} value={r.value}>{r.label}</option>
-            ))}
-          </select>
-        </div>
-      )}
-
-      {/* Pills de langue (Tout / VF / VOSTFR / VO) */}
-      <div className="mt-3 flex items-center gap-2" role="group" aria-label="Langue">
-        {LANES.map((l) => (
-          <button
-            key={l.id}
-            type="button"
-            title={l.hint}
-            aria-pressed={filters.lane === l.id}
-            onClick={() => setLane(section, l.id)}
-            className={pill(filters.lane === l.id)}
-          >
-            {l.label}
-          </button>
-        ))}
-      </div>
-      <p className="mt-1.5 px-1 text-[11px] text-fg-faint">{LANES.find((l) => l.id === filters.lane)?.hint}</p>
-
-      {/* Bascule genres ET/OU + réinitialiser (visibles au besoin) */}
-      {showSecondaryRow && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
+        <div className="mt-2 flex flex-col gap-3 rounded-2xl bg-ink-900/60 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              aria-label="Trier"
+              value={filters.sort}
+              onChange={(e) => setSort(section, e.target.value as FlatSort)}
+              className={selectClass}
+            >
+              {SORT_OPTIONS.map((o) => (
+                <option key={o.id} value={o.id}>Tri : {o.label}</option>
+              ))}
+            </select>
+            <select
+              aria-label="Filtrer par année"
+              value={decade}
+              onChange={(e) => {
+                const d = DECADES.find((x) => x.value === e.target.value) ?? DECADES[0]!;
+                setYearRange(section, d.min, d.max);
+              }}
+              className={selectClass}
+            >
+              {DECADES.map((d) => (
+                <option key={d.value} value={d.value}>{d.label}</option>
+              ))}
+            </select>
+            <select
+              aria-label="Filtrer par note"
+              value={filters.minRating === null ? 'all' : String(filters.minRating)}
+              onChange={(e) => {
+                const r = RATINGS.find((x) => x.value === e.target.value) ?? RATINGS[0]!;
+                setMinRating(section, r.min);
+              }}
+              className={selectClass}
+            >
+              {RATINGS.map((r) => (
+                <option key={r.value} value={r.value}>{r.label}</option>
+              ))}
+            </select>
+            {active && (
+              <button
+                type="button"
+                onClick={() => resetFilters(section)}
+                className="h-11 rounded-full px-3 text-[13px] font-medium text-fg-faint underline-offset-2 hover:text-fg hover:underline"
+              >
+                Tout réinitialiser
+              </button>
+            )}
+          </div>
+          {genres.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => clearGenres(section)} className={pill(filters.genreIds.length === 0)}>
+                Tous les genres
+              </button>
+              {genres.map((g) => {
+                const on = filters.genreIds.includes(g.id);
+                return (
+                  <button key={g.id} type="button" aria-pressed={on} onClick={() => toggleGenre(section, g.id)} className={pill(on)}>
+                    {g.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {filters.genreIds.length > 1 && (
             <button
+              type="button"
               onClick={() => setGenreMatch(section, filters.genreMatch === 'all' ? 'any' : 'all')}
               aria-pressed={filters.genreMatch === 'all'}
-              className={pill(filters.genreMatch === 'all')}
+              className={cn(pill(filters.genreMatch === 'all'), 'self-start')}
             >
               {filters.genreMatch === 'all' ? 'Tous ces genres à la fois' : 'Au moins un de ces genres'}
             </button>
           )}
-          {active && (
-            <button
-              onClick={() => resetFilters(section)}
-              className="rounded-full px-3 py-3 text-[13px] font-medium text-fg-faint underline-offset-2 hover:text-fg hover:underline"
-            >
-              Tout réinitialiser
-            </button>
-          )}
         </div>
-      )}
-
-      {/* Pills de genres TMDB */}
-      {genres.length > 0 && (
-        <HScroll className="mt-3 flex gap-2 pb-1 [scrollbar-width:none]">
-          <button onClick={() => clearGenres(section)} className={pill(filters.genreIds.length === 0)}>
-            Tous
-          </button>
-          {genres.map((g) => {
-            const on = filters.genreIds.includes(g.id);
-            return (
-              <button key={g.id} onClick={() => toggleGenre(section, g.id)} className={pill(on)}>
-                {g.name}
-              </button>
-            );
-          })}
-        </HScroll>
       )}
 
       {/* Compteur */}
